@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "cyvoriq-erase-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-15",
+  "workers_dev": true,
+  "vars": {
+    "APP_ENV": "development",
+    "API_VERSION": "v1"
+  },
+  "env": {
+    "staging": {
+      "name": "cyvoriq-erase-api-staging",
+      "vars": {
+        "APP_ENV": "staging",
+        "API_VERSION": "v1"
+      }
+    },
+    "production": {
+      "name": "cyvoriq-erase-api-production",
+      "vars": {
+        "APP_ENV": "production",
+        "API_VERSION": "v1"
+      }
+    }
+  }
+}

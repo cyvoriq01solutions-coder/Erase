@@ -1,0 +1,15 @@
+CYVORIQ ERASE — PHASE 3 WORKER/API FOUNDATION
+
+Apply this ZIP from the repository root (/workspaces/Erase).
+It adds only worker/ and docs/deployment/cloudflare-worker.md.
+
+After extracting:
+
+  cd /workspaces/Erase/worker
+  npm install
+  npm run typecheck
+  npm run deploy:dry-run
+
+Do NOT deploy yet.
+Do NOT add Neon/Hyperdrive secrets yet.
+Do NOT commit until all verification commands pass.
