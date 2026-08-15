@@ -1,0 +1,19 @@
+CYVORIQ ERASE — PHASE 2 CLOUDFLARE PAGES OVERLAY
+
+Apply AFTER the Phase 1 frontend foundation.
+
+Copy these files into the repository root, preserving folders:
+- frontend/.nvmrc
+- frontend/.env.example
+- frontend/public/_headers
+- docs/deployment/cloudflare-pages.md
+
+Then run:
+  cd frontend
+  npm ci
+  npm run build
+  test -f dist/index.html
+  test -f dist/_headers
+
+Do not deploy with `npx wrangler deploy` in this phase.
+Cloudflare Pages settings are documented in docs/deployment/cloudflare-pages.md.
