@@ -1,0 +1,14 @@
+{
+  "name": "cyvoriq-erase",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CYVORIQ Erase platform",
+  "packageManager": "npm@11.9.0",
+  "engines": {
+    "node": ">=24.0.0 <25.0.0",
+    "npm": ">=11.0.0 <12.0.0"
+  },
+  "scripts": {
+    "verify:environment": "node --version && npm --version && git --version"
+  }
+}
