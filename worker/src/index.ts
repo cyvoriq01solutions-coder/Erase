@@ -3,10 +3,17 @@ import {
   handleDatabaseHealth,
   type DatabaseHealthEnv,
 } from "./routes/databaseHealth";
+import {
+  handleDatabaseTables,
+  type DatabaseTablesEnv,
+} from "./routes/databaseTables";
 import { handleHealth, type RuntimeEnv } from "./routes/health";
 import { json } from "./services/http";
 
-export interface Env extends RuntimeEnv, DatabaseHealthEnv {}
+export interface Env
+  extends RuntimeEnv,
+    DatabaseHealthEnv,
+    DatabaseTablesEnv {}
 
 async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -17,6 +24,10 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "GET" && url.pathname === "/api/v1/db/health") {
     return handleDatabaseHealth(env);
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/v1/db/tables") {
+    return handleDatabaseTables(env);
   }
 
   if (url.pathname.startsWith("/api/")) {
