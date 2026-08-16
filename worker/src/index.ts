@@ -1,14 +1,22 @@
 import { withSecurityHeaders } from "./middleware/securityHeaders";
+import {
+  handleDatabaseHealth,
+  type DatabaseHealthEnv,
+} from "./routes/databaseHealth";
 import { handleHealth, type RuntimeEnv } from "./routes/health";
 import { json } from "./services/http";
 
-export interface Env extends RuntimeEnv {}
+export interface Env extends RuntimeEnv, DatabaseHealthEnv {}
 
-function route(request: Request, env: Env): Response {
+async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
 
   if (request.method === "GET" && url.pathname === "/api/v1/health") {
     return handleHealth(env);
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/v1/db/health") {
+    return handleDatabaseHealth(env);
   }
 
   if (url.pathname.startsWith("/api/")) {
@@ -37,7 +45,7 @@ export default {
     }
 
     try {
-      return withSecurityHeaders(route(request, env));
+      return withSecurityHeaders(await route(request, env));
     } catch {
       return withSecurityHeaders(
         json(

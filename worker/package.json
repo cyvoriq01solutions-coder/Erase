@@ -11,7 +11,11 @@
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
+    "@types/pg": "8.15.5",
     "typescript": "5.9.3",
     "wrangler": "4.123.0"
+  },
+  "dependencies": {
+    "pg": "8.16.3"
   }
 }

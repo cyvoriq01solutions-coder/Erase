@@ -1,5 +1,19 @@
-interface ExportedHandler<Env = unknown> {
-  fetch?(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response>;
+interface Hyperdrive {
+  connectionString: string;
+}
+
+interface Env {
+  APP_ENV: string;
+  API_VERSION: string;
+  HYPERDRIVE: Hyperdrive;
+}
+
+interface ExportedHandler<Environment = Env> {
+  fetch?(
+    request: Request,
+    env: Environment,
+    ctx: ExecutionContext,
+  ): Response | Promise<Response>;
 }
 
 interface ExecutionContext {
