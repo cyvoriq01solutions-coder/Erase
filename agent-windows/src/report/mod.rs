@@ -26,7 +26,10 @@ pub fn render(
   "device": {{
     "hostname": "{}",
     "platform": "{}",
-    "architecture": "{}"
+    "architecture": "{}",
+    "manufacturer": "{}",
+    "model": "{}",
+    "serialNumber": "{}"
   }},
   "operatingSystem": {{
     "name": "{}",
@@ -51,6 +54,9 @@ pub fn render(
         escape_json(&device.hostname),
         escape_json(device.platform),
         escape_json(device.architecture),
+        escape_json(&device.manufacturer),
+        escape_json(&device.model),
+        escape_json(&device.serial_number),
         escape_json(os.operating_system),
         escape_json(os.family),
         escape_json(os.architecture),
