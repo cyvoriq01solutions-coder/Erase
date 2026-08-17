@@ -34,7 +34,10 @@ pub fn render(
   "operatingSystem": {{
     "name": "{}",
     "family": "{}",
-    "architecture": "{}"
+    "architecture": "{}",
+    "caption": "{}",
+    "version": "{}",
+    "buildNumber": "{}"
   }},
   "storage": {{
     "discoveryStatus": "{}",
@@ -60,6 +63,9 @@ pub fn render(
         escape_json(os.operating_system),
         escape_json(os.family),
         escape_json(os.architecture),
+        escape_json(&os.caption),
+        escape_json(&os.version),
+        escape_json(&os.build_number),
         escape_json(storage.discovery_status),
         storage.destructive_operations_enabled,
         escape_json(storage.note),
