@@ -53,16 +53,16 @@ jobs:
 
           Copy-Item `
             target\release\cyvoriq-erase-agent.exe `
-            dist\CYVORIQ-Verification-Agent-v0.1.0-windows-x64.exe
+            dist\CYVORIQ-Verification-Agent-v0.1.1-windows-x64.exe
 
           $hash = (
             Get-FileHash `
-              dist\CYVORIQ-Verification-Agent-v0.1.0-windows-x64.exe `
+              dist\CYVORIQ-Verification-Agent-v0.1.1-windows-x64.exe `
               -Algorithm SHA256
           ).Hash.ToLower()
 
           Set-Content `
-            -Path dist\CYVORIQ-Verification-Agent-v0.1.0-windows-x64.sha256 `
+            -Path dist\CYVORIQ-Verification-Agent-v0.1.1-windows-x64.sha256 `
             -Value $hash `
             -NoNewline
 

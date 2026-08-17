@@ -1,3 +1,5 @@
+mod a6;
+
 use crate::{
     assessment::AssessmentResult,
     cpu::CpuProfile,
@@ -6,6 +8,7 @@ use crate::{
     os::OsProfile,
     storage::{PhysicalDisk, StorageProfile},
 };
+use a6::{render_encryption, render_volumes};
 
 fn escape_json(value: &str) -> String {
     value
@@ -51,20 +54,28 @@ fn render_disks(disks: &[PhysicalDisk]) -> String {
     format!("[\n      {rendered}\n    ]")
 }
 
+pub struct A6Evidence<'a> {
+    pub volumes: &'a [crate::volume::VolumeProfile],
+    pub encryption: &'a crate::encryption::EncryptionProfile,
+}
+
 pub fn render(
     device: &DeviceIdentity,
     os: &OsProfile,
     cpu: &CpuProfile,
     storage: &StorageProfile,
+    a6: &A6Evidence,
     evidence: &EvidenceRecord,
     assessment: &AssessmentResult,
 ) -> String {
     let physical_disks = render_disks(&storage.disks);
+    let volume_data = render_volumes(a6.volumes);
+    let encryption_data = render_encryption(a6.encryption);
 
     format!(
         r#"{{
   "product": "CYVORIQ Verification Agent",
-  "agentVersion": "0.1.0",
+  "agentVersion": "0.1.1",
   "scanMode": "{}",
   "device": {{
     "hostname": "{}",
@@ -95,6 +106,8 @@ pub fn render(
     "note": "{}",
     "physicalDisks": {}
   }},
+  "volumes": {},
+  "encryption": {},
   "evidence": {{
     "collectedAtUnix": {},
     "source": "{}"
@@ -126,6 +139,8 @@ pub fn render(
         storage.destructive_operations_enabled,
         escape_json(&storage.note),
         physical_disks,
+        volume_data,
+        encryption_data,
         evidence.collected_at_unix,
         escape_json(evidence.source),
         escape_json(assessment.status),
