@@ -1,6 +1,6 @@
 use crate::{
-    assessment::AssessmentResult, device::DeviceIdentity, evidence::EvidenceRecord, os::OsProfile,
-    storage::StorageProfile,
+    assessment::AssessmentResult, cpu::CpuProfile, device::DeviceIdentity,
+    evidence::EvidenceRecord, os::OsProfile, storage::StorageProfile,
 };
 
 fn escape_json(value: &str) -> String {
@@ -14,6 +14,7 @@ fn escape_json(value: &str) -> String {
 pub fn render(
     device: &DeviceIdentity,
     os: &OsProfile,
+    cpu: &CpuProfile,
     storage: &StorageProfile,
     evidence: &EvidenceRecord,
     assessment: &AssessmentResult,
@@ -38,6 +39,13 @@ pub fn render(
     "caption": "{}",
     "version": "{}",
     "buildNumber": "{}"
+  }},
+  "cpu": {{
+    "name": "{}",
+    "manufacturer": "{}",
+    "cores": {},
+    "logicalProcessors": {},
+    "addressWidth": {}
   }},
   "storage": {{
     "discoveryStatus": "{}",
@@ -66,6 +74,11 @@ pub fn render(
         escape_json(&os.caption),
         escape_json(&os.version),
         escape_json(&os.build_number),
+        escape_json(&cpu.name),
+        escape_json(&cpu.manufacturer),
+        cpu.cores,
+        cpu.logical_processors,
+        cpu.address_width,
         escape_json(storage.discovery_status),
         storage.destructive_operations_enabled,
         escape_json(storage.note),
