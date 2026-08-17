@@ -1,6 +1,10 @@
 use crate::{
-    assessment::AssessmentResult, cpu::CpuProfile, device::DeviceIdentity,
-    evidence::EvidenceRecord, os::OsProfile, storage::StorageProfile,
+    assessment::AssessmentResult,
+    cpu::CpuProfile,
+    device::DeviceIdentity,
+    evidence::EvidenceRecord,
+    os::OsProfile,
+    storage::{PhysicalDisk, StorageProfile},
 };
 
 fn escape_json(value: &str) -> String {
@@ -9,6 +13,42 @@ fn escape_json(value: &str) -> String {
         .replace('"', "\\\"")
         .replace('\n', "\\n")
         .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
+fn render_disk(disk: &PhysicalDisk) -> String {
+    format!(
+        r#"{{
+        "index": {},
+        "model": "{}",
+        "serialNumber": "{}",
+        "sizeBytes": {},
+        "interfaceType": "{}",
+        "mediaType": "{}",
+        "firmwareRevision": "{}"
+      }}"#,
+        disk.index,
+        escape_json(&disk.model),
+        escape_json(&disk.serial_number),
+        disk.size_bytes,
+        escape_json(&disk.interface_type),
+        escape_json(&disk.media_type),
+        escape_json(&disk.firmware_revision),
+    )
+}
+
+fn render_disks(disks: &[PhysicalDisk]) -> String {
+    if disks.is_empty() {
+        return "[]".to_string();
+    }
+
+    let rendered = disks
+        .iter()
+        .map(render_disk)
+        .collect::<Vec<_>>()
+        .join(",\n      ");
+
+    format!("[\n      {rendered}\n    ]")
 }
 
 pub fn render(
@@ -19,6 +59,8 @@ pub fn render(
     evidence: &EvidenceRecord,
     assessment: &AssessmentResult,
 ) -> String {
+    let physical_disks = render_disks(&storage.disks);
+
     format!(
         r#"{{
   "product": "CYVORIQ Verification Agent",
@@ -50,7 +92,8 @@ pub fn render(
   "storage": {{
     "discoveryStatus": "{}",
     "destructiveOperationsEnabled": {},
-    "note": "{}"
+    "note": "{}",
+    "physicalDisks": {}
   }},
   "evidence": {{
     "collectedAtUnix": {},
@@ -79,9 +122,10 @@ pub fn render(
         cpu.cores,
         cpu.logical_processors,
         cpu.address_width,
-        escape_json(storage.discovery_status),
+        escape_json(&storage.discovery_status),
         storage.destructive_operations_enabled,
-        escape_json(storage.note),
+        escape_json(&storage.note),
+        physical_disks,
         evidence.collected_at_unix,
         escape_json(evidence.source),
         escape_json(assessment.status),
