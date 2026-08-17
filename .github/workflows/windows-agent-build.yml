@@ -1,0 +1,77 @@
+name: Build CYVORIQ Windows Agent
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "agent-windows/**"
+      - "rust-toolchain.toml"
+      - ".github/workflows/windows-agent-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-agent:
+    name: Build Windows x64 Agent
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        working-directory: agent-windows
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install frozen Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.97.1
+          rustc --version
+          cargo --version
+
+      - name: Format check
+        run: cargo fmt --check
+
+      - name: Cargo check
+        run: cargo check
+
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Build release executable
+        run: cargo build --release
+
+      - name: Prepare release package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+
+          Copy-Item `
+            target\release\cyvoriq-erase-agent.exe `
+            dist\CYVORIQ-Verification-Agent-v0.1.0-windows-x64.exe
+
+          $hash = (
+            Get-FileHash `
+              dist\CYVORIQ-Verification-Agent-v0.1.0-windows-x64.exe `
+              -Algorithm SHA256
+          ).Hash.ToLower()
+
+          Set-Content `
+            -Path dist\CYVORIQ-Verification-Agent-v0.1.0-windows-x64.sha256 `
+            -Value $hash `
+            -NoNewline
+
+          Get-ChildItem dist
+
+      - name: Upload Windows Agent
+        uses: actions/upload-artifact@v7
+        with:
+          name: CYVORIQ-Windows-Agent-x64
+          path: agent-windows/dist/*
+          retention-days: 30
+          if-no-files-found: error
