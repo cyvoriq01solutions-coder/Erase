@@ -26,6 +26,14 @@ pub fn collect() -> EncryptionProfile {
         };
     }
 
+    if matches!(is_windows_elevated(), Some(false)) {
+        return EncryptionProfile {
+            collection_status: "requires_elevation".to_string(),
+            note: "Administrator privileges are required to collect BitLocker status on this Windows device.".to_string(),
+            volumes: Vec::new(),
+        };
+    }
+
     match collect_windows_bitlocker() {
         Some(volumes) => EncryptionProfile {
             collection_status: "completed".to_string(),
@@ -135,5 +143,39 @@ fn clean(value: &str) -> String {
         "unknown".to_string()
     } else {
         value.to_string()
+    }
+}
+
+fn is_windows_elevated() -> Option<bool> {
+    let script = r#"
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object Security.Principal.WindowsPrincipal($identity)
+
+if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Output "true"
+} else {
+    Write-Output "false"
+}
+"#;
+
+    let output = Command::new("powershell.exe")
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            script,
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    match String::from_utf8_lossy(&output.stdout).trim() {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
     }
 }

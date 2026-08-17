@@ -75,7 +75,7 @@ pub fn render(
     format!(
         r#"{{
   "product": "CYVORIQ Verification Agent",
-  "agentVersion": "0.1.1",
+  "agentVersion": "0.1.2",
   "scanMode": "{}",
   "device": {{
     "hostname": "{}",
