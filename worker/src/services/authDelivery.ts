@@ -1,6 +1,6 @@
 export interface AuthDeliveryEnv {
-  AUTH_EMAIL_ENDPOINT?: string;
-  AUTH_EMAIL_TOKEN?: string;
+  RESEND_API_KEY?: string;
+  AUTH_EMAIL_FROM?: string;
 }
 
 export interface LoginCodeDelivery {
@@ -17,29 +17,60 @@ export class AuthDeliveryError extends Error {
   }
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 export async function deliverLoginCode(
   env: AuthDeliveryEnv,
   delivery: LoginCodeDelivery,
 ): Promise<void> {
-  const endpoint = env.AUTH_EMAIL_ENDPOINT?.trim();
-  const token = env.AUTH_EMAIL_TOKEN?.trim();
+  const apiKey = env.RESEND_API_KEY?.trim();
+  const from = env.AUTH_EMAIL_FROM?.trim();
 
-  if (!endpoint || !token) {
+  if (!apiKey || !from) {
     throw new AuthDeliveryError("Authentication email delivery is not configured");
   }
 
-  const response = await fetch(endpoint, {
+  const expiry = new Date(delivery.expiresAt);
+  const expiryText = Number.isNaN(expiry.getTime())
+    ? "10 minutes"
+    : expiry.toISOString();
+  const safeCode = escapeHtml(delivery.code);
+
+  const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      "Idempotency-Key": `cyvoriq-auth-${delivery.challengeId}`,
     },
     body: JSON.stringify({
-      type: "cyvoriq_login_code",
-      to: delivery.email,
-      code: delivery.code,
-      challengeId: delivery.challengeId,
-      expiresAt: delivery.expiresAt,
+      from,
+      to: [delivery.email],
+      subject: "Your CYVORIQ verification code",
+      text: [
+        "CYVORIQ account verification",
+        "",
+        `Your verification code is: ${delivery.code}`,
+        "",
+        `This code expires at ${expiryText}.",
+        "If you did not request this code, you can ignore this email.",
+      ].join("\n"),
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+          <h2>CYVORIQ account verification</h2>
+          <p>Your verification code is:</p>
+          <p style="font-size:32px;font-weight:700;letter-spacing:6px;">${safeCode}</p>
+          <p>This code expires at ${escapeHtml(expiryText)}.</p>
+          <p>If you did not request this code, you can ignore this email.</p>
+        </div>
+      `,
     }),
   });
 
