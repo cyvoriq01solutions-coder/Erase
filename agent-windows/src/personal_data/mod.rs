@@ -8,12 +8,20 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[derive(Debug)]
+struct ScanRoot {
+    path: PathBuf,
+    classification: &'static str,
+    confidence: &'static str,
+    source: &'static str,
+}
+
 pub fn collect(profile_paths: &[String], volume_roots: &[String]) -> PersonalDataInventory {
     if !cfg!(target_os = "windows") {
         return PersonalDataInventory::not_windows();
     }
 
-    let mut scan_roots = Vec::<PathBuf>::new();
+    let mut scan_roots = Vec::<ScanRoot>::new();
 
     for profile in profile_paths {
         let base = PathBuf::from(profile);
@@ -30,7 +38,12 @@ pub fn collect(profile_paths: &[String], volume_roots: &[String]) -> PersonalDat
             let candidate = base.join(folder);
 
             if candidate.exists() {
-                scan_roots.push(candidate);
+                scan_roots.push(ScanRoot {
+                    path: candidate,
+                    classification: "confirmed_user_location",
+                    confidence: "high",
+                    source: "known_user_folder",
+                });
             }
         }
     }
@@ -54,8 +67,8 @@ pub fn collect(profile_paths: &[String], volume_roots: &[String]) -> PersonalDat
         }
     }
 
-    scan_roots.sort();
-    scan_roots.dedup();
+    scan_roots.sort_by(|left, right| left.path.cmp(&right.path));
+    scan_roots.dedup_by(|left, right| left.path == right.path);
 
     let mut locations = Vec::new();
     let mut inaccessible_entries = 0;
@@ -72,7 +85,7 @@ pub fn collect(profile_paths: &[String], volume_roots: &[String]) -> PersonalDat
     }
 }
 
-fn add_data_drive_roots(root: &Path, scan_roots: &mut Vec<PathBuf>) {
+fn add_data_drive_roots(root: &Path, scan_roots: &mut Vec<ScanRoot>) {
     let Ok(entries) = fs::read_dir(root) else {
         return;
     };
@@ -88,13 +101,91 @@ fn add_data_drive_roots(root: &Path, scan_roots: &mut Vec<PathBuf>) {
             continue;
         }
 
-        scan_roots.push(path);
+        let (classification, confidence) = classify_data_drive_root(&path);
+
+        scan_roots.push(ScanRoot {
+            path,
+            classification,
+            confidence,
+            source: "data_drive_root_heuristic",
+        });
     }
 }
 
-fn scan_root(root: &Path, locations: &mut Vec<DataLocation>, inaccessible_entries: &mut u64) {
+fn classify_data_drive_root(path: &Path) -> (&'static str, &'static str) {
+    let Some(name) = path.file_name() else {
+        return ("unknown", "low");
+    };
+
+    let name = name.to_string_lossy().trim().to_ascii_lowercase();
+
+    if is_software_root_name(&name) {
+        return ("software_resource", "high");
+    }
+
+    if is_personal_root_name(&name) {
+        return ("likely_personal_data", "medium");
+    }
+
+    ("unknown", "low")
+}
+
+fn is_software_root_name(name: &str) -> bool {
+    matches!(
+        name,
+        "apps"
+            | "app"
+            | "applications"
+            | "bin"
+            | "dev"
+            | "development"
+            | "docker"
+            | "git"
+            | "github"
+            | "programs"
+            | "sdk"
+            | "software"
+            | "source"
+            | "src"
+            | "tools"
+            | "tool"
+            | "vs"
+            | "vscode"
+    ) || name.contains("visual studio")
+        || name.contains("vs code")
+        || name.contains("node_modules")
+        || name.contains("android sdk")
+        || name == "cursor"
+}
+
+fn is_personal_root_name(name: &str) -> bool {
+    matches!(
+        name,
+        "archive"
+            | "archives"
+            | "backup"
+            | "backups"
+            | "docs"
+            | "document"
+            | "documents"
+            | "download"
+            | "downloads"
+            | "images"
+            | "music"
+            | "personal"
+            | "photo"
+            | "photos"
+            | "pictures"
+            | "user"
+            | "users"
+            | "video"
+            | "videos"
+    )
+}
+
+fn scan_root(root: &ScanRoot, locations: &mut Vec<DataLocation>, inaccessible_entries: &mut u64) {
     let mut totals = BTreeMap::<String, (u64, u64)>::new();
-    let mut stack = vec![root.to_path_buf()];
+    let mut stack = vec![root.path.clone()];
 
     while let Some(directory) = stack.pop() {
         let entries = match fs::read_dir(&directory) {
@@ -147,8 +238,11 @@ fn scan_root(root: &Path, locations: &mut Vec<DataLocation>, inaccessible_entrie
 
     for (category, (file_count, total_bytes)) in totals {
         locations.push(DataLocation {
-            path: root.display().to_string(),
+            path: root.path.display().to_string(),
             category,
+            classification: root.classification.to_string(),
+            confidence: root.confidence.to_string(),
+            source: root.source.to_string(),
             file_count,
             total_bytes,
             scan_status: "completed".to_string(),
