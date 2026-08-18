@@ -36,6 +36,50 @@ export function normalizeOrganizationSlug(value: string): string | null {
   return normalized;
 }
 
+function rowToCustomerIdentity(
+  row: Record<string, unknown>,
+): CustomerIdentity {
+  return {
+    organizationId: String(row.organization_id),
+    organizationSlug: String(row.organization_slug),
+    userId: String(row.user_id),
+    email: String(row.email),
+    displayName:
+      row.display_name === null || row.display_name === undefined
+        ? null
+        : String(row.display_name),
+  };
+}
+
+export async function findCustomerIdentityByEmail(
+  hyperdrive: HyperdriveBinding,
+  email: string,
+): Promise<CustomerIdentity | null> {
+  const rows = await queryDatabase(
+    hyperdrive,
+    `
+      SELECT
+        o.id AS organization_id,
+        o.slug AS organization_slug,
+        u.id AS user_id,
+        u.email,
+        u.display_name
+      FROM users u
+      INNER JOIN organizations o
+        ON o.id = u.organization_id
+      WHERE LOWER(u.email) = $1
+      LIMIT 2
+    `,
+    [email],
+  );
+
+  if (rows.length !== 1) {
+    return null;
+  }
+
+  return rowToCustomerIdentity(rows[0]);
+}
+
 export async function findCustomerIdentity(
   hyperdrive: HyperdriveBinding,
   organizationSlug: string,
@@ -64,15 +108,5 @@ export async function findCustomerIdentity(
     return null;
   }
 
-  const row = rows[0];
-  return {
-    organizationId: String(row.organization_id),
-    organizationSlug: String(row.organization_slug),
-    userId: String(row.user_id),
-    email: String(row.email),
-    displayName:
-      row.display_name === null || row.display_name === undefined
-        ? null
-        : String(row.display_name),
-  };
+  return rowToCustomerIdentity(rows[0]);
 }
