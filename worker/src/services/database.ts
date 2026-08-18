@@ -7,6 +7,7 @@ export interface HyperdriveBinding {
 export async function queryDatabase(
   hyperdrive: HyperdriveBinding,
   text: string,
+  values: readonly unknown[] = [],
 ): Promise<Record<string, unknown>[]> {
   const client = new Client({
     connectionString: hyperdrive.connectionString,
@@ -14,7 +15,7 @@ export async function queryDatabase(
 
   try {
     await client.connect();
-    const result = await client.query(text);
+    const result = await client.query(text, [...values]);
     return result.rows;
   } finally {
     await client.end();
