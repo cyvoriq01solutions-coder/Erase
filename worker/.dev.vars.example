@@ -1,5 +1,6 @@
 # Copy to .dev.vars for local development only.
 # Never commit real secret values.
 AUTH_PEPPER=replace-with-at-least-32-random-characters
-AUTH_EMAIL_ENDPOINT=https://example.invalid/cyvoriq-auth-email
-AUTH_EMAIL_TOKEN=replace-with-email-delivery-secret
+AUTH_EMAIL_ENDPOINT=https://api.resend.com/emails
+AUTH_EMAIL_TOKEN=replace-with-resend-api-key
+AUTH_EMAIL_FROM=CYVORIQ <auth@otp.example.com>
