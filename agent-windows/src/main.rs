@@ -1,3 +1,4 @@
+mod application_data;
 mod assessment;
 mod cpu;
 mod device;
@@ -42,6 +43,7 @@ fn main() {
         .collect::<Vec<_>>();
 
     let personal_data = personal_data::collect(&profile_paths, &volume_roots);
+    let _application_data = application_data::collect(&profile_paths);
 
     let pdem = pdem::build(&personal_data);
 
