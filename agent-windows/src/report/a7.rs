@@ -1,4 +1,5 @@
 use crate::{
+    application_data::{ApplicationDataInventory, ApplicationDataLocation},
     pdem::{PdemObject, PdemProfile},
     personal_data::{DataLocation, PersonalDataInventory},
     user_profiles::{UserProfile, UserProfileInventory},
@@ -68,12 +69,47 @@ pub fn render_personal_data(inventory: &PersonalDataInventory) -> String {
     )
 }
 
+fn render_application_location(location: &ApplicationDataLocation) -> String {
+    format!(
+        r#"{{"application":"{}","category":"{}","classification":"{}","path":"{}","fileCount":{},"totalBytes":{},"risk":"{}","confidence":"{}","scanStatus":"{}","contentInspected":{}}}"#,
+        escape_json(&location.application),
+        escape_json(&location.category),
+        escape_json(&location.classification),
+        escape_json(&location.path),
+        location.file_count,
+        location.total_bytes,
+        escape_json(&location.risk),
+        escape_json(&location.confidence),
+        escape_json(&location.scan_status),
+        location.content_inspected,
+    )
+}
+
+pub fn render_application_data(inventory: &ApplicationDataInventory) -> String {
+    let locations = inventory
+        .locations
+        .iter()
+        .map(render_application_location)
+        .collect::<Vec<_>>()
+        .join(",");
+
+    format!(
+        r#"{{"discoveryStatus":"{}","contentInspected":{},"inaccessibleEntries":{},"locations":[{}]}}"#,
+        escape_json(&inventory.discovery_status),
+        inventory.content_inspected,
+        inventory.inaccessible_entries,
+        locations,
+    )
+}
+
 fn render_pdem_object(object: &PdemObject) -> String {
     format!(
-        r#"{{"objectId":"{}","objectType":"{}","category":"{}","location":"{}","storageScope":"{}","fileCount":{},"totalBytes":{},"risk":"{}","confidence":"{}","coverage":"{}","status":"{}","contentInspected":{},"discoveryMethod":"{}"}}"#,
+        r#"{{"objectId":"{}","objectType":"{}","category":"{}","classification":"{}","source":"{}","location":"{}","storageScope":"{}","fileCount":{},"totalBytes":{},"risk":"{}","confidence":"{}","coverage":"{}","status":"{}","contentInspected":{},"discoveryMethod":"{}"}}"#,
         escape_json(&object.object_id),
         escape_json(&object.object_type),
         escape_json(&object.category),
+        escape_json(&object.classification),
+        escape_json(&object.source),
         escape_json(&object.location),
         escape_json(&object.storage_scope),
         object.file_count,
