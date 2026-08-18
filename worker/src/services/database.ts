@@ -21,3 +21,30 @@ export async function queryDatabase(
     await client.end();
   }
 }
+
+export async function withDatabaseTransaction<T>(
+  hyperdrive: HyperdriveBinding,
+  operation: (client: Client) => Promise<T>,
+): Promise<T> {
+  const client = new Client({
+    connectionString: hyperdrive.connectionString,
+  });
+
+  await client.connect();
+
+  try {
+    await client.query("BEGIN");
+    const result = await operation(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      // Preserve the original transaction error.
+    }
+    throw error;
+  } finally {
+    await client.end();
+  }
+}
