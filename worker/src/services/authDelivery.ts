@@ -1,5 +1,6 @@
 export interface AuthDeliveryEnv {
-  RESEND_API_KEY?: string;
+  AUTH_EMAIL_ENDPOINT?: string;
+  AUTH_EMAIL_TOKEN?: string;
   AUTH_EMAIL_FROM?: string;
 }
 
@@ -30,10 +31,11 @@ export async function deliverLoginCode(
   env: AuthDeliveryEnv,
   delivery: LoginCodeDelivery,
 ): Promise<void> {
-  const apiKey = env.RESEND_API_KEY?.trim();
+  const endpoint = env.AUTH_EMAIL_ENDPOINT?.trim();
+  const token = env.AUTH_EMAIL_TOKEN?.trim();
   const from = env.AUTH_EMAIL_FROM?.trim();
 
-  if (!apiKey || !from) {
+  if (!endpoint || !token || !from) {
     throw new AuthDeliveryError("Authentication email delivery is not configured");
   }
 
@@ -43,10 +45,10 @@ export async function deliverLoginCode(
     : expiry.toISOString();
   const safeCode = escapeHtml(delivery.code);
 
-  const response = await fetch("https://api.resend.com/emails", {
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       "Idempotency-Key": `cyvoriq-auth-${delivery.challengeId}`,
     },
