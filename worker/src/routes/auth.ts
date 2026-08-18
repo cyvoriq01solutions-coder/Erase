@@ -46,7 +46,11 @@ function acceptedChallenge(challengeId: string): Response {
 }
 
 function isDeliveryConfigured(env: AuthApiEnv): boolean {
-  return Boolean(env.AUTH_EMAIL_ENDPOINT?.trim() && env.AUTH_EMAIL_TOKEN?.trim());
+  return Boolean(
+    env.AUTH_EMAIL_ENDPOINT?.trim() &&
+      env.AUTH_EMAIL_TOKEN?.trim() &&
+      env.AUTH_EMAIL_FROM?.trim(),
+  );
 }
 
 async function readJsonObject(request: Request): Promise<Record<string, unknown>> {
