@@ -9,6 +9,7 @@ interface Env {
   AUTH_PEPPER: string;
   AUTH_EMAIL_ENDPOINT?: string;
   AUTH_EMAIL_TOKEN?: string;
+  AUTH_EMAIL_FROM?: string;
 }
 
 interface ExportedHandler<Environment = Env> {
