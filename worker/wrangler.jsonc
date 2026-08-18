@@ -6,7 +6,9 @@
 	"workers_dev": true,
 	"vars": {
 		"APP_ENV": "development",
-		"API_VERSION": "v1"
+		"API_VERSION": "v1",
+		"AUTH_EMAIL_ENDPOINT": "https://api.resend.com/emails",
+		"AUTH_EMAIL_FROM": "CYVORIQ <auth@otp.cyvra.co.in>"
 	},
 	"env": {
 		"staging": {
