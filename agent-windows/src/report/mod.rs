@@ -10,7 +10,7 @@ use crate::{
     storage::{PhysicalDisk, StorageProfile},
 };
 use a6::{render_encryption, render_volumes};
-use a7::{render_pdem, render_personal_data, render_user_profiles};
+use a7::{render_application_data, render_pdem, render_personal_data, render_user_profiles};
 
 fn escape_json(value: &str) -> String {
     value
@@ -59,6 +59,7 @@ fn render_disks(disks: &[PhysicalDisk]) -> String {
 pub struct A7Evidence<'a> {
     pub user_profiles: &'a crate::user_profiles::UserProfileInventory,
     pub personal_data: &'a crate::personal_data::PersonalDataInventory,
+    pub application_data: &'a crate::application_data::ApplicationDataInventory,
     pub pdem: &'a crate::pdem::PdemProfile,
 }
 
@@ -90,12 +91,13 @@ pub fn render(
     let encryption_data = render_encryption(a6.encryption);
     let user_profile_data = render_user_profiles(a7.user_profiles);
     let personal_data = render_personal_data(a7.personal_data);
+    let application_data = render_application_data(a7.application_data);
     let pdem_data = render_pdem(a7.pdem);
 
     format!(
         r#"{{
   "product": "CYVORIQ Verification Agent",
-  "agentVersion": "0.2.0",
+  "agentVersion": "0.2.1",
   "scanMode": "{}",
   "device": {{
     "hostname": "{}",
@@ -130,6 +132,7 @@ pub fn render(
   "encryption": {},
   "userProfiles": {},
   "personalData": {},
+  "applicationData": {},
   "pdem": {},
   "evidence": {{
     "collectedAtUnix": {},
@@ -166,6 +169,7 @@ pub fn render(
         encryption_data,
         user_profile_data,
         personal_data,
+        application_data,
         pdem_data,
         evidence.collected_at_unix,
         escape_json(evidence.source),
