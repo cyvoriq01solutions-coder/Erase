@@ -3,6 +3,8 @@ pub struct PdemObject {
     pub object_id: String,
     pub object_type: String,
     pub category: String,
+    pub classification: String,
+    pub source: String,
     pub location: String,
     pub storage_scope: String,
     pub file_count: u64,
@@ -16,7 +18,7 @@ pub struct PdemObject {
 }
 
 #[derive(Debug)]
-// Reserved by PDEM v1.0; relationships are populated after location discovery.
+// Reserved by PDEM v1.1; relationships are populated after location discovery.
 #[allow(dead_code)]
 pub struct PdemRelationship {
     pub from_object_id: String,
@@ -32,33 +34,74 @@ pub struct PdemProfile {
     pub relationships: Vec<PdemRelationship>,
 }
 
-pub fn build(personal_data: &crate::personal_data::PersonalDataInventory) -> PdemProfile {
-    let objects = personal_data
-        .locations
-        .iter()
-        .enumerate()
-        .map(|(index, location)| PdemObject {
-            object_id: format!("pdem-{:04}", index + 1),
+pub fn build(
+    personal_data: &crate::personal_data::PersonalDataInventory,
+    application_data: &crate::application_data::ApplicationDataInventory,
+) -> PdemProfile {
+    let mut objects = Vec::new();
+
+    for location in &personal_data.locations {
+        objects.push(PdemObject {
+            object_id: format!("pdem-{:04}", objects.len() + 1),
             object_type: "data_location".to_string(),
             category: location.category.clone(),
+            classification: "likely_personal_data".to_string(),
+            source: "filesystem_extension_scan".to_string(),
             location: location.path.clone(),
             storage_scope: storage_scope(&location.path),
             file_count: location.file_count,
             total_bytes: location.total_bytes,
             risk: risk_for_category(&location.category).to_string(),
-            confidence: "high".to_string(),
+            confidence: "medium".to_string(),
             coverage: "filesystem_metadata".to_string(),
             status: "detected".to_string(),
             content_inspected: false,
             discovery_method: "extension_and_filesystem_metadata".to_string(),
-        })
-        .collect();
+        });
+    }
+
+    for location in &application_data.locations {
+        objects.push(PdemObject {
+            object_id: format!("pdem-{:04}", objects.len() + 1),
+            object_type: "application_data_location".to_string(),
+            category: location.category.clone(),
+            classification: location.classification.clone(),
+            source: location.application.clone(),
+            location: location.path.clone(),
+            storage_scope: storage_scope(&location.path),
+            file_count: location.file_count,
+            total_bytes: location.total_bytes,
+            risk: location.risk.clone(),
+            confidence: location.confidence.clone(),
+            coverage: "known_application_path_metadata".to_string(),
+            status: "detected".to_string(),
+            content_inspected: location.content_inspected,
+            discovery_method: "known_application_path_and_filesystem_metadata".to_string(),
+        });
+    }
 
     PdemProfile {
-        schema_version: "pdem-1.0",
-        collection_status: personal_data.discovery_status.clone(),
+        schema_version: "pdem-1.1",
+        collection_status: combined_status(personal_data, application_data),
         objects,
         relationships: Vec::new(),
+    }
+}
+
+fn combined_status(
+    personal_data: &crate::personal_data::PersonalDataInventory,
+    application_data: &crate::application_data::ApplicationDataInventory,
+) -> String {
+    if personal_data.discovery_status == "not_windows"
+        && application_data.discovery_status == "not_windows"
+    {
+        "not_windows".to_string()
+    } else if personal_data.discovery_status == "completed"
+        && application_data.discovery_status == "completed"
+    {
+        "completed".to_string()
+    } else {
+        "partial".to_string()
     }
 }
 
