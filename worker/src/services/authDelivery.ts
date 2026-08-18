@@ -59,7 +59,7 @@ export async function deliverLoginCode(
         "",
         `Your verification code is: ${delivery.code}`,
         "",
-        `This code expires at ${expiryText}.",
+        `This code expires at ${expiryText}.`,
         "If you did not request this code, you can ignore this email.",
       ].join("\n"),
       html: `
