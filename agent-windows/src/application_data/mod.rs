@@ -156,9 +156,8 @@ pub fn collect(profile_paths: &[String]) -> ApplicationDataInventory {
             .cmp(&right.path)
             .then(left.application.cmp(right.application))
     });
-    candidates.dedup_by(|left, right| {
-        left.path == right.path && left.application == right.application
-    });
+    candidates
+        .dedup_by(|left, right| left.path == right.path && left.application == right.application);
 
     let mut locations = Vec::new();
     let mut inaccessible_entries = 0_u64;
