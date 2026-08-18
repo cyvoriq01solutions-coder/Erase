@@ -8,7 +8,7 @@ function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function hexToBytes(hex: string): Uint8Array {
+function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
   if (hex.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(hex)) {
     throw new Error("Invalid hexadecimal digest");
   }
@@ -39,7 +39,7 @@ function otpMessage(
   organizationId: string,
   userId: string,
   code: string,
-): Uint8Array {
+): Uint8Array<ArrayBuffer> {
   return textEncoder.encode(
     `cyvoriq-erase:otp:v1:${challengeId}:${organizationId}:${userId}:${code}`,
   );
