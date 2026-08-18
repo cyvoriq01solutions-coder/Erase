@@ -9,6 +9,10 @@ import {
 } from "./authCrypto";
 import type { CustomerIdentity } from "./authIdentity";
 import {
+  isAccountsAuthorityIdentity,
+  isBootstrapSuperUser,
+} from "./authorizationPolicy";
+import {
   withDatabaseTransaction,
   type HyperdriveBinding,
 } from "./database";
@@ -39,7 +43,7 @@ async function lockCustomerIdentity(
 ): Promise<boolean> {
   const result = await client.query(
     `
-      SELECT id
+      SELECT id, account_status
       FROM users
       WHERE id = $1
         AND organization_id = $2
@@ -48,7 +52,109 @@ async function lockCustomerIdentity(
     [identity.userId, identity.organizationId],
   );
 
-  return result.rowCount === 1;
+  if (result.rowCount !== 1) {
+    return false;
+  }
+
+  const status = String(result.rows[0].account_status);
+  return status !== "suspended" && status !== "closed";
+}
+
+async function activateVerifiedIdentity(
+  client: Client,
+  organizationId: string,
+  userId: string,
+): Promise<boolean> {
+  const result = await client.query(
+    `
+      SELECT email, account_status, email_verified_at
+      FROM users
+      WHERE id = $1
+        AND organization_id = $2
+      FOR UPDATE
+    `,
+    [userId, organizationId],
+  );
+
+  if (result.rowCount !== 1) {
+    return false;
+  }
+
+  const user = result.rows[0];
+  const email = String(user.email).trim().toLowerCase();
+  const accountStatus = String(user.account_status);
+
+  if (accountStatus === "suspended" || accountStatus === "closed") {
+    return false;
+  }
+
+  const firstVerification = user.email_verified_at === null;
+
+  await client.query(
+    `
+      UPDATE users
+      SET email_verified_at = COALESCE(email_verified_at, NOW()),
+          account_status = CASE
+            WHEN account_status = 'pending_email_verification' THEN 'active'
+            ELSE account_status
+          END
+      WHERE id = $1
+        AND organization_id = $2
+    `,
+    [userId, organizationId],
+  );
+
+  if (isBootstrapSuperUser(email)) {
+    await client.query(
+      `
+        UPDATE user_roles
+        SET status = 'active',
+            approved_at = COALESCE(approved_at, NOW()),
+            revoked_at = NULL
+        WHERE user_id = $1
+          AND organization_id = $2
+          AND role = 'super_admin'
+      `,
+      [userId, organizationId],
+    );
+  } else if (!isAccountsAuthorityIdentity(email)) {
+    await client.query(
+      `
+        UPDATE user_roles
+        SET status = 'active',
+            approved_at = COALESCE(approved_at, NOW()),
+            revoked_at = NULL
+        WHERE user_id = $1
+          AND organization_id = $2
+          AND role = 'customer'
+      `,
+      [userId, organizationId],
+    );
+  }
+
+  if (firstVerification) {
+    await client.query(
+      `
+        INSERT INTO audit_events (
+          id,
+          organization_id,
+          actor_id,
+          event_type,
+          entity_type,
+          entity_id,
+          details
+        ) VALUES ($1, $2, $3, 'EMAIL_VERIFIED', 'user', $3, $4::jsonb)
+      `,
+      [
+        crypto.randomUUID(),
+        organizationId,
+        userId,
+        JSON.stringify({ method: "email_otp" }),
+      ],
+    );
+  }
+
+  return true;
 }
 
 export async function issueLoginChallenge(
@@ -69,7 +175,7 @@ export async function issueLoginChallenge(
 
   return withDatabaseTransaction(hyperdrive, async (client) => {
     if (!(await lockCustomerIdentity(client, identity))) {
-      throw new Error("Customer identity no longer exists");
+      throw new Error("Customer identity is unavailable");
     }
 
     await client.query(
@@ -186,6 +292,14 @@ export async function verifyLoginChallenge(
           WHERE id = $1
         `,
         [challengeId, nextAttempts],
+      );
+      return { status: "invalid" };
+    }
+
+    if (!(await activateVerifiedIdentity(client, organizationId, userId))) {
+      await client.query(
+        "UPDATE login_challenges SET consumed_at = NOW() WHERE id = $1",
+        [challengeId],
       );
       return { status: "invalid" };
     }
