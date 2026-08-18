@@ -18,7 +18,7 @@ pub struct PdemObject {
 }
 
 #[derive(Debug)]
-// Reserved by PDEM v1.1; relationships are populated after location discovery.
+// Reserved by PDEM v1.2; relationships are populated after location discovery.
 #[allow(dead_code)]
 pub struct PdemRelationship {
     pub from_object_id: String,
@@ -45,18 +45,18 @@ pub fn build(
             object_id: format!("pdem-{:04}", objects.len() + 1),
             object_type: "data_location".to_string(),
             category: location.category.clone(),
-            classification: "likely_personal_data".to_string(),
-            source: "filesystem_extension_scan".to_string(),
+            classification: location.classification.clone(),
+            source: location.source.clone(),
             location: location.path.clone(),
             storage_scope: storage_scope(&location.path),
             file_count: location.file_count,
             total_bytes: location.total_bytes,
-            risk: risk_for_category(&location.category).to_string(),
-            confidence: "medium".to_string(),
+            risk: risk_for_location(&location.classification, &location.category).to_string(),
+            confidence: location.confidence.clone(),
             coverage: "filesystem_metadata".to_string(),
             status: "detected".to_string(),
             content_inspected: false,
-            discovery_method: "extension_and_filesystem_metadata".to_string(),
+            discovery_method: "extension_and_location_context_metadata".to_string(),
         });
     }
 
@@ -81,7 +81,7 @@ pub fn build(
     }
 
     PdemProfile {
-        schema_version: "pdem-1.1",
+        schema_version: "pdem-1.2",
         collection_status: combined_status(personal_data, application_data),
         objects,
         relationships: Vec::new(),
@@ -110,6 +110,15 @@ fn storage_scope(path: &str) -> String {
         path[..3].to_string()
     } else {
         "unknown".to_string()
+    }
+}
+
+fn risk_for_location(classification: &str, category: &str) -> &'static str {
+    match classification {
+        "software_resource" => "low",
+        "unknown" | "system_data" => "unknown",
+        "confirmed_user_location" | "likely_personal_data" => risk_for_category(category),
+        _ => "unknown",
     }
 }
 

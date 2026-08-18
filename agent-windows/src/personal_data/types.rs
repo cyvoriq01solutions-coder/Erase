@@ -2,6 +2,9 @@
 pub struct DataLocation {
     pub path: String,
     pub category: String,
+    pub classification: String,
+    pub confidence: String,
+    pub source: String,
     pub file_count: u64,
     pub total_bytes: u64,
     pub scan_status: String,

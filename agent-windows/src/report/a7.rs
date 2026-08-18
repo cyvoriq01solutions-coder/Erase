@@ -43,9 +43,12 @@ pub fn render_user_profiles(inventory: &UserProfileInventory) -> String {
 
 fn render_location(location: &DataLocation) -> String {
     format!(
-        r#"{{"path":"{}","category":"{}","fileCount":{},"totalBytes":{},"scanStatus":"{}"}}"#,
+        r#"{{"path":"{}","category":"{}","classification":"{}","confidence":"{}","source":"{}","fileCount":{},"totalBytes":{},"scanStatus":"{}"}}"#,
         escape_json(&location.path),
         escape_json(&location.category),
+        escape_json(&location.classification),
+        escape_json(&location.confidence),
+        escape_json(&location.source),
         location.file_count,
         location.total_bytes,
         escape_json(&location.scan_status),
