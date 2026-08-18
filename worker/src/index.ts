@@ -1,5 +1,13 @@
 import { withSecurityHeaders } from "./middleware/securityHeaders";
 import {
+  handleLogout,
+  handleRegister,
+  handleRequestCode,
+  handleSession,
+  handleVerifyCode,
+  type AuthApiEnv,
+} from "./routes/auth";
+import {
   handleDatabaseHealth,
   type DatabaseHealthEnv,
 } from "./routes/databaseHealth";
@@ -13,7 +21,8 @@ import { json } from "./services/http";
 export interface Env
   extends RuntimeEnv,
     DatabaseHealthEnv,
-    DatabaseTablesEnv {}
+    DatabaseTablesEnv,
+    AuthApiEnv {}
 
 async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -28,6 +37,32 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "GET" && url.pathname === "/api/v1/db/tables") {
     return handleDatabaseTables(env);
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/auth/register") {
+    return handleRegister(request, env);
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname === "/api/v1/auth/request-code"
+  ) {
+    return handleRequestCode(request, env);
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname === "/api/v1/auth/verify-code"
+  ) {
+    return handleVerifyCode(request, env);
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/v1/auth/session") {
+    return handleSession(request, env);
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/auth/logout") {
+    return handleLogout(request, env);
   }
 
   if (url.pathname.startsWith("/api/")) {
