@@ -6,11 +6,16 @@ export interface DatabaseTablesEnv {
 }
 
 const EXPECTED_TABLES = [
+  "agent_tokens",
   "assessments",
   "assets",
   "audit_events",
+  "customer_sessions",
+  "device_activations",
   "devices",
   "evidence",
+  "licenses",
+  "login_challenges",
   "organizations",
   "users",
   "verification_results",
