@@ -6,6 +6,8 @@ export interface DatabaseTablesEnv {
 }
 
 const EXPECTED_TABLES = [
+  "admin_login_challenges",
+  "admin_sessions",
   "agent_tokens",
   "assessments",
   "assets",
