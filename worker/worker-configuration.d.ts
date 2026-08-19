@@ -10,6 +10,7 @@ interface Env {
   AUTH_EMAIL_ENDPOINT?: string;
   AUTH_EMAIL_TOKEN?: string;
   AUTH_EMAIL_FROM?: string;
+  PORTAL_ORIGINS?: string;
 }
 
 interface ExportedHandler<Environment = Env> {
