@@ -26,8 +26,23 @@ export type SessionResponse =
   | { authenticated: false }
   | { authenticated: true; user: SessionUser; expiresAt: string };
 
-const configuredBase = import.meta.env.VITE_API_BASE_URL?.trim();
-const API_BASE_URL = (configuredBase || "https://api.cyvra.co.in").replace(/\/+$/, "");
+function resolveApiBaseUrl(): string {
+  const configuredBase = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (configuredBase) {
+    return configuredBase.replace(/\/+$/, "");
+  }
+
+  if (
+    typeof window !== "undefined" &&
+    window.location.hostname === "portal-auth-ui-v1.erase-e93.pages.dev"
+  ) {
+    return "https://portal-auth-ui-v1-cyvoriq-erase-api.mswaroop707.workers.dev";
+  }
+
+  return "https://api.cyvra.co.in";
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 class ApiError extends Error {
   constructor(
