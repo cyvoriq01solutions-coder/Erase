@@ -76,7 +76,7 @@ button { cursor: pointer; }
 .code-input { text-align: center; font-size: 25px !important; font-weight: 850; letter-spacing: .25em; }
 .identity-line { padding: 11px 12px; border-radius: 7px; background: #f3f7fb; color: #586b83; font-size: 12px; }
 .identity-line strong { color: #17375f; }
-.primary-button, .secondary-button {
+.primary-button, .secondary-button, .danger-button {
   min-height: 45px;
   padding: 0 16px;
   border: 0;
@@ -85,8 +85,10 @@ button { cursor: pointer; }
 }
 .primary-button { background: #ee6b00; color: #fff; }
 .primary-button:hover { background: #d95f00; }
-.primary-button:disabled, .secondary-button:disabled { cursor: not-allowed; opacity: .55; }
 .secondary-button { margin-top: 16px; background: #061f46; color: #fff; }
+.danger-button { background: #fff1f1; color: #9b2f2f; border: 1px solid #efc4c4; }
+.danger-button:hover { background: #ffe7e7; }
+.primary-button:disabled, .secondary-button:disabled, .danger-button:disabled { cursor: not-allowed; opacity: .55; }
 .text-button { border: 0; background: transparent; color: #0a4f8c; font-size: 12px; font-weight: 800; }
 .notice { padding: 11px 13px; border-radius: 7px; font-size: 12px; line-height: 1.55; }
 .notice.error { border: 1px solid #efc2c2; background: #fff3f3; color: #962c2c; }
@@ -135,6 +137,8 @@ button { cursor: pointer; }
 .empty-state { margin-top: 28px; padding: 30px; border: 1px dashed #b8c7d8; border-radius: 11px; background: #fff; }
 .empty-state strong { color: #17375f; }
 .empty-state p { max-width: 720px; margin: 7px 0 0; color: #708096; line-height: 1.65; }
+.role-notice { margin-top: 18px; }
+.role-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
 .report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 28px; }
 .report-grid > div { display: grid; gap: 7px; padding: 20px; border: 1px solid #dce5ef; border-radius: 10px; background: #fff; }
 .report-grid span { color: #e96800; font-size: 9px; font-weight: 850; letter-spacing: .09em; }
@@ -155,6 +159,7 @@ button { cursor: pointer; }
   .topbar { align-items: flex-start; flex-direction: column; padding: 17px 20px; }
   .workspace-main { padding: 28px 20px 50px; }
   .module-grid, .report-grid, .authority-card { grid-template-columns: 1fr; }
+  .role-actions { display: grid; }
   .gate-page { padding: 30px 18px; }
   .gate-card { padding: 26px 20px; }
 }
