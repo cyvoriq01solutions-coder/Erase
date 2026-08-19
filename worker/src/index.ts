@@ -6,6 +6,12 @@ import {
 } from "./middleware/cors";
 import { withSecurityHeaders } from "./middleware/securityHeaders";
 import {
+  handleAdminSession,
+  handleApproveAccountsAdmin,
+  handleRevokeAccountsAdmin,
+  type AdminApiEnv,
+} from "./routes/admin";
+import {
   handleLogout,
   handleRegister,
   handleRequestCode,
@@ -29,6 +35,7 @@ export interface Env
     DatabaseHealthEnv,
     DatabaseTablesEnv,
     AuthApiEnv,
+    AdminApiEnv,
     CorsEnv {}
 
 async function route(request: Request, env: Env): Promise<Response> {
@@ -70,6 +77,24 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "POST" && url.pathname === "/api/v1/auth/logout") {
     return handleLogout(request, env);
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/v1/admin/session") {
+    return handleAdminSession(request, env);
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname === "/api/v1/admin/roles/accounts/approve"
+  ) {
+    return handleApproveAccountsAdmin(request, env);
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname === "/api/v1/admin/roles/accounts/revoke"
+  ) {
+    return handleRevokeAccountsAdmin(request, env);
   }
 
   if (url.pathname.startsWith("/api/")) {
