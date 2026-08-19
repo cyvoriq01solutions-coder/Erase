@@ -16,10 +16,23 @@ export type SessionResponse =
   | { authenticated: false }
   | { authenticated: true; user: SessionUser; expiresAt: string };
 
+export interface AdminSessionResponse {
+  authorized: true;
+  user: SessionUser;
+  expiresAt: string;
+}
+
 export interface ChallengeResponse {
   status: "accepted";
   challengeId: string;
   message: string;
+}
+
+export interface AccountsRoleActionResponse {
+  status: "active" | "revoked";
+  role: "accounts_admin";
+  email: string;
+  userId: string;
 }
 
 const configuredBase = import.meta.env.VITE_API_BASE_URL?.trim();
@@ -105,6 +118,18 @@ export function verifyAdminCode(challengeId: string, code: string): Promise<{ au
 
 export function getSession(): Promise<SessionResponse> {
   return requestJson<SessionResponse>("/api/v1/auth/session");
+}
+
+export function getAdminSession(): Promise<AdminSessionResponse> {
+  return requestJson<AdminSessionResponse>("/api/v1/admin/session");
+}
+
+export function approveAccountsAdmin(): Promise<AccountsRoleActionResponse> {
+  return requestJson<AccountsRoleActionResponse>("/api/v1/admin/roles/accounts/approve", { method: "POST" });
+}
+
+export function revokeAccountsAdmin(): Promise<AccountsRoleActionResponse> {
+  return requestJson<AccountsRoleActionResponse>("/api/v1/admin/roles/accounts/revoke", { method: "POST" });
 }
 
 export function logout(): Promise<void> {
