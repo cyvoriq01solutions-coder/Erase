@@ -1,6 +1,3 @@
-export const CEO_EMAIL = "ceo@cyvra.co.in";
-export const ACCOUNTS_EMAIL = "accounts@cyvra.co.in";
-
 export type AdminRole = "super_admin" | "accounts_admin";
 
 export interface SessionUser {
@@ -12,23 +9,46 @@ export interface SessionUser {
   roles: string[];
 }
 
-export type SessionResponse =
-  | { authenticated: false }
-  | { authenticated: true; user: SessionUser; expiresAt: string };
-
-export interface AdminSessionResponse {
-  authorized: true;
-  user: SessionUser;
-  expiresAt: string;
-}
+export type AdminSessionResponse =
+  | { authorized: false }
+  | { authorized: true; user: SessionUser; expiresAt: string };
 
 export interface ChallengeResponse {
   status: "accepted";
   challengeId: string;
+  expiresAt: string;
   message: string;
 }
 
-export interface AccountsRoleActionResponse {
+export type AdminVerifyResponse =
+  | {
+      authenticated: true;
+      status: "authenticated";
+      role: AdminRole;
+      expiresAt: string;
+    }
+  | {
+      authenticated: false;
+      status: "pending_approval";
+      role: AdminRole;
+      message: string;
+    };
+
+export interface AdminUserSummary {
+  id: string;
+  email: string;
+  displayName: string | null;
+  accountStatus: string;
+  emailVerifiedAt: string | null;
+  role: AdminRole;
+  roleStatus: "pending" | "active" | "revoked";
+}
+
+export interface AdminUsersResponse {
+  users: AdminUserSummary[];
+}
+
+export interface AdminRoleActionResponse {
   status: "active" | "revoked";
   role: "accounts_admin";
   email: string;
@@ -89,51 +109,62 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
   return payload as T;
 }
 
-export function isAllowedAdminEmail(email: string): boolean {
-  const normalized = email.trim().toLowerCase();
-  return normalized === CEO_EMAIL || normalized === ACCOUNTS_EMAIL;
-}
-
 export function beginAdminLogin(email: string): Promise<ChallengeResponse> {
-  const normalized = email.trim().toLowerCase();
-  if (!isAllowedAdminEmail(normalized)) {
-    throw new ApiError("This identity is not permitted to use the CYVRA Admin Portal.", 403, "admin_identity_denied");
-  }
-
-  return requestJson<ChallengeResponse>("/api/v1/auth/register", {
+  return requestJson<ChallengeResponse>("/api/v1/admin/auth/request-code", {
     method: "POST",
-    body: JSON.stringify({
-      email: normalized,
-      accountType: "individual",
-    }),
+    body: JSON.stringify({ email: email.trim().toLowerCase() }),
   });
 }
 
-export function verifyAdminCode(challengeId: string, code: string): Promise<{ authenticated: true; expiresAt: string }> {
-  return requestJson("/api/v1/auth/verify-code", {
+export function verifyAdminCode(
+  challengeId: string,
+  code: string,
+): Promise<AdminVerifyResponse> {
+  return requestJson<AdminVerifyResponse>("/api/v1/admin/auth/verify-code", {
     method: "POST",
     body: JSON.stringify({ challengeId, code }),
   });
 }
 
-export function getSession(): Promise<SessionResponse> {
-  return requestJson<SessionResponse>("/api/v1/auth/session");
-}
-
 export function getAdminSession(): Promise<AdminSessionResponse> {
-  return requestJson<AdminSessionResponse>("/api/v1/admin/session");
-}
-
-export function approveAccountsAdmin(): Promise<AccountsRoleActionResponse> {
-  return requestJson<AccountsRoleActionResponse>("/api/v1/admin/roles/accounts/approve", { method: "POST" });
-}
-
-export function revokeAccountsAdmin(): Promise<AccountsRoleActionResponse> {
-  return requestJson<AccountsRoleActionResponse>("/api/v1/admin/roles/accounts/revoke", { method: "POST" });
+  return requestJson<AdminSessionResponse>("/api/v1/admin/auth/session");
 }
 
 export function logout(): Promise<void> {
-  return requestJson<void>("/api/v1/auth/logout", { method: "POST" });
+  return requestJson<void>("/api/v1/admin/auth/logout", { method: "POST" });
+}
+
+export function listAdminUsers(): Promise<AdminUsersResponse> {
+  return requestJson<AdminUsersResponse>("/api/v1/admin/users");
+}
+
+export function inviteAdminUser(input: {
+  email: string;
+  displayName?: string | null;
+  role?: "accounts_admin";
+}): Promise<{ user: AdminUserSummary }> {
+  return requestJson<{ user: AdminUserSummary }>("/api/v1/admin/users/invite", {
+    method: "POST",
+    body: JSON.stringify({
+      email: input.email.trim().toLowerCase(),
+      displayName: input.displayName ?? null,
+      role: input.role ?? "accounts_admin",
+    }),
+  });
+}
+
+export function approveAdminUser(userId: string): Promise<AdminRoleActionResponse> {
+  return requestJson<AdminRoleActionResponse>(
+    `/api/v1/admin/users/${encodeURIComponent(userId)}/approve`,
+    { method: "POST" },
+  );
+}
+
+export function revokeAdminUser(userId: string): Promise<AdminRoleActionResponse> {
+  return requestJson<AdminRoleActionResponse>(
+    `/api/v1/admin/users/${encodeURIComponent(userId)}/revoke`,
+    { method: "POST" },
+  );
 }
 
 export function activeAdminRole(user: SessionUser): AdminRole | null {
