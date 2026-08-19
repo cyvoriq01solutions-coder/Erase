@@ -22,16 +22,16 @@ export default function DownloadPage() {
           </p>
         </div>
         <div className="download-access-card">
-          <span className="status-pill">DOWNLOAD GATE · ACTIVE DESIGN</span>
+          <span className="status-pill">ACCOUNT VERIFICATION · ACTIVE</span>
           <h2>Create Account &amp; Continue</h2>
           <p>
-            Authentication and entitlement controls are being connected to this screen. Until that release gate passes,
-            no raw executable will be exposed publicly.
+            Create or sign in to your CYVORIQ account and verify your email. Product download remains protected until
+            the server confirms the required commercial entitlement and licence state.
           </p>
-          <button className="button button-orange button-primary-cta" type="button" disabled>
+          <NavLink className="button button-orange button-primary-cta" to="/account?mode=register">
             Create Account &amp; Continue
-          </button>
-          <NavLink className="download-signin" to="/download">Already have an account? Sign In</NavLink>
+          </NavLink>
+          <NavLink className="download-signin" to="/account?mode=signin">Already have an account? Sign In</NavLink>
           <small>One licence · One authorised device · Server-verified activation</small>
         </div>
       </section>
