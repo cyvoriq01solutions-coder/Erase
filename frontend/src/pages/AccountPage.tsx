@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import { NavLink, useNavigate, useSearchParams } from "react-router";
 import {
   ApiError,
@@ -11,18 +11,10 @@ import {
 type AuthMode = "register" | "signin";
 type AuthStep = "details" | "verify";
 
-function cleanReturnTo(value: string | null): string {
-  if (!value || !value.startsWith("/app")) {
-    return "/app/dashboard";
-  }
-  return value;
-}
-
 export default function AccountPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialMode: AuthMode = searchParams.get("mode") === "signin" ? "signin" : "register";
-  const returnTo = useMemo(() => cleanReturnTo(searchParams.get("returnTo")), [searchParams]);
 
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [step, setStep] = useState<AuthStep>("details");
@@ -45,6 +37,7 @@ export default function AccountPage() {
     setNotice("");
     const next = new URLSearchParams(searchParams);
     next.set("mode", nextMode);
+    next.delete("returnTo");
     setSearchParams(next, { replace: true });
   }
 
@@ -89,7 +82,7 @@ export default function AccountPage() {
 
     try {
       await verifyLoginCode(challengeId, code.trim());
-      navigate(returnTo, { replace: true });
+      navigate("/download", { replace: true });
     } catch (caught) {
       setError(
         caught instanceof ApiError
@@ -130,7 +123,8 @@ export default function AccountPage() {
           <h1>{mode === "register" ? "Create your CYVRA account" : "Sign in to CYVRA"}</h1>
           <p>
             Your email is your CYVORIQ identity. We verify it with a one-time code and create a secure browser session.
-            Product download remains separately protected by payment, approval, licence and entitlement checks.
+            After verification you return to the CYVRA download page, where product access remains separately protected
+            by payment, approval, licence and entitlement checks.
           </p>
           <div className="auth-trust-list">
             <span>Email OTP verification</span>
@@ -295,7 +289,7 @@ export default function AccountPage() {
                 type="submit"
                 disabled={busy || code.length !== 6}
               >
-                {busy ? "Verifying..." : "Verify & Continue"}
+                {busy ? "Verifying..." : "Verify & Return to Download"}
               </button>
 
               <div className="auth-secondary-actions">
