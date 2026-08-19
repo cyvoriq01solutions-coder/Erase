@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { NavLink } from "react-router";
+import { getSession, logout, type SessionUser } from "../services/authApi";
 
 const gates = [
   ["01", "Create or sign in to your CYVORIQ account", "Your email becomes the verified account identity; no separate username is required."],
@@ -9,7 +11,49 @@ const gates = [
   ["06", "Bind the licence to one device", "First activation securely binds the licence to the authorised device; reuse on another device is rejected."],
 ] as const;
 
+type AccessState = "checking" | "anonymous" | "authenticated" | "unavailable";
+
 export default function DownloadPage() {
+  const [accessState, setAccessState] = useState<AccessState>("checking");
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    getSession()
+      .then((session) => {
+        if (!active) return;
+        if (session.authenticated) {
+          setUser(session.user);
+          setAccessState("authenticated");
+        } else {
+          setUser(null);
+          setAccessState("anonymous");
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        setUser(null);
+        setAccessState("unavailable");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    try {
+      await logout();
+    } finally {
+      setUser(null);
+      setAccessState("anonymous");
+      setSigningOut(false);
+    }
+  }
+
   return (
     <main className="download-page">
       <section className="download-hero">
@@ -21,18 +65,67 @@ export default function DownloadPage() {
             package is released only after the server confirms the customer and commercial entitlement.
           </p>
         </div>
+
         <div className="download-access-card">
-          <span className="status-pill">ACCOUNT VERIFICATION · ACTIVE</span>
-          <h2>Create Account &amp; Continue</h2>
-          <p>
-            Create or sign in to your CYVORIQ account and verify your email. Product download remains protected until
-            the server confirms the required commercial entitlement and licence state.
-          </p>
-          <NavLink className="button button-orange button-primary-cta" to="/account?mode=register">
-            Create Account &amp; Continue
-          </NavLink>
-          <NavLink className="download-signin" to="/account?mode=signin">Already have an account? Sign In</NavLink>
-          <small>One licence · One authorised device · Server-verified activation</small>
+          {accessState === "checking" && (
+            <>
+              <span className="status-pill">CHECKING SECURE SESSION</span>
+              <h2>Checking your CYVRA account</h2>
+              <p>The server is verifying whether this browser already has an authenticated customer session.</p>
+            </>
+          )}
+
+          {accessState === "anonymous" && (
+            <>
+              <span className="status-pill">ACCOUNT VERIFICATION · ACTIVE</span>
+              <h2>Create Account &amp; Continue</h2>
+              <p>
+                Create or sign in to your CYVORIQ account and verify your email. Product download remains protected until
+                the server confirms the required commercial entitlement and licence state.
+              </p>
+              <NavLink className="button button-orange button-primary-cta" to="/account?mode=register">
+                Create Account &amp; Continue
+              </NavLink>
+              <NavLink className="download-signin" to="/account?mode=signin">Already have an account? Sign In</NavLink>
+              <small>One licence · One authorised device · Server-verified activation</small>
+            </>
+          )}
+
+          {accessState === "authenticated" && user !== null && (
+            <>
+              <span className="status-pill">SIGNED IN · EMAIL VERIFIED</span>
+              <h2>Your CYVRA access</h2>
+              <p className="download-session-identity">
+                Signed in as <strong>{user.email}</strong>
+              </p>
+              <div className="download-session-status" aria-label="Customer access status">
+                <div><span>Identity</span><strong>Verified</strong></div>
+                <div><span>Account</span><strong>Active</strong></div>
+                <div><span>Commercial entitlement</span><strong>Server verification required</strong></div>
+                <div><span>CYVRA Erase package</span><strong>Locked until entitlement is approved</strong></div>
+              </div>
+              <button className="button button-orange button-primary-cta" type="button" disabled>
+                Download Locked · Entitlement Required
+              </button>
+              <button className="download-signout" type="button" onClick={handleSignOut} disabled={signingOut}>
+                {signingOut ? "Signing out..." : "Sign Out"}
+              </button>
+              <small>Email verification confirms identity only. Payment, approval, licence and download entitlement remain server-controlled.</small>
+            </>
+          )}
+
+          {accessState === "unavailable" && (
+            <>
+              <span className="status-pill">SESSION CHECK UNAVAILABLE</span>
+              <h2>Secure account check unavailable</h2>
+              <p>
+                We could not verify your account session. No protected download has been exposed. Please retry shortly or sign in again.
+              </p>
+              <NavLink className="button button-orange button-primary-cta" to="/account?mode=signin">
+                Sign In Again
+              </NavLink>
+            </>
+          )}
         </div>
       </section>
 
@@ -41,7 +134,7 @@ export default function DownloadPage() {
           <span className="eyebrow">BEFORE THE PACKAGE IS RELEASED</span>
           <h2>Six server-verified gates protect every download.</h2>
           <p>
-            The orange Download button does not point to an EXE. It starts a controlled commercial workflow designed
+            The Download action never points to an unrestricted EXE. It starts a controlled commercial workflow designed
             to prevent anonymous downloads, entitlement bypass and licence sharing.
           </p>
         </div>
