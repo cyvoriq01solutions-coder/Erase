@@ -1,0 +1,206 @@
+/* CYVRA Visual Commercial V2
+   Isolated visual layer: keeps the verified content architecture intact while
+   introducing the approved device-security imagery and premium composition. */
+
+:root {
+  --visual-shadow: 0 32px 80px rgba(1, 19, 43, .24);
+  --visual-border: rgba(69, 202, 232, .22);
+}
+
+/* HOME — premium dark hero with the generated master device visual. */
+.hero-commercial {
+  min-height: 690px;
+  background:
+    radial-gradient(circle at 84% 20%, rgba(39, 182, 230, .16), transparent 32%),
+    linear-gradient(135deg, #031327 0%, #041d3a 54%, #062b4d 100%);
+}
+
+.hero-commercial::after {
+  background: radial-gradient(circle, rgba(0, 190, 214, .15) 0%, rgba(0, 190, 214, 0) 69%);
+}
+
+.hero-commercial .hero-copy .eyebrow { color: #61dceb; }
+.hero-commercial h1 { color: #ffffff; }
+.hero-commercial .hero-copy > p { color: #c7d7e8; }
+.hero-commercial .release-note { color: #9fb7cd; }
+.hero-commercial .release-note strong { color: #ffffff; }
+.hero-commercial .button-secondary {
+  color: #ffffff;
+  border-color: rgba(255,255,255,.34);
+  background: rgba(255,255,255,.045);
+}
+.hero-commercial .button-secondary:hover { background: rgba(255,255,255,.1); }
+
+.hero-commercial .assurance-card-premium {
+  min-height: 440px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  border: 1px solid var(--visual-border);
+  border-top: 4px solid var(--peacock, #007786);
+  background:
+    linear-gradient(180deg, rgba(2, 16, 35, .04) 18%, rgba(2, 18, 39, .72) 62%, rgba(2, 18, 39, .96) 100%),
+    url('/visuals/cyvra-hero.webp') center / cover no-repeat;
+  box-shadow: var(--visual-shadow);
+}
+
+.hero-commercial .assurance-card h2 { color: #ffffff; text-shadow: 0 2px 18px rgba(0,0,0,.36); }
+.hero-commercial .assurance-card p { color: #c9d9e8; }
+.hero-commercial .status-pill {
+  align-self: flex-start;
+  color: #92edf5;
+  background: rgba(1, 20, 42, .78);
+  border: 1px solid rgba(105, 225, 238, .24);
+  backdrop-filter: blur(10px);
+}
+.hero-commercial .stage { border-color: rgba(255,255,255,.14); }
+.hero-commercial .stage strong { color: #ffffff; }
+
+/* HOME — put the individual and enterprise visuals only into the final audience pair. */
+main > .problem-section:nth-of-type(8) .audience-card {
+  position: relative;
+  overflow: hidden;
+  padding-top: 260px;
+  box-shadow: 0 20px 48px rgba(6, 41, 95, .08);
+}
+
+main > .problem-section:nth-of-type(8) .audience-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 220px;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+main > .problem-section:nth-of-type(8) .audience-card:first-child::before {
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,0) 58%, rgba(246,249,252,.98) 100%),
+    url('/visuals/cyvra-individuals.webp');
+}
+
+main > .problem-section:nth-of-type(8) .audience-card:nth-child(2)::before {
+  background-image:
+    linear-gradient(180deg, rgba(4,26,61,0) 52%, rgba(6,41,95,.98) 100%),
+    url('/visuals/cyvra-enterprise.webp');
+}
+
+/* INFO PAGES — replace the generic signal panel with real page-aware imagery.
+   :has() reads the existing active navigation state, so no routing logic is duplicated. */
+.info-hero-signal {
+  min-height: 355px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--visual-border);
+  border-top: 4px solid var(--peacock, #007786);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  box-shadow: var(--visual-shadow);
+}
+
+.info-hero-signal > span,
+.info-hero-signal > strong,
+.info-hero-signal > b { opacity: 0; }
+
+.info-hero-signal::before {
+  inset: 18px;
+  border-color: rgba(255,255,255,.13);
+  z-index: 2;
+}
+
+body:has(.site-nav a[href='/why-cyvra'].active) .info-hero-signal,
+body:has(.site-nav a[href='/how-it-works'].active) .info-hero-signal,
+body:has(.site-nav a[href='/dpdp-readiness'].active) .info-hero-signal {
+  background-image:
+    linear-gradient(180deg, rgba(3,20,42,.02), rgba(3,20,42,.20)),
+    url('/visuals/cyvra-verification.webp');
+}
+
+body:has(.site-nav a[href='/individuals'].active) .info-hero-signal {
+  background-image:
+    linear-gradient(180deg, rgba(3,20,42,.03), rgba(3,20,42,.18)),
+    url('/visuals/cyvra-individuals.webp');
+}
+
+body:has(.site-nav a[href='/enterprise'].active) .info-hero-signal {
+  background-image:
+    linear-gradient(180deg, rgba(3,20,42,.03), rgba(3,20,42,.22)),
+    url('/visuals/cyvra-enterprise.webp');
+}
+
+body:has(.site-nav a[href='/resources'].active) .info-hero-signal {
+  background-image:
+    linear-gradient(180deg, rgba(3,20,42,.03), rgba(3,20,42,.16)),
+    url('/visuals/cyvra-resources.webp');
+}
+
+/* Resources — use the approved training visual as a coherent thumbnail family.
+   Actual video thumbnails can replace this layer when the approved videos arrive. */
+.video-placeholder {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    linear-gradient(145deg, rgba(3,19,39,.42), rgba(4,40,72,.64)),
+    url('/visuals/cyvra-resources.webp') center / cover no-repeat;
+}
+
+.video-placeholder::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(circle at 50% 46%, rgba(29,191,220,.13), transparent 34%);
+}
+
+.video-play {
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 36px rgba(0,0,0,.24);
+}
+
+/* Give technical proof sections a restrained visual reference without overwhelming compliance copy. */
+body:has(.site-nav a[href='/dpdp-readiness'].active) .question-grid,
+body:has(.site-nav a[href='/how-it-works'].active) .standards-panel {
+  box-shadow: 0 16px 42px rgba(4, 26, 61, .08);
+}
+
+/* Image rendering / performance polish. */
+.hero-commercial .assurance-card-premium,
+.info-hero-signal,
+.video-placeholder,
+main > .problem-section:nth-of-type(8) .audience-card::before {
+  image-rendering: auto;
+}
+
+@media (max-width: 1120px) {
+  .hero-commercial .assurance-card-premium { min-height: 390px; }
+  main > .problem-section:nth-of-type(8) .audience-card { padding-top: 235px; }
+  main > .problem-section:nth-of-type(8) .audience-card::before { height: 195px; }
+}
+
+@media (max-width: 900px) {
+  .hero-commercial {
+    min-height: auto;
+    background: linear-gradient(155deg, #031327 0%, #05284a 100%);
+  }
+  .hero-commercial .assurance-card-premium {
+    min-height: 390px;
+    background-position: center;
+  }
+  .info-hero-signal {
+    min-height: 330px;
+    background-position: center;
+  }
+}
+
+@media (max-width: 620px) {
+  .hero-commercial .assurance-card-premium { min-height: 340px; padding: 24px; }
+  .hero-commercial .assurance-card p { font-size: 13px; }
+  .hero-commercial .stage-grid { display: none; }
+  .info-hero-signal { min-height: 260px; border-radius: 13px; }
+  main > .problem-section:nth-of-type(8) .audience-card { padding-top: 210px; }
+  main > .problem-section:nth-of-type(8) .audience-card::before { height: 170px; }
+}
