@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useLocation } from "react-router";
 
 const links = [
   ["/why-cyvra", "Why CYVRA"],
@@ -10,6 +10,9 @@ const links = [
 ] as const;
 
 export default function PublicLayout() {
+  const location = useLocation();
+  const isHome = location.pathname === "/";
+
   return (
     <div className="site-shell">
       <header className="site-header">
@@ -36,6 +39,14 @@ export default function PublicLayout() {
           </NavLink>
         </div>
       </header>
+
+      {!isHome && (
+        <div className="return-home-row">
+          <NavLink className="return-home-tab" to="/" aria-label="Return to CYVRA home page">
+            <span aria-hidden="true">←</span> Return to Home
+          </NavLink>
+        </div>
+      )}
 
       <Outlet />
 
