@@ -8,9 +8,20 @@ import { withSecurityHeaders } from "./middleware/securityHeaders";
 import {
   handleAdminSession,
   handleApproveAccountsAdmin,
+  handleApproveAdminUser,
+  handleInviteAdminUser,
+  handleListAdminUsers,
   handleRevokeAccountsAdmin,
+  handleRevokeAdminUser,
   type AdminApiEnv,
 } from "./routes/admin";
+import {
+  handleAdminAuthLogout,
+  handleAdminAuthSession,
+  handleAdminRequestCode,
+  handleAdminVerifyCode,
+  type AdminAuthApiEnv,
+} from "./routes/adminAuth";
 import {
   handleLogout,
   handleRegister,
@@ -35,6 +46,7 @@ export interface Env
     DatabaseHealthEnv,
     DatabaseTablesEnv,
     AuthApiEnv,
+    AdminAuthApiEnv,
     AdminApiEnv,
     CorsEnv {}
 
@@ -53,6 +65,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     return handleDatabaseTables(env);
   }
 
+  // Customer authentication realm.
   if (request.method === "POST" && url.pathname === "/api/v1/auth/register") {
     return handleRegister(request, env);
   }
@@ -79,10 +92,64 @@ async function route(request: Request, env: Env): Promise<Response> {
     return handleLogout(request, env);
   }
 
+  // Dedicated Admin authentication realm.
+  if (
+    request.method === "POST" &&
+    url.pathname === "/api/v1/admin/auth/request-code"
+  ) {
+    return handleAdminRequestCode(request, env);
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname === "/api/v1/admin/auth/verify-code"
+  ) {
+    return handleAdminVerifyCode(request, env);
+  }
+
+  if (
+    request.method === "GET" &&
+    url.pathname === "/api/v1/admin/auth/session"
+  ) {
+    return handleAdminAuthSession(request, env);
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname === "/api/v1/admin/auth/logout"
+  ) {
+    return handleAdminAuthLogout(request, env);
+  }
+
+  // Protected Admin control-plane APIs. The compatibility session route also
+  // reads only the dedicated Admin cookie during the C4.1 migration.
   if (request.method === "GET" && url.pathname === "/api/v1/admin/session") {
     return handleAdminSession(request, env);
   }
 
+  if (request.method === "GET" && url.pathname === "/api/v1/admin/users") {
+    return handleListAdminUsers(request, env);
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname === "/api/v1/admin/users/invite"
+  ) {
+    return handleInviteAdminUser(request, env);
+  }
+
+  const adminRoleMatch = url.pathname.match(
+    /^\/api\/v1\/admin\/users\/([0-9a-f-]{36})\/(approve|revoke)$/i,
+  );
+  if (request.method === "POST" && adminRoleMatch !== null) {
+    const [, userId, action] = adminRoleMatch;
+    return action === "approve"
+      ? handleApproveAdminUser(request, env, userId)
+      : handleRevokeAdminUser(request, env, userId);
+  }
+
+  // Compatibility endpoints retained only while the existing Admin frontend is
+  // migrated to the generic Internal Users APIs.
   if (
     request.method === "POST" &&
     url.pathname === "/api/v1/admin/roles/accounts/approve"
