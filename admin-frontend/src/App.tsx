@@ -4,16 +4,19 @@ import {
   ACCOUNTS_EMAIL,
   API_BASE_URL,
   ApiError,
+  activeAdminRole,
+  approveAccountsAdmin,
   beginAdminLogin,
+  getAdminSession,
   getSession,
   logout,
-  activeAdminRole,
+  revokeAccountsAdmin,
   type AdminRole,
   type SessionUser,
   verifyAdminCode,
 } from "./authApi";
 
-type GateState = "checking" | "anonymous" | "challenge" | "authorized" | "pending" | "forbidden" | "unavailable";
+type GateState = "checking" | "anonymous" | "authorized" | "pending" | "forbidden" | "unavailable";
 
 type ModuleCard = {
   title: string;
@@ -44,6 +47,22 @@ const overviewCards: ModuleCard[] = [
 
 function roleLabel(role: AdminRole): string {
   return role === "super_admin" ? "Super Administrator" : "Accounts Administrator";
+}
+
+async function resolveAuthorizedAdmin(): Promise<{ user: SessionUser; role: AdminRole } | "anonymous" | "pending" | "forbidden"> {
+  const session = await getSession();
+  if (!session.authenticated) return "anonymous";
+
+  const role = activeAdminRole(session.user);
+  if (role === null) {
+    if (session.user.email.toLowerCase() === ACCOUNTS_EMAIL) return "pending";
+    return "forbidden";
+  }
+
+  const adminSession = await getAdminSession();
+  const confirmedRole = activeAdminRole(adminSession.user);
+  if (confirmedRole === null) return "forbidden";
+  return { user: adminSession.user, role: confirmedRole };
 }
 
 function LoginGate({
@@ -84,16 +103,12 @@ function LoginGate({
     setError("");
     try {
       await verifyAdminCode(challengeId, code);
-      const session = await getSession();
-      if (!session.authenticated) {
-        throw new ApiError("The server did not establish an authenticated admin session.", 401);
-      }
-      const role = activeAdminRole(session.user);
-      if (role !== null) {
-        onAuthorized(session.user, role);
+      const resolved = await resolveAuthorizedAdmin();
+      if (typeof resolved !== "string") {
+        onAuthorized(resolved.user, resolved.role);
         return;
       }
-      if (session.user.email.toLowerCase() === ACCOUNTS_EMAIL) {
+      if (resolved === "pending") {
         setError("Email verified. The Accounts Administrator role is still awaiting Super Administrator approval.");
       } else {
         setError("This verified account does not have an active CYVRA administration role.");
@@ -212,6 +227,44 @@ function ReportPage({ kind }: { kind: "Management" | "Accounts" }) {
   );
 }
 
+function InternalRolesPage() {
+  const [busy, setBusy] = useState<"approve" | "revoke" | null>(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function run(action: "approve" | "revoke") {
+    setBusy(action);
+    setMessage("");
+    setError("");
+    try {
+      const result = action === "approve" ? await approveAccountsAdmin() : await revokeAccountsAdmin();
+      setMessage(`${result.email} accounts_admin role is now ${result.status}. The action is audit-recorded server-side.`);
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : "The role action could not be completed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="content-page">
+      <span className="eyebrow">SUPER ADMINISTRATOR ONLY</span>
+      <h1>Internal Users / Roles</h1>
+      <p className="page-lede">Internal authority is controlled by the Worker and Neon. Browser state cannot grant an administration role.</p>
+      <div className="empty-state">
+        <strong>{ACCOUNTS_EMAIL}</strong>
+        <p>The Accounts Administrator must first register and verify email ownership. The CEO Super Administrator can then activate or revoke the role here.</p>
+        {message && <div className="notice success role-notice">{message}</div>}
+        {error && <div className="notice error role-notice">{error}</div>}
+        <div className="role-actions">
+          <button className="primary-button" type="button" disabled={busy !== null} onClick={() => run("approve")}>{busy === "approve" ? "Approving..." : "Approve Accounts Administrator"}</button>
+          <button className="danger-button" type="button" disabled={busy !== null} onClick={() => run("revoke")}>{busy === "revoke" ? "Revoking..." : "Revoke Accounts Administrator"}</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AdminShell({ user, role, onLogout }: { user: SessionUser; role: AdminRole; onLogout: () => Promise<void> }) {
   const [loggingOut, setLoggingOut] = useState(false);
   const navigate = useNavigate();
@@ -250,7 +303,7 @@ function AdminShell({ user, role, onLogout }: { user: SessionUser; role: AdminRo
             <Route path="/audit" element={<StatusPage title="Audit Events" description="Immutable operational evidence for material authority actions." />} />
             <Route path="/reports/management" element={<ReportPage kind="Management" />} />
             <Route path="/reports/accounts" element={<ReportPage kind="Accounts" />} />
-            {role === "super_admin" && <Route path="/roles" element={<StatusPage title="Internal Users / Roles" description="Super Administrator authority for internal role approval and revocation." />} />}
+            {role === "super_admin" && <Route path="/roles" element={<InternalRolesPage />} />}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
@@ -266,16 +319,25 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    getSession()
-      .then((session) => {
+    resolveAuthorizedAdmin()
+      .then((resolved) => {
         if (!active) return;
-        if (!session.authenticated) { setGate("anonymous"); return; }
-        const adminRole = activeAdminRole(session.user);
-        if (adminRole !== null) { setUser(session.user); setRole(adminRole); setGate("authorized"); return; }
-        if (session.user.email.toLowerCase() === ACCOUNTS_EMAIL) { setGate("pending"); return; }
-        setGate("forbidden");
+        if (typeof resolved !== "string") {
+          setUser(resolved.user);
+          setRole(resolved.role);
+          setGate("authorized");
+          return;
+        }
+        setGate(resolved);
       })
-      .catch(() => { if (active) setGate("unavailable"); });
+      .catch((error: unknown) => {
+        if (!active) return;
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          setGate("forbidden");
+          return;
+        }
+        setGate("unavailable");
+      });
     return () => { active = false; };
   }, []);
 
