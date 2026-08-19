@@ -1,0 +1,8 @@
+{
+  "name": "@cyvoriq/admin-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "rm -rf dist && mkdir -p dist && cp index.html _headers dist/"
+  }
+}
