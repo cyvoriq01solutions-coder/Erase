@@ -197,40 +197,52 @@
 }
 .auth-back-link:hover { color: var(--navy); }
 
-.auth-guard-page {
-  min-height: 100vh;
+.download-session-identity {
+  margin-bottom: 16px;
+}
+.download-session-identity strong {
+  color: var(--navy);
+  word-break: break-word;
+}
+.download-session-status {
   display: grid;
-  place-items: center;
-  padding: 30px;
+  gap: 8px;
+  margin: 18px 0;
+}
+.download-session-status > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   background: var(--surface);
 }
-.auth-guard-card {
-  width: min(100%, 540px);
-  padding: 36px;
-  border: 1px solid var(--border);
-  border-top: 4px solid var(--orange);
-  border-radius: 14px;
-  background: #fff;
-  text-align: center;
-  box-shadow: 0 24px 60px rgba(6, 41, 95, .1);
+.download-session-status span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
 }
-.auth-guard-card h1 { margin: 18px 0 8px; color: var(--navy); font-size: 28px; }
-.auth-guard-card p { color: var(--muted); line-height: 1.6; }
-.auth-guard-card .button { margin-top: 10px; }
-
-.app-logout {
-  margin-top: auto;
-  min-height: 42px;
-  padding: 0 15px;
-  border: 1px solid rgba(255,255,255,.22);
-  border-radius: 7px;
+.download-session-status strong {
+  max-width: 58%;
+  color: var(--navy);
+  font-size: 11px;
+  text-align: right;
+}
+.download-signout {
+  display: inline-flex;
+  justify-content: center;
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 0;
   background: transparent;
-  color: #fff;
+  color: var(--navy);
   font-weight: 750;
   cursor: pointer;
 }
-.app-logout:hover { background: rgba(255,255,255,.08); }
-.app-logout:disabled { cursor: not-allowed; opacity: .6; }
+.download-signout:hover { color: var(--orange); }
+.download-signout:disabled { cursor: not-allowed; opacity: .55; }
 
 @media (max-width: 920px) {
   .auth-shell { grid-template-columns: 1fr; gap: 40px; }
@@ -242,4 +254,6 @@
   .auth-card { padding: 24px 20px; }
   .auth-trust-list, .auth-account-type { grid-template-columns: 1fr; }
   .auth-intro h1 { font-size: 42px; }
+  .download-session-status > div { display: grid; gap: 4px; }
+  .download-session-status strong { max-width: none; text-align: left; }
 }
