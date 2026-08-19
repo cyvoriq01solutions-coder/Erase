@@ -1,35 +1,53 @@
 import { NavLink, Outlet } from "react-router";
 
 const links = [
-  ["/platform", "Platform"],
+  ["/why-cyvra", "Why CYVRA"],
   ["/how-it-works", "How It Works"],
-  ["/assurance", "Assurance"],
-  ["/security", "Security"],
+  ["/dpdp-readiness", "DPDP Readiness"],
+  ["/individuals", "Individuals"],
+  ["/enterprise", "Enterprise"],
   ["/resources", "Resources"],
-  ["/contact", "Contact"],
 ] as const;
 
 export default function PublicLayout() {
   return (
     <div className="site-shell">
       <header className="site-header">
-        <NavLink to="/" className="brand" aria-label="CYVORIQ Erase home">
-          <span className="brand-mark">C</span>
-          <span>CYVORIQ <strong>ERASE</strong></span>
+        <NavLink to="/" className="brand brand-logo" aria-label="CYVORIQ Solutions home">
+          <img src="/cyvoriq-logo.webp" alt="CYVORIQ Solutions" />
+          <span className="product-lockup">
+            <strong>CYVRA ERASE</strong>
+            <small>by CYVORIQ Solutions</small>
+          </span>
         </NavLink>
+
         <nav className="site-nav" aria-label="Primary navigation">
           {links.map(([to, label]) => (
-            <NavLink key={to} to={to} className={({ isActive }) => isActive ? "active" : undefined}>
+            <NavLink key={to} to={to} className={({ isActive }) => (isActive ? "active" : undefined)}>
               {label}
             </NavLink>
           ))}
         </nav>
-        <NavLink className="button button-small" to="/app/dashboard">Open Platform</NavLink>
+
+        <div className="header-actions">
+          <NavLink className="header-signin" to="/download">Sign In</NavLink>
+          <NavLink className="button button-small button-orange" to="/download">
+            Download CYVRA Erase
+          </NavLink>
+        </div>
       </header>
+
       <Outlet />
+
       <footer className="site-footer">
-        <span>CYVORIQ SOLUTIONS</span>
-        <span>Security · Trust · Evidence · Engineering</span>
+        <div>
+          <strong>CYVORIQ SOLUTIONS</strong>
+          <span>Secure Lifecycle. Trusted Future.</span>
+        </div>
+        <div className="footer-meta">
+          <span>CYVRA Erase · Evidence-backed device retirement</span>
+          <span>Designed to support DPDP readiness</span>
+        </div>
       </footer>
     </div>
   );
