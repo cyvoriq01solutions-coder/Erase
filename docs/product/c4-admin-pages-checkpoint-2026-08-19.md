@@ -1,92 +1,122 @@
-# C4 Admin Pages Checkpoint — 2026-08-19
+# C4 Admin Portal Checkpoint — 2026-08-19
 
-Status: FROZEN CHECKPOINT
+Status: ACTIVE DEVELOPMENT CHECKPOINT
 
-This checkpoint records the exact state reached before pausing work.
+This document extends the earlier frozen checkpoint and records the current C4 state.
 
 ## Cloudflare Pages admin project
 
-A dedicated Cloudflare Pages project has been created successfully:
+Dedicated Pages project:
 
 - Project name: `cyvra-admin`
 - Pages hostname: `cyvra-admin.pages.dev`
 - Git repository: `cyvoriq01solutions-coder/Erase`
 - Production branch: `admin-portal-v1`
-- Latest deployed commit: `c68a02b` (`admin: add isolated Pages build contract`)
-- Deployment status: successful
-- Automatic deployments: enabled
-
-## Admin build isolation
-
-The admin Pages project is isolated from the existing customer/public frontend and Worker.
-
-Build configuration:
-
+- Root directory: `admin-frontend`
 - Build command: `npm run build`
 - Build output: `dist`
-- Root directory: `admin-frontend`
-- Framework preset: `None`
-- Build system version: Version 3
-- Build cache: disabled
-- Build comments: enabled
+- Framework: React + Vite + TypeScript
+- Automatic deployments: enabled
+- Build watch include path: `admin-frontend/*`
+- Latest C4 Admin Foundation Pages build: successful via Cloudflare Git integration
 
-The existing public/customer project `erase` and Worker `cyvoriq-erase-api` are not replaced by this admin Pages project.
+The existing public/customer project `erase` and Worker `cyvoriq-erase-api` remain separate applications.
 
-## Current admin shell
+## Admin custom domain
 
-The branch `admin-portal-v1` contains a minimal provisioning shell under `admin-frontend/` with:
+`admin.cyvra.co.in` has been added through the `cyvra-admin` Pages Custom Domains workflow.
 
-- `index.html`
-- `_headers`
-- `package.json`
+Cloudflare created the required relationship:
 
-The shell exposes no customer, commercial, licence, activation, management, or account data. It is only a safe provisioning target.
+- Type: CNAME
+- Name: `admin`
+- Target: `cyvra-admin.pages.dev`
+- TTL: Auto
 
-## Custom domain status
+Current observed dashboard state at this checkpoint: `Initializing` / DNS and TLS provisioning in progress.
 
-`admin.cyvra.co.in` has NOT yet been attached.
+Do not manually replace the DNS record while Pages is provisioning the custom domain.
 
-Cloudflare Pages is currently ready at:
+## Admin frontend foundation
 
-`cyvra-admin` -> Custom domains -> `Set up a custom domain`
+The former static provisioning shell has been upgraded to the same frozen frontend stack as the customer site:
 
-The next intended domain action is:
+- React 19.2.8
+- React DOM 19.2.8
+- React Router 8.3.0
+- TypeScript 5.9.3
+- Vite 8.2.0
 
-`admin.cyvra.co.in` -> dedicated Pages project `cyvra-admin`
+Admin UI foundation includes:
 
-Do not point `admin.cyvra.co.in` to the existing `erase` Pages project and do not create a placeholder DNS record manually.
+- internal email OTP entry
+- CEO / Accounts identity restriction in the UI
+- server-session verification
+- server-authoritative admin-session confirmation before rendering the control panel
+- protected navigation shells for Customers, Orders, Payments, Approvals, Licences, Download Entitlements, Activations / Devices, Audit Events, Management Report and Accounts Report
+- Super Administrator-only Internal Users / Roles area
+- no live customer/payment/licence/device data loaded yet
+- CSP/security headers
+- `noindex,nofollow,noarchive`
+- SPA fallback
 
-## Security sequence after custom-domain attachment
+## Admin backend authority added on branch
 
-After `admin.cyvra.co.in` is attached and validated:
+New Worker routes are implemented on `admin-portal-v1`:
 
-1. Add Cloudflare Access in front of the admin hostname.
-2. Initial Access identities: `ceo@cyvra.co.in` and `accounts@cyvra.co.in` only.
-3. Keep CYVRA email-OTP authentication as a second identity check.
-4. Enforce Worker-side RBAC from Neon:
-   - `ceo@cyvra.co.in` -> `super_admin`
-   - `accounts@cyvra.co.in` -> CEO-approved `accounts_admin`
-5. Never rely on the subdomain being hidden as the security boundary.
+- `GET /api/v1/admin/session`
+- `POST /api/v1/admin/roles/accounts/approve`
+- `POST /api/v1/admin/roles/accounts/revoke`
 
-## Build watch path follow-up
+Authority rules:
 
-Current Cloudflare build watch path is still broad (`*`).
+- `ceo@cyvra.co.in` becomes active `super_admin` after successful email OTP, as already implemented by the auth challenge service.
+- `accounts@cyvra.co.in` remains pending after email verification until CEO approval.
+- Accounts approval/revocation requires the authenticated bootstrap CEO Super Administrator session.
+- Role changes are transactional in Neon.
+- Approval records `ADMIN_ROLE_APPROVED` in `audit_events`.
+- Revocation records `ADMIN_ROLE_REVOKED` in `audit_events`.
 
-After resuming, narrow it to the admin application path so unrelated repository changes do not unnecessarily rebuild the admin Pages project. Intended scope: `admin-frontend/*` or the current Cloudflare-supported equivalent.
+## Admin browser origins
 
-## C3 dependency remains open
+The branch Worker configuration allows the dedicated admin origins in addition to the customer portal origins:
 
-Customer Auth C3 is still separate from C4. Draft PR #14 must not be treated as production-complete until the previously frozen C3 acceptance gates pass, including real OTP/session/Neon/logout/protected-route checks.
+- `https://admin.cyvra.co.in`
+- `https://cyvra-admin.pages.dev`
 
-## Resume point
+Runtime CORS verification is still required before production freeze.
 
-When work resumes, continue from this exact order:
+## GitHub state
 
-1. Verify `cyvra-admin.pages.dev` opens the isolated admin provisioning shell.
-2. Narrow the admin Pages build watch path.
-3. Attach `admin.cyvra.co.in` through `cyvra-admin` -> Custom domains.
-4. Verify DNS/TLS and that only the admin shell is served.
-5. Configure Cloudflare Access for the admin hostname.
-6. Then continue C3 production API/OTP acceptance before treating authentication as production-ready.
+Draft PR:
 
-No further changes should be made until work resumes.
+- PR #15 — `C4 Admin Portal Foundation V1`
+- Base: `main`
+- Head: `admin-portal-v1`
+- State: draft / not merged
+
+Cloudflare Pages build for the dedicated `cyvra-admin` project passed on the Admin Foundation frontend.
+
+Do not merge PR #15 yet.
+
+## Security gates still required
+
+1. Wait for `admin.cyvra.co.in` to become Active with valid TLS.
+2. Put Cloudflare Access in front of `admin.cyvra.co.in`.
+3. Initial Access allow identities: `ceo@cyvra.co.in`, `accounts@cyvra.co.in` only.
+4. Configure and verify `api.cyvra.co.in` for the Worker control plane.
+5. Verify Worker branch deployment/typecheck with the new admin routes.
+6. Run real CEO OTP -> admin session -> control-panel test.
+7. Run real Accounts OTP -> pending-role state.
+8. CEO approves Accounts role from the admin control panel.
+9. Verify Accounts can then enter with `accounts_admin` but cannot use Super Administrator role controls.
+10. Verify Neon `user_roles` state and audit events for approval/revocation.
+11. Test logout and manual protected-route access.
+
+## C3 dependency
+
+Customer Auth C3 remains separate and open in draft PR #14. It must still pass the previously frozen real OTP/session/Neon/logout/protected-route acceptance gates before it is treated as production-complete.
+
+## Merge order warning
+
+PR #14 should be completed first. After C3 is merged, rebase/update `admin-portal-v1` from the new `main` and preserve the combined CORS/origin changes before PR #15 is considered for merge.
