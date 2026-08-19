@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && cp _headers _redirects dist/",
     "preview": "vite preview"
   },
   "dependencies": {
