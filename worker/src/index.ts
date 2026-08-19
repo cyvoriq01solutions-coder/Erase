@@ -1,3 +1,9 @@
+import {
+  handleCorsPreflight,
+  isTrustedBrowserMutation,
+  withCorsHeaders,
+  type CorsEnv,
+} from "./middleware/cors";
 import { withSecurityHeaders } from "./middleware/securityHeaders";
 import {
   handleLogout,
@@ -22,7 +28,8 @@ export interface Env
   extends RuntimeEnv,
     DatabaseHealthEnv,
     DatabaseTablesEnv,
-    AuthApiEnv {}
+    AuthApiEnv,
+    CorsEnv {}
 
 async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -84,16 +91,41 @@ async function route(request: Request, env: Env): Promise<Response> {
   );
 }
 
+function finalizeResponse(
+  request: Request,
+  env: Env,
+  response: Response,
+): Response {
+  return withSecurityHeaders(withCorsHeaders(request, env, response));
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method === "OPTIONS") {
-      return withSecurityHeaders(new Response(null, { status: 204 }));
+    const preflight = handleCorsPreflight(request, env);
+    if (preflight !== null) {
+      return withSecurityHeaders(preflight);
+    }
+
+    if (!isTrustedBrowserMutation(request, env)) {
+      return finalizeResponse(
+        request,
+        env,
+        json(
+          {
+            error: "forbidden_origin",
+            message: "Request origin is not allowed",
+          },
+          { status: 403 },
+        ),
+      );
     }
 
     try {
-      return withSecurityHeaders(await route(request, env));
+      return finalizeResponse(request, env, await route(request, env));
     } catch {
-      return withSecurityHeaders(
+      return finalizeResponse(
+        request,
+        env,
         json(
           {
             error: "internal_error",
