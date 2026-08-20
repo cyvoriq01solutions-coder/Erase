@@ -9,7 +9,7 @@
 		"API_VERSION": "v1",
 		"AUTH_EMAIL_ENDPOINT": "https://api.resend.com/emails",
 		"AUTH_EMAIL_FROM": "CYVORIQ <auth@otp.cyvra.co.in>",
-		"PORTAL_ORIGINS": "https://www.cyvra.co.in,https://cyvra.co.in"
+		"PORTAL_ORIGINS": "https://www.cyvra.co.in,https://cyvra.co.in,https://admin.cyvra.co.in"
 	},
 	"env": {
 		"staging": {
