@@ -6,6 +6,10 @@ import {
   resolveAdminIdentityForLogin,
 } from "../services/adminIdentity";
 import {
+  consumeAdminRateLimit,
+  readAdminRateLimitSource,
+} from "../services/adminRateLimit";
+import {
   buildAdminSessionCookie,
   buildExpiredAdminSessionCookie,
   buildExpiredLegacyAdminSessionCookie,
@@ -112,6 +116,26 @@ export async function handleAdminRequestCode(
   const rawEmail = body.email;
   if (typeof rawEmail !== "string") {
     return json({ error: "invalid_email", message: "Enter a valid CYVORIQ email address." }, { status: 400 });
+  }
+
+  const sourceRateLimit = await consumeAdminRateLimit(
+    env.HYPERDRIVE,
+    env.AUTH_PEPPER,
+    "source",
+    readAdminRateLimitSource(request),
+  );
+  if (!sourceRateLimit.allowed) {
+    return buildAcceptedAdminChallengeResponse();
+  }
+
+  const identityRateLimit = await consumeAdminRateLimit(
+    env.HYPERDRIVE,
+    env.AUTH_PEPPER,
+    "identity",
+    rawEmail,
+  );
+  if (!identityRateLimit.allowed) {
+    return buildAcceptedAdminChallengeResponse();
   }
 
   const identity = await resolveAdminIdentityForLogin(env.HYPERDRIVE, rawEmail);
