@@ -29,6 +29,26 @@ export interface AdminAuthApiEnv extends AuthDeliveryEnv {
 }
 
 const MAX_JSON_BODY_BYTES = 8 * 1024;
+const PUBLIC_ADMIN_CHALLENGE_TTL_MS = 10 * 60 * 1000;
+const PUBLIC_ADMIN_CHALLENGE_MESSAGE =
+  "If this identity is eligible for CYVRA administration, a verification code will be sent.";
+
+function buildAcceptedAdminChallengeResponse(
+  challengeId: string = crypto.randomUUID(),
+  expiresAt: string = new Date(
+    Date.now() + PUBLIC_ADMIN_CHALLENGE_TTL_MS,
+  ).toISOString(),
+): Response {
+  return json(
+    {
+      status: "accepted",
+      challengeId,
+      expiresAt,
+      message: PUBLIC_ADMIN_CHALLENGE_MESSAGE,
+    },
+    { status: 202 },
+  );
+}
 
 function isDeliveryConfigured(env: AdminAuthApiEnv): boolean {
   return Boolean(
@@ -95,21 +115,13 @@ export async function handleAdminRequestCode(
   }
 
   const identity = await resolveAdminIdentityForLogin(env.HYPERDRIVE, rawEmail);
-  if (identity === null) {
-    return json(
-      {
-        error: "admin_identity_denied",
-        message: "This identity is not authorized for CYVRA administration.",
-      },
-      { status: 403 },
-    );
-  }
-
-  if (identity.accountStatus === "suspended" || identity.accountStatus === "closed") {
-    return json(
-      { error: "admin_identity_denied", message: "This administration identity is unavailable." },
-      { status: 403 },
-    );
+  if (
+    identity === null ||
+    identity.accountStatus === "suspended" ||
+    identity.accountStatus === "closed" ||
+    identity.roleStatus === "revoked"
+  ) {
+    return buildAcceptedAdminChallengeResponse();
   }
 
   const challenge = await issueAdminLoginChallenge(
@@ -127,20 +139,12 @@ export async function handleAdminRequestCode(
     });
   } catch {
     await consumeChallenge(env, challenge.challengeId);
-    return json(
-      { error: "admin_email_unavailable", message: "The verification code could not be delivered." },
-      { status: 503 },
-    );
+    return buildAcceptedAdminChallengeResponse();
   }
 
-  return json(
-    {
-      status: "accepted",
-      challengeId: challenge.challengeId,
-      expiresAt: challenge.expiresAt,
-      message: "Verification code sent.",
-    },
-    { status: 202 },
+  return buildAcceptedAdminChallengeResponse(
+    challenge.challengeId,
+    challenge.expiresAt,
   );
 }
 
