@@ -1,12 +1,14 @@
 export interface CorsEnv {
   PORTAL_ORIGINS?: string;
+  ADMIN_PORTAL_ORIGIN?: string;
 }
 
 const ALLOWED_METHODS = "GET, POST, OPTIONS";
 const ALLOWED_HEADERS = "Content-Type";
 const PREFLIGHT_MAX_AGE_SECONDS = 600;
+const ADMIN_API_PREFIX = "/api/v1/admin/";
 
-function configuredOrigins(env: CorsEnv): Set<string> {
+function configuredCustomerOrigins(env: CorsEnv): Set<string> {
   return new Set(
     (env.PORTAL_ORIGINS ?? "")
       .split(",")
@@ -15,13 +17,36 @@ function configuredOrigins(env: CorsEnv): Set<string> {
   );
 }
 
+function configuredAdminOrigins(env: CorsEnv): Set<string> {
+  const origin = env.ADMIN_PORTAL_ORIGIN?.trim();
+
+  return new Set(origin === undefined || origin.length === 0 ? [] : [origin]);
+}
+
+function isAdminApiRequest(request: Request): boolean {
+  const pathname = new URL(request.url).pathname;
+  return (
+    pathname === "/api/v1/admin" ||
+    pathname.startsWith(ADMIN_API_PREFIX)
+  );
+}
+
+function configuredOriginsForRequest(
+  request: Request,
+  env: CorsEnv,
+): Set<string> {
+  return isAdminApiRequest(request)
+    ? configuredAdminOrigins(env)
+    : configuredCustomerOrigins(env);
+}
+
 function allowedOrigin(request: Request, env: CorsEnv): string | null {
   const origin = request.headers.get("Origin");
   if (origin === null) {
     return null;
   }
 
-  return configuredOrigins(env).has(origin) ? origin : null;
+  return configuredOriginsForRequest(request, env).has(origin) ? origin : null;
 }
 
 function appendVary(headers: Headers, value: string): void {
@@ -72,7 +97,10 @@ export function handleCorsPreflight(
   }
 
   const origin = request.headers.get("Origin");
-  if (origin === null || !configuredOrigins(env).has(origin)) {
+  if (
+    origin === null ||
+    !configuredOriginsForRequest(request, env).has(origin)
+  ) {
     return new Response(null, { status: 403 });
   }
 
@@ -97,7 +125,7 @@ export function isTrustedBrowserMutation(
 
   const origin = request.headers.get("Origin");
   if (origin !== null) {
-    return configuredOrigins(env).has(origin);
+    return configuredOriginsForRequest(request, env).has(origin);
   }
 
   const fetchSite = request.headers.get("Sec-Fetch-Site")?.toLowerCase();
@@ -105,7 +133,7 @@ export function isTrustedBrowserMutation(
     return false;
   }
 
-  // Requests from trusted non-browser clients such as the Windows agent,
-  // CI smoke tests, and curl do not necessarily include browser origin headers.
+  // Trusted non-browser clients such as the Windows agent, CI smoke tests,
+  // and curl do not necessarily include browser Origin headers.
   return true;
 }

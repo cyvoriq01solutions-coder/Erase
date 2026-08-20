@@ -236,8 +236,11 @@ async function setAdminRoleStatus(
   targetUserId: string,
   nextStatus: "active" | "revoked",
 ): Promise<
-  | { status: "active" | "revoked"; userId: string; email: string }
-  | { status: "missing" | "unverified" | "self" }
+  | { status: "active"; userId: string; email: string }
+  | { status: "revoked"; userId: string; email: string }
+  | { status: "missing" }
+  | { status: "unverified" }
+  | { status: "self" }
 > {
   return withDatabaseTransaction(env.HYPERDRIVE, async (client) => {
     if (targetUserId === authority.userId) {
