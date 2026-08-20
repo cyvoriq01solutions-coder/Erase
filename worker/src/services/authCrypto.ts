@@ -100,3 +100,22 @@ export async function verifyOneTimeCode(
     otpMessage(challengeId, organizationId, userId, code),
   );
 }
+
+export type AdminRateLimitScope = "source" | "identity";
+
+export async function hashAdminRateLimitKey(
+  pepper: string,
+  scope: AdminRateLimitScope,
+  value: string,
+): Promise<string> {
+  const key = await importHmacKey(pepper);
+  const message = textEncoder.encode(
+    `cyvoriq-erase:admin-rate-limit:v1:${scope}:${value}`,
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    message,
+  );
+  return bytesToHex(new Uint8Array(signature));
+}
