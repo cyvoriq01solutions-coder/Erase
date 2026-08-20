@@ -110,7 +110,7 @@ function LoginGate({
       const result = await beginAdminLogin(email);
       setEmail(email.trim().toLowerCase());
       setChallengeId(result.challengeId);
-      setMessage("Verification code sent. The code is valid for 10 minutes.");
+      setMessage(result.message);
     } catch (caught) {
       setError(
         caught instanceof ApiError

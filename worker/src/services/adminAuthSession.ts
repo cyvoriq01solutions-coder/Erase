@@ -2,7 +2,8 @@ import { hashSessionToken } from "./authCrypto";
 import { queryDatabase, type HyperdriveBinding } from "./database";
 import { CYVORIQ_INTERNAL_ORG_ID } from "./adminIdentity";
 
-export const ADMIN_SESSION_COOKIE = "cyvoriq_admin_session";
+export const ADMIN_SESSION_COOKIE = "__Host-cyvoriq_admin_session";
+export const LEGACY_ADMIN_SESSION_COOKIE = "cyvoriq_admin_session";
 
 export interface AuthenticatedAdminSession {
   sessionId: string;
@@ -62,13 +63,25 @@ export function buildAdminSessionCookie(token: string, expiresAt: string): strin
     `Expires=${expires.toUTCString()}`,
     "HttpOnly",
     "Secure",
-    "SameSite=Lax",
+    "SameSite=Strict",
   ].join("; ");
 }
 
 export function buildExpiredAdminSessionCookie(): string {
   return [
     `${ADMIN_SESSION_COOKIE}=`,
+    "Path=/",
+    "Max-Age=0",
+    "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+    "HttpOnly",
+    "Secure",
+    "SameSite=Strict",
+  ].join("; ");
+}
+
+export function buildExpiredLegacyAdminSessionCookie(): string {
+  return [
+    `${LEGACY_ADMIN_SESSION_COOKIE}=`,
     "Path=/",
     "Max-Age=0",
     "Expires=Thu, 01 Jan 1970 00:00:00 GMT",

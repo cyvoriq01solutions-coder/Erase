@@ -26,7 +26,14 @@ export interface IssuedAdminLoginChallenge {
 export type VerifyAdminLoginChallengeResult =
   | { status: "invalid" }
   | {
-      status: "pending_approval" | "revoked";
+      status: "pending_approval";
+      organizationId: string;
+      userId: string;
+      email: string;
+      role: ControlPanelRole;
+    }
+  | {
+      status: "revoked";
       organizationId: string;
       userId: string;
       email: string;
