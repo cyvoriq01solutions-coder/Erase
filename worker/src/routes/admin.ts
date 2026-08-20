@@ -1,5 +1,6 @@
 import {
   buildExpiredAdminSessionCookie,
+  buildExpiredLegacyAdminSessionCookie,
   getAuthenticatedAdminSession,
   readAdminSessionToken,
   type AuthenticatedAdminSession,
@@ -60,10 +61,15 @@ async function requireAdminSession(
 ): Promise<{ session: AuthenticatedAdminSession; roles: ActiveRole[] } | Response> {
   const token = readAdminSessionToken(request);
   if (token === null) {
-    return json(
+    const response = json(
       { error: "unauthorized", message: "Admin authentication is required." },
       { status: 401 },
     );
+    response.headers.append(
+      "Set-Cookie",
+      buildExpiredLegacyAdminSessionCookie(),
+    );
+    return response;
   }
 
   const session = await getAuthenticatedAdminSession(env.HYPERDRIVE, token);
@@ -73,6 +79,10 @@ async function requireAdminSession(
       { status: 401 },
     );
     response.headers.append("Set-Cookie", buildExpiredAdminSessionCookie());
+    response.headers.append(
+      "Set-Cookie",
+      buildExpiredLegacyAdminSessionCookie(),
+    );
     return response;
   }
 

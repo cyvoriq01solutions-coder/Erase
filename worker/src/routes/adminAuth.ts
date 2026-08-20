@@ -8,6 +8,7 @@ import {
 import {
   buildAdminSessionCookie,
   buildExpiredAdminSessionCookie,
+  buildExpiredLegacyAdminSessionCookie,
   getAuthenticatedAdminSession,
   readAdminSessionToken,
   revokeAdminSession,
@@ -217,6 +218,10 @@ export async function handleAdminVerifyCode(
     "Set-Cookie",
     buildAdminSessionCookie(result.sessionToken, result.expiresAt),
   );
+  response.headers.append(
+    "Set-Cookie",
+    buildExpiredLegacyAdminSessionCookie(),
+  );
   return response;
 }
 
@@ -226,17 +231,26 @@ export async function handleAdminAuthSession(
 ): Promise<Response> {
   const token = readAdminSessionToken(request);
   if (token === null) {
-    return json({ authorized: false }, { status: 200 });
+    const response = json({ authorized: false }, { status: 200 });
+    response.headers.append(
+      "Set-Cookie",
+      buildExpiredLegacyAdminSessionCookie(),
+    );
+    return response;
   }
 
   const session = await getAuthenticatedAdminSession(env.HYPERDRIVE, token);
   if (session === null) {
     const response = json({ authorized: false }, { status: 200 });
     response.headers.append("Set-Cookie", buildExpiredAdminSessionCookie());
+    response.headers.append(
+      "Set-Cookie",
+      buildExpiredLegacyAdminSessionCookie(),
+    );
     return response;
   }
 
-  return json(
+  const response = json(
     {
       authorized: true,
       user: {
@@ -251,6 +265,11 @@ export async function handleAdminAuthSession(
     },
     { status: 200 },
   );
+  response.headers.append(
+    "Set-Cookie",
+    buildExpiredLegacyAdminSessionCookie(),
+  );
+  return response;
 }
 
 export async function handleAdminAuthLogout(
@@ -283,5 +302,9 @@ export async function handleAdminAuthLogout(
 
   const response = new Response(null, { status: 204 });
   response.headers.append("Set-Cookie", buildExpiredAdminSessionCookie());
+  response.headers.append(
+    "Set-Cookie",
+    buildExpiredLegacyAdminSessionCookie(),
+  );
   return response;
 }
