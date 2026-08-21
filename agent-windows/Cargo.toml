@@ -5,4 +5,12 @@ edition = "2024"
 rust-version = "1.97.1"
 publish = false
 
+[lib]
+name = "cyvra_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cyvra-cli"
+path = "src/main.rs"
+
 [dependencies]
