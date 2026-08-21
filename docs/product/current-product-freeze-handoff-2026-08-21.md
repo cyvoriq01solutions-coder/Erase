@@ -1,12 +1,34 @@
 # CYVORIQ Erase — Current Product Freeze & Team Handoff — 2026-08-21
 
-> **Status:** Proposed canonical product freeze and team handoff. It becomes the repository source of truth when approved and merged into main.
+> **Status:** Canonical product freeze and team handoff, merged through PR #19. Later approved amendments and linked contract freezes govern the scopes they expressly update.
 >
 > **Repository baseline:** cyvoriq01solutions-coder/Erase at main commit bf96431b6131eebfab6a5d3c18b568f1b1e93a0a.
 >
 > **Customer release status:** **NOT RELEASED.** Version 0.2.1 source is an engineering command-line agent, not the frozen customer-installable, signed Windows product.
 >
 > **Change boundary:** This document authorizes no deployment, database mutation, secret change, public release, or destructive erase capability.
+
+## Amendment A — W1.1 Windows foundation and hardware scope
+
+The detailed amendment is:
+
+- [W1.1 Desktop, Installer and Passive Hardware Inventory Freeze — 2026-08-21](w1-1-desktop-installer-hardware-freeze-2026-08-21.md)
+
+When that document is approved and merged, it freezes these updates:
+
+- CYVRA V1 targets Windows 10 22H2 and Windows 11.
+- Windows Server is the next product version and receives architectural provision now.
+- Authorized Offline Retirement Mode is a later separately gated product; it works outside the installed Windows login and is not password bypass.
+- Tauri 2, React/TypeScript and a reusable Rust core form the desktop foundation.
+- The primary V1 package is a signed per-machine NSIS setup executable.
+- The application runs as a standard user; only a narrow explicit helper may request elevation.
+- Passive Hardware Inventory V1 joins the normal scan.
+- Inventory includes firmware-reported device identity, BIOS/UEFI, CPU, memory, storage, graphics, battery, declared ports/controllers, sensors, network hardware and relevant peripherals.
+- Presence does not prove working condition; unavailable information is unknown rather than guessed.
+- Private distribution, first-500 entitlement, one-device binding, authenticated evidence and the non-destructive privacy boundary remain compulsory.
+- No destructive operation or credential bypass is authorized.
+
+This amendment consolidates the original Windows freeze, the control-plane/first-500 revision, the current product handoff and the latest retired-device/hardware decisions. Earlier conflicting Windows product statements are superseded when the linked W1.1 freeze is merged.
 
 ## 1. Purpose and precedence
 
@@ -244,20 +266,20 @@ This section separates observed runtime state from repository state. It is a han
 - The admin OTP flow is configured to send from CYVORIQ <auth@otp.cyvra.co.in>.
 - Domain authentication, delivery, bounce handling, and customer activation templates require release-stage verification.
 
-## 10. W1 decisions required before customer .exe implementation
+## 10. W1 contract status before customer .exe implementation
 
-The Windows work must start with a short contract phase. The team must record decisions for:
+W1.1 freezes the desktop framework, installer direction, Windows 10/11 scope, least-privilege model, reusable Rust core, future Server/offline provisions and passive hardware inventory through the linked W1.1 document.
 
-1. **GUI framework:** chosen Windows desktop technology, supported Windows versions, accessibility, packaging impact, and maintainability.
-2. **Installer technology:** per-user versus per-machine installation, elevation policy, install paths, uninstall, repair, upgrade, and rollback.
-3. **Agent-to-Worker API:** request/response schemas, authentication, replay protection, idempotency, versioning, timeouts, and privacy limits.
-4. **Device binding:** privacy-preserving fingerprint inputs, normalization, salt/pepper ownership, change tolerance, rebind and recovery policy.
-5. **Code signing and release:** certificate custody, signing environment, timestamping, artifact hashes, release approval, secure update, and rollback.
-6. **Authenticated report:** report format, claims, evidence hashes, verification endpoint or signature, retention, redaction, and customer export.
-7. **First-500 entitlement:** eligibility transaction, concurrency control, activation expiry, support reset, audit events, and later paid conversion.
-8. **Observability:** privacy-safe logs, failure codes, crash/support bundle policy, retention, and access controls.
+The remaining W1 contracts must still define:
 
-Implementation may use spikes to evaluate options, but a spike must not silently become the production choice.
+1. **Agent-to-Worker API:** request/response schemas, authentication, replay protection, idempotency, versioning, timeouts and privacy limits.
+2. **Device binding:** privacy-preserving fingerprint inputs, normalization, salt/pepper ownership, change tolerance, rebind and recovery policy.
+3. **Code signing and release:** certificate custody, signing environment, timestamping, artifact hashes, release approval, secure update and rollback.
+4. **Authenticated report:** report format, claims, evidence hashes, verification endpoint or signature, retention, redaction and customer export.
+5. **First-500 entitlement:** eligibility transaction, concurrency control, activation expiry, support reset, audit events and later paid conversion.
+6. **Observability:** privacy-safe logs, failure codes, crash/support bundle policy, retention and access controls.
+
+Implementation spikes may evaluate details, but a spike must not silently change a frozen product or security contract.
 
 ## 11. Delivery sequence
 
@@ -352,20 +374,22 @@ Until corrected, this document governs the conflicting product statements.
 
 ## 14. Open owner decisions
 
-These are not authorized assumptions:
+The linked W1.1 freeze resolves the GUI framework, installer direction, Windows 10/11 V1 scope, Server-next sequence, offline-retirement provision, privilege model and passive hardware inventory scope.
 
-- GUI framework;
-- installer technology and elevation model;
-- Windows version support floor;
+These remain unauthorized assumptions until later contracts are approved:
+
 - code-signing certificate/provider and custody;
 - production API and release environment sequence;
 - exact device-fingerprint and support-rebind policy;
 - authenticated report format and verification experience;
 - first-500 eligibility start event and trial duration;
-- update channel and rollback policy; and
+- update-channel rollout and rollback thresholds;
+- final Windows Server version/package matrix;
+- offline boot-environment licensing and sanitization controls;
+- retention and redaction periods for hardware identifiers; and
 - production go-live date.
 
-Each decision should be added by a dated amendment or an approved contract document linked from this freeze.
+Each decision must be added by a dated amendment or an approved contract document linked from this freeze.
 
 ## 15. Change control and handoff checklist
 
@@ -405,4 +429,6 @@ Relevant merged pull requests:
 
 ## 17. Immediate next approved action
 
-After this document is reviewed and merged, begin W1 as a dedicated Windows product-contract branch. Do not begin a customer release build by only wrapping the current command-line JSON output in an installer. The first implementation branch must be traceable to approved GUI, installer, API, device-binding, signing, report, and first-500 contracts.
+Complete the outstanding README documentation gate, then review and merge the linked W1.1 freeze. The first Windows implementation branch must refactor agent 0.2.1 into a typed reusable core and define hardware_inventory_v1 without changing the non-destructive boundary.
+
+Do not create a customer release by merely wrapping the current command-line JSON output in an installer. Activation, API, device binding, signing, report, first-500, privacy and release contracts remain mandatory, and destructive or credential-bypass capability remains outside the authorized scope.
