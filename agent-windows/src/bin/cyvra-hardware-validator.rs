@@ -1,9 +1,11 @@
-#[cfg(target_os = "windows")]
-use cyvra_core::{CollectorErrorKind, collector_runtime::CancellationToken};
+#![cfg_attr(not(any(target_os = "windows", test)), allow(dead_code))]
+
 use cyvra_core::hardware_inventory_v1::{
     CollectionStatus, DeviceClassification, FirmwareMode, FormFactor, HardwareInventoryV1,
     InventoryField, SCHEMA_VERSION,
 };
+#[cfg(target_os = "windows")]
+use cyvra_core::{CollectorErrorKind, collector_runtime::CancellationToken};
 use std::fmt::Display;
 
 const VALIDATOR_NAME: &str = "cyvoriq_w1_3c_hardware_validation";
@@ -31,7 +33,10 @@ fn run() -> i32 {
             println!("destructive_operations=false");
             println!("identifiers=redacted");
             println!("collector_error_kind={}", error_kind_name(error.kind));
-            println!("collector_error_message={}", flatten_text(&error.safe_message));
+            println!(
+                "collector_error_message={}",
+                flatten_text(&error.safe_message)
+            );
             println!("result=fail");
             1
         }
@@ -385,8 +390,10 @@ fn deferred_sections_are_untouched(inventory: &HardwareInventoryV1) -> bool {
     ) && section_is_not_reported(
         inventory.graphics.displays.status,
         inventory.graphics.displays.records.len(),
-    ) && section_is_not_reported(inventory.batteries.status, inventory.batteries.records.len())
-        && section_is_not_reported(inventory.ports.status, inventory.ports.records.len())
+    ) && section_is_not_reported(
+        inventory.batteries.status,
+        inventory.batteries.records.len(),
+    ) && section_is_not_reported(inventory.ports.status, inventory.ports.records.len())
         && section_is_not_reported(inventory.sensors.status, inventory.sensors.records.len())
         && section_is_not_reported(inventory.network.status, inventory.network.records.len())
         && section_is_not_reported(
@@ -404,7 +411,11 @@ where
     T: Display,
 {
     match &field.value {
-        Some(value) => format!("{}|{}", field.status.as_str(), flatten_text(&value.to_string())),
+        Some(value) => format!(
+            "{}|{}",
+            field.status.as_str(),
+            flatten_text(&value.to_string())
+        ),
         None => field.status.as_str().to_string(),
     }
 }
@@ -505,9 +516,8 @@ mod tests {
     fn report_never_emits_device_identifiers() {
         let mut inventory = HardwareInventoryV1::not_collected(1_000);
         let provenance = Provenance::not_collected(1_000);
-        let unknown_text = || {
-            InventoryField::<String>::unknown(PrivacyClass::NonSensitive, provenance.clone())
-        };
+        let unknown_text =
+            || InventoryField::<String>::unknown(PrivacyClass::NonSensitive, provenance.clone());
         let unknown_identifier = || {
             InventoryField::<DeviceIdentifier>::unknown(
                 PrivacyClass::DeviceIdentifier,
