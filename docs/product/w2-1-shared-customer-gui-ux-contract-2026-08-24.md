@@ -6,7 +6,7 @@
 >
 > **Repository baseline:** `39e383fff26d61fc228a6e4fa91c1b11078e2392`
 >
-> **Scope:** Shared Windows customer GUI for CYVRA Erase and CYVRA XCQC, including navigation, customer journey, visual direction, state handling, accessibility and implementation boundaries.
+> **Scope:** Shared Windows customer GUI for CYVRA Erase and CYVRA QC, including navigation, customer journey, visual direction, state handling, accessibility and implementation boundaries.
 >
 > **Change boundary:** This document authorizes no deployment, database mutation, secret change, code-signing operation, destructive erasure, customer release or production GUI implementation.
 
@@ -50,11 +50,11 @@ The approved installer naming pattern remains:
 
 Changing the installed product to a broader suite name requires a separate brand and packaging amendment. This contract does not silently rename the frozen installer.
 
-CYVRA XCQC is presented inside the same application as the device-verification and grading domain. It is not a second installer, second activation, second scan, or separate customer login.
+CYVRA QC is presented inside the same application as the device-verification and grading domain. It is not a second installer, second activation, second scan, or separate customer login.
 
 ## 3. Two result domains inside one experience
 
-### CYVRA XCQC
+### CYVRA QC
 
 Customer purpose:
 
@@ -62,22 +62,42 @@ Customer purpose:
 - present passive hardware facts;
 - show evidence provenance and collection confidence;
 - distinguish reported, derived, unavailable and restricted information;
-- support device verification and future evidence-based grading.
+- support device verification; and
+- produce an evidence-based CYVRA QC device grade when the approved evidence threshold is met.
 
-XCQC must never claim that hardware works merely because it was detected.
+CYVRA QC grading is a core product capability, not an optional future feature. CYVRA QC must not be approved for customer release until the grading rules are frozen, implemented and validated.
 
-A final commercial grade must not be issued until a separate approved grading contract defines:
+QC must never claim that hardware works merely because it was detected. A device grade must be supported by the approved combination of automated evidence, functional evidence, cosmetic evidence and any authorized operator review.
 
+The separate W2.2 CYVRA QC Grading Contract must define:
+
+- the grade scale and customer-facing grade names;
 - grading inputs;
-- evidence requirements;
+- mandatory and optional evidence;
+- automated, functional, cosmetic and operator-reviewed evidence boundaries;
+- treatment of customer-uploaded images and videos;
 - weights and thresholds;
-- missing-data treatment;
-- cosmetic and functional test boundaries;
-- grade names;
-- exception handling; and
-- audit and review rules.
+- minimum evidence required to issue a grade;
+- missing-data and permission-denied treatment;
+- exception and manual-review rules;
+- evidence provenance;
+- grade recalculation and versioning;
+- audit requirements; and
+- dispute or correction handling.
 
-Until that contract exists, the GUI may show verified hardware facts, coverage and grading readiness, but must display `Grade not issued` where a grade would otherwise appear.
+Customer-facing grade states are:
+
+- before assessment completion: `Grade pending`;
+- sufficient approved evidence: display the actual CYVRA QC grade and supporting evidence summary;
+- insufficient evidence: `Unable to grade — insufficient evidence`, with the missing or limited inputs identified; and
+- grading failure: `Unable to grade — grading error`, with a safe retry or support action.
+
+`Grade not issued` may appear only in an unfinished internal development build. It must not be the default result in a customer release.
+
+A CYVRA QC device grade describes assessed device condition under the approved grading rules. It is not automatically a resale price or monetary valuation.
+
+The W2.2 grading contract must be approved before the final QC results screen, grading engine or customer-release implementation is completed.
+
 
 ### CYVRA Erase
 
@@ -120,7 +140,7 @@ The target journey is:
 11. The customer starts one coordinated device verification.
 12. CYVRA displays truthful progress and supports cancellation.
 13. CYVRA presents an overall results summary.
-14. CYVRA presents the XCQC device and hardware results.
+14. CYVRA presents the QC device and hardware results.
 15. CYVRA presents the Erase privacy-exposure and readiness results.
 16. The customer previews and saves one authenticated report.
 17. Later launches revalidate the same authorized device and entitlement.
@@ -151,7 +171,7 @@ It must not use fear-based messaging, exaggerated security claims, fake progress
 
 - Company: CYVORIQ Solutions
 - Product: CYVRA Erase
-- Verification domain: CYVRA XCQC
+- Verification domain: CYVRA QC
 - Public product presentation: `CYVRA Erase — by CYVORIQ Solutions`
 
 Use the approved CYVORIQ logo asset. Do not redraw the logo as a letter icon or substitute an unofficial mark.
@@ -198,7 +218,7 @@ After activation, the primary navigation is:
 
 Settings may be available through a secondary menu. It must not compete with the main verification journey.
 
-The interface must not present CYVRA Erase and CYVRA XCQC as two unrelated applications. Their results appear as two named sections within the same verification record.
+The interface must not present CYVRA Erase and CYVRA QC as two unrelated applications. Their results appear as two named sections within the same verification record.
 
 ## 8. Screen contract
 
@@ -211,8 +231,8 @@ The interface must not present CYVRA Erase and CYVRA XCQC as two unrelated appli
 | Consent and Scope | Explain what the scan reads and excludes | Give consent | Hardware scope, PDEM metadata scope, exclusions and permission behavior |
 | Ready to Verify | Present final scan summary | Run Device Verification | Device, scope, estimated stages and cancellation availability |
 | Verification Progress | Show truthful collection progress | Cancel scan | Current stage, completed stages, limitations and safe cancellation |
-| Results Overview | Summarize the completed assessment | Review results | Coverage, limitations, XCQC summary and Erase summary |
-| XCQC Results | Present device and hardware evidence | Continue to privacy results | Hardware overview, provenance, statuses, confidence and grade readiness |
+| Results Overview | Summarize the completed assessment | Review results | Coverage, limitations, QC summary and Erase summary |
+| QC Results | Present device and hardware evidence | Continue to privacy results | Hardware overview, provenance, statuses, confidence and grade readiness |
 | Erase Results | Present privacy exposure and readiness | Continue to report | PDEM summary, evidence coverage and explicit no-erasure statement |
 | Report Preview | Review the customer evidence package | Generate or save report | Device summary, both result domains, limitations and authenticity status |
 | Completion | Confirm safe completion | Finish | Report location, verification method and recommended next action |
@@ -315,9 +335,9 @@ Every material result must retain access to:
 
 Customer summaries may simplify the presentation, but the evidence view must preserve provenance.
 
-## 13. XCQC results experience
+## 13. QC results experience
 
-The XCQC result area must organize evidence into understandable groups:
+The QC result area must organize evidence into understandable groups:
 
 - Device identity and chassis
 - Firmware and security hardware
@@ -385,7 +405,7 @@ The GUI targets one combined customer report containing:
 - collection time;
 - masked device identity;
 - entitlement and binding status where appropriate;
-- XCQC hardware evidence summary;
+- QC hardware evidence summary;
 - grading status or `Grade not issued`;
 - CYVRA Erase privacy-exposure summary;
 - scope, exclusions and limitations;
@@ -526,7 +546,7 @@ The W2.1A design package must include:
 - high-fidelity designs for the core journey;
 - component-state definitions;
 - progress and cancellation prototype;
-- XCQC result presentation;
+- QC result presentation;
 - Erase result presentation;
 - combined report preview;
 - error and recovery matrix;
@@ -569,7 +589,7 @@ This contract does not authorize:
 - public executable distribution;
 - unsigned customer installation;
 - a second CYVRA customer application;
-- separate XCQC activation or device binding;
+- separate QC activation or device binding;
 - hardware stress or functional testing;
 - an unapproved commercial grade;
 - resale valuation;
@@ -582,7 +602,7 @@ This contract does not authorize:
 The following require later approval:
 
 - whether a future release renames the shell from CYVRA Erase to a broader CYVRA suite;
-- the XCQC grading model, thresholds and evidence rules;
+- the QC grading model, thresholds and evidence rules;
 - exact desktop colour and typography tokens;
 - final report file format and verification experience;
 - support-assisted device rebind experience;
