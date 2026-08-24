@@ -498,10 +498,7 @@ mod tests {
 
     #[test]
     fn excessive_output_is_terminated_and_not_returned() {
-        let mut command = test_command(
-            "[Console]::Out.Write('x' * 4096)",
-            "printf '%4096s' x",
-        );
+        let mut command = test_command("[Console]::Out.Write('x' * 4096)", "printf '%4096s' x");
 
         let error = match run_command(
             CollectorName::HardwareInventory,
