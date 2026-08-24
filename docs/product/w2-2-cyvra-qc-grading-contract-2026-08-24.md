@@ -1,6 +1,8 @@
 # CYVORIQ ERASE — W2.2 CYVRA QC Grading Contract — 2026-08-24
 
-> **Status:** PROPOSED — OWNER REVIEW REQUIRED
+> **Status:** OWNER APPROVED — FREEZE EFFECTIVE ON MERGE OF PR #29
+>
+> **Approval:** Owner approved all 12 decisions in Section 36 as proposed on 2026-08-24.
 >
 > **Branch:** `w2-2-cyvra-qc-grading-contract`
 >
@@ -810,9 +812,9 @@ This contract does not authorize:
 - production infrastructure changes; or
 - customer go-live.
 
-## 36. Owner decisions proposed for approval
+## 36. Owner-approved decisions
 
-The owner must explicitly approve or amend:
+The owner approved the following W2.2 decisions as proposed on 2026-08-24:
 
 1. Five grades: A, B, C, D and E.
 2. The customer descriptors: Excellent, Good, Fair, Limited and Major limitations.
@@ -827,7 +829,7 @@ The owner must explicitly approve or amend:
 11. Server-authoritative final issuance.
 12. The rule that grade is condition, not specification, warranty, valuation or auction price.
 
-No grading implementation may silently resolve an unapproved item.
+Any change to an approved item requires a versioned contract amendment, review and regression evidence.
 
 ## 37. Change control and handoff
 
