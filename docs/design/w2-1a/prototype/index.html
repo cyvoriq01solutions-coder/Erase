@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <meta
+      name="description"
+      content="Non-production visual prototype for the shared CYVRA Erase and CYVRA QC Windows customer application."
+    />
+    <title>CYVRA Erase — W2.1A Visual Prototype</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#prototype-screen">Skip to prototype screen</a>
+
+    <div class="prototype-banner" role="note">
+      <strong>W2.1A DESIGN PROTOTYPE</strong>
+      <span>Static sample data · No live scan · No production connection</span>
+    </div>
+
+    <section class="prototype-controls" aria-label="Prototype controls">
+      <label>
+        Screen
+        <select id="screen-select" aria-label="Choose prototype screen"></select>
+      </label>
+      <label>
+        Scenario
+        <select id="scenario-select" aria-label="Choose prototype scenario">
+          <option value="complete">Completed with limitations</option>
+          <option value="excellent">Grade A — complete evidence</option>
+          <option value="insufficient">Unable to grade — insufficient evidence</option>
+          <option value="network">Network recovery state</option>
+        </select>
+      </label>
+      <button class="control-button" id="fidelity-toggle" type="button" aria-pressed="false">
+        Show wireframe
+      </button>
+      <button class="control-button" id="contrast-toggle" type="button" aria-pressed="false">
+        High contrast preview
+      </button>
+    </section>
+
+    <div class="desktop-frame" id="desktop-frame">
+      <header class="window-titlebar">
+        <div class="window-brand">
+          <img
+            src="../../../../frontend/public/cyvoriq-logo.webp"
+            alt="CYVORIQ Solutions"
+            width="76"
+            height="46"
+          />
+          <span class="window-product">
+            <strong>CYVRA ERASE</strong>
+            <small>by CYVORIQ Solutions</small>
+          </span>
+        </div>
+        <div class="titlebar-context">
+          <span class="prototype-chip">DESIGN ONLY</span>
+          <span>Version concept 0.3.0</span>
+        </div>
+        <div class="window-controls" aria-hidden="true">
+          <span>—</span><span>□</span><span>×</span>
+        </div>
+      </header>
+
+      <div class="application-layout">
+        <aside class="app-sidebar" aria-label="Application navigation">
+          <nav class="primary-nav">
+            <button type="button" data-nav-screen="overview">
+              <span class="nav-icon" aria-hidden="true">⌂</span>
+              <span>Overview</span>
+            </button>
+            <button type="button" data-nav-screen="ready">
+              <span class="nav-icon" aria-hidden="true">✓</span>
+              <span>Verification</span>
+            </button>
+            <button type="button" data-nav-screen="results">
+              <span class="nav-icon" aria-hidden="true">◫</span>
+              <span>Results</span>
+            </button>
+            <button type="button" data-nav-screen="report">
+              <span class="nav-icon" aria-hidden="true">▤</span>
+              <span>Report</span>
+            </button>
+            <button type="button" data-nav-screen="help">
+              <span class="nav-icon" aria-hidden="true">?</span>
+              <span>Help</span>
+            </button>
+          </nav>
+
+          <div class="sidebar-trust">
+            <span class="status-mark status-mark-success" aria-hidden="true">✓</span>
+            <div>
+              <strong>Protected session</strong>
+              <span>Device binding verified</span>
+            </div>
+          </div>
+          <button class="settings-button" type="button" data-nav-screen="help">Settings &amp; privacy</button>
+        </aside>
+
+        <div class="workspace">
+          <header class="workspace-header">
+            <div>
+              <span class="workspace-eyebrow" id="screen-eyebrow">DEVICE VERIFICATION</span>
+              <h1 id="screen-title">Overview</h1>
+            </div>
+            <div class="workspace-device">
+              <span class="device-dot" aria-hidden="true"></span>
+              <div>
+                <strong>Lenovo ThinkPad T14 Gen 3</strong>
+                <span>Windows 11 Pro · x64</span>
+              </div>
+            </div>
+          </header>
+
+          <main id="prototype-screen" class="screen" tabindex="-1" aria-live="polite">
+            <noscript>This visual prototype requires JavaScript for screen navigation.</noscript>
+          </main>
+
+          <footer class="workspace-footer">
+            <span>Assessment ID <strong>CVQ-24A8-7F2C</strong></span>
+            <span>Standard-user mode</span>
+            <span class="non-destructive-label"><b aria-hidden="true">●</b> Non-destructive assessment</span>
+          </footer>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="cancel-modal" hidden>
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="cancel-title" aria-describedby="cancel-copy">
+        <span class="modal-icon" aria-hidden="true">!</span>
+        <h2 id="cancel-title">Cancel verification safely?</h2>
+        <p id="cancel-copy">
+          CYVRA will stop new collectors, wait for the active read-only check to finish, and preserve only approved
+          partial evidence. No completed grade or report will be issued.
+        </p>
+        <div class="modal-actions">
+          <button class="button button-secondary" id="continue-scan" type="button">Continue verification</button>
+          <button class="button button-danger" id="confirm-cancel" type="button">Cancel safely</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="toast" id="prototype-toast" role="status" aria-live="polite" hidden></div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
