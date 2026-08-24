@@ -1,6 +1,8 @@
 # CYVORIQ ERASE — W2.1 Shared Customer GUI/UX Contract — 2026-08-24
 
-> **Status:** PROPOSED — OWNER REVIEW REQUIRED
+> **Status:** FROZEN — APPROVED AND MERGED VIA PR #27
+>
+> **Approval:** PR #27, merge commit `b5acc949c222330020ca262a022a403bd6cbb874`, merged 2026-08-24.
 >
 > **Branch:** `w2-1-shared-customer-gui-ux-contract`
 >
@@ -97,7 +99,6 @@ Customer-facing grade states are:
 A CYVRA QC device grade describes assessed device condition under the approved grading rules. It is not automatically a resale price or monetary valuation.
 
 The W2.2 grading contract must be approved before the final QC results screen, grading engine or customer-release implementation is completed.
-
 
 ### CYVRA Erase
 
@@ -406,7 +407,7 @@ The GUI targets one combined customer report containing:
 - masked device identity;
 - entitlement and binding status where appropriate;
 - QC hardware evidence summary;
- - the CYVRA QC grade, or an explicit insufficient-evidence or grading-error status;
+- the CYVRA QC grade, or an explicit insufficient-evidence or grading-error status;
 - CYVRA Erase privacy-exposure summary;
 - scope, exclusions and limitations;
 - evidence and provenance hashes;
