@@ -38,18 +38,18 @@ jobs:
         run: cargo fmt --check
 
       - name: Cargo check
-        run: cargo check
+        run: cargo check --all-targets
 
       - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Tests
         run: cargo test
 
-      - name: Build release executable
-        run: cargo build --release
+      - name: Build release executables
+        run: cargo build --release --bins
 
-      - name: Prepare release package
+      - name: Prepare agent package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
@@ -71,10 +71,40 @@ jobs:
 
           Get-ChildItem dist
 
+      - name: Prepare internal hardware validation package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-validation | Out-Null
+
+          Copy-Item `
+            target\release\cyvra-hardware-validator.exe `
+            dist-validation\CYVORIQ-Hardware-Validation-v0.2.1-windows-x64.exe
+
+          $hash = (
+            Get-FileHash `
+              dist-validation\CYVORIQ-Hardware-Validation-v0.2.1-windows-x64.exe `
+              -Algorithm SHA256
+          ).Hash.ToLower()
+
+          Set-Content `
+            -Path dist-validation\CYVORIQ-Hardware-Validation-v0.2.1-windows-x64.sha256 `
+            -Value $hash `
+            -NoNewline
+
+          Get-ChildItem dist-validation
+
       - name: Upload Windows Agent
         uses: actions/upload-artifact@v7
         with:
           name: CYVORIQ-Windows-Agent-x64
           path: agent-windows/dist/*
           retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload internal hardware validator
+        uses: actions/upload-artifact@v7
+        with:
+          name: CYVORIQ-Internal-Hardware-Validation-x64
+          path: agent-windows/dist-validation/*
+          retention-days: 14
           if-no-files-found: error
