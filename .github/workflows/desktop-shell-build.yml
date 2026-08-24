@@ -1,0 +1,104 @@
+name: Validate CYVRA Desktop Shell
+
+on:
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "agent-windows/**"
+      - "rust-toolchain.toml"
+      - ".github/workflows/desktop-shell-build.yml"
+      - "package.json"
+  push:
+    branches:
+      - main
+    paths:
+      - "desktop/**"
+      - "agent-windows/**"
+      - "rust-toolchain.toml"
+      - ".github/workflows/desktop-shell-build.yml"
+      - "package.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-shell-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend-contract:
+    name: Frontend and contract checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: desktop
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install exact frontend dependencies
+        run: npm ci
+
+      - name: Type-check desktop shell
+        run: npm run check
+
+      - name: Run shell contract tests
+        run: npm test
+
+      - name: Build browser assets
+        run: npm run build:web
+
+  windows-native:
+    name: Windows native shell
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: desktop
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Set up Rust 1.97.1
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.97.1
+          rustc --version
+          cargo --version
+
+      - name: Install exact frontend dependencies
+        run: npm ci
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Check native targets
+        run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets
+
+      - name: Run strict Rust lint
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Compile internal shell without installer
+        run: npm run tauri -- build --debug --no-bundle
