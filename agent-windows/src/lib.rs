@@ -13,14 +13,15 @@ pub mod report;
 pub mod storage;
 pub mod user_profiles;
 pub mod volume;
+pub mod windows_hardware;
 
 mod platform;
 
 pub use platform::{NativePlatformAdapter, PlatformAdapter};
 
 /// Stable typed boundary consumed by the engineering CLI and, later, the Tauri shell.
-/// `hardware_inventory` remains `None` until the separately tested passive collectors
-/// are wired in; this foundation must not claim that uncollected hardware is present.
+/// `hardware_inventory` is populated only by a platform adapter with an implemented,
+/// separately tested passive collector. Unsupported adapters keep it explicitly absent.
 #[derive(Debug)]
 pub struct ScanResult {
     pub device: device::DeviceIdentity,
@@ -92,6 +93,7 @@ where
     let volumes = adapter.collect_volumes();
     let encryption = adapter.collect_encryption();
     let user_profiles = adapter.collect_user_profiles();
+    let hardware_inventory = adapter.collect_hardware_inventory();
 
     let profile_paths = profile_paths(&user_profiles);
     let volume_roots = volume_roots(&volumes);
@@ -114,7 +116,7 @@ where
         pdem,
         evidence,
         assessment,
-        hardware_inventory: None,
+        hardware_inventory,
     }
 }
 
