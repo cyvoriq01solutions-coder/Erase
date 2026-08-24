@@ -42,8 +42,8 @@ const OPERATING_SYSTEM: &str = "operating_system";
 const MEMORY_ARRAY: &str = "memory_array";
 const MEMORY_MODULE: &str = "memory_module";
 
-const WINDOWS_HARDWARE_SCRIPT: TrustedPowerShellScript =
-    TrustedPowerShellScript::application_owned(r#"
+const WINDOWS_HARDWARE_SCRIPT: TrustedPowerShellScript = TrustedPowerShellScript::application_owned(
+    r#"
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
@@ -226,7 +226,8 @@ try {
         Emit-Value 'memory_module' $index 'serial_number' $item.SerialNumber
     }
 } catch { Emit-QueryFailure 'memory_module' $_ }
-"#);
+"#,
+);
 
 /// Collect the first passive Windows hardware slice and preserve a complete inventory
 /// object even when the bounded command fails. The requested sections carry an honest
@@ -320,9 +321,7 @@ impl RawSnapshot {
         self.values
             .iter()
             .filter(|(key, value)| {
-                key.section == section
-                    && key.name == "record_present"
-                    && value.as_str() == "True"
+                key.section == section && key.name == "record_present" && value.as_str() == "True"
             })
             .map(|(key, _)| key.index)
             .collect()
@@ -384,10 +383,7 @@ fn parse_snapshot(output: &[u8]) -> CollectorResult<RawSnapshot> {
         let name = parts.next().unwrap_or_default();
         let encoded_value = parts.next().unwrap_or_default();
 
-        if parts.next().is_some()
-            || !is_allowed_field(section, name)
-            || encoded_value.is_empty()
-        {
+        if parts.next().is_some() || !is_allowed_field(section, name) || encoded_value.is_empty() {
             return Err(collector_error(
                 "The hardware collector returned an invalid protocol record.",
             ));
@@ -505,18 +501,63 @@ fn is_allowed_field(section: &str, name: &str) -> bool {
 
     matches!(
         (section, name),
-        (SYSTEM, "manufacturer" | "model" | "family" | "total_physical_memory" | "number_of_processors" | "pc_system_type" | "hypervisor_present")
-            | (PRODUCT, "vendor" | "identifying_number" | "uuid")
-            | (CHASSIS, "manufacturer" | "chassis_types" | "serial_number" | "asset_tag")
-            | (BASEBOARD, "manufacturer" | "product" | "version" | "serial_number")
-            | (BIOS, "manufacturer" | "version" | "release_date" | "smbios_major" | "smbios_minor" | "serial_number")
+        (
+            SYSTEM,
+            "manufacturer"
+                | "model"
+                | "family"
+                | "total_physical_memory"
+                | "number_of_processors"
+                | "pc_system_type"
+                | "hypervisor_present"
+        ) | (PRODUCT, "vendor" | "identifying_number" | "uuid")
+            | (
+                CHASSIS,
+                "manufacturer" | "chassis_types" | "serial_number" | "asset_tag"
+            )
+            | (
+                BASEBOARD,
+                "manufacturer" | "product" | "version" | "serial_number"
+            )
+            | (
+                BIOS,
+                "manufacturer"
+                    | "version"
+                    | "release_date"
+                    | "smbios_major"
+                    | "smbios_minor"
+                    | "serial_number"
+            )
             | (FIRMWARE, "mode")
             | (SECURE_BOOT, "enabled")
             | (TPM, "present" | "spec_version")
-            | (PROCESSOR, "manufacturer" | "model" | "architecture" | "cores" | "logical_processors" | "maximum_clock_mhz" | "current_clock_mhz" | "address_width_bits" | "vm_monitor_extensions" | "virtualization_firmware_enabled")
+            | (
+                PROCESSOR,
+                "manufacturer"
+                    | "model"
+                    | "architecture"
+                    | "cores"
+                    | "logical_processors"
+                    | "maximum_clock_mhz"
+                    | "current_clock_mhz"
+                    | "address_width_bits"
+                    | "vm_monitor_extensions"
+                    | "virtualization_firmware_enabled"
+            )
             | (OPERATING_SYSTEM, "visible_memory_kib")
             | (MEMORY_ARRAY, "slot_count" | "error_correction")
-            | (MEMORY_MODULE, "locator" | "capacity_bytes" | "speed_mhz" | "configured_speed_mhz" | "memory_type" | "form_factor" | "manufacturer" | "part_number" | "serial_number")
+            | (
+                MEMORY_MODULE,
+                "locator"
+                    | "capacity_bytes"
+                    | "speed_mhz"
+                    | "configured_speed_mhz"
+                    | "memory_type"
+                    | "form_factor"
+                    | "manufacturer"
+                    | "part_number"
+                    | "serial_number"
+            )
     )
 }
 
@@ -595,15 +636,12 @@ impl<'a> SourceRecord<'a> {
                         PrivacyClass::DeviceIdentifier,
                         self.provenance(),
                     ),
-                    None => InventoryField::unknown(
-                        PrivacyClass::DeviceIdentifier,
-                        self.provenance(),
-                    ),
+                    None => {
+                        InventoryField::unknown(PrivacyClass::DeviceIdentifier, self.provenance())
+                    }
                 }
             }
-            Some(_) => {
-                InventoryField::unknown(PrivacyClass::DeviceIdentifier, self.provenance())
-            }
+            Some(_) => InventoryField::unknown(PrivacyClass::DeviceIdentifier, self.provenance()),
             None => self.unavailable(PrivacyClass::DeviceIdentifier),
         }
     }
@@ -628,10 +666,9 @@ impl<'a> SourceRecord<'a> {
                     PrivacyClass::OperationalMetadata,
                     self.provenance(),
                 ),
-                Ok(_) | Err(_) => InventoryField::unknown(
-                    PrivacyClass::OperationalMetadata,
-                    self.provenance(),
-                ),
+                Ok(_) | Err(_) => {
+                    InventoryField::unknown(PrivacyClass::OperationalMetadata, self.provenance())
+                }
             },
             None => self.unavailable(PrivacyClass::OperationalMetadata),
         }
@@ -646,10 +683,9 @@ impl<'a> SourceRecord<'a> {
                     PrivacyClass::OperationalMetadata,
                     self.provenance(),
                 ),
-                None => InventoryField::unknown(
-                    PrivacyClass::OperationalMetadata,
-                    self.provenance(),
-                ),
+                None => {
+                    InventoryField::unknown(PrivacyClass::OperationalMetadata, self.provenance())
+                }
             },
             None => self.unavailable(PrivacyClass::OperationalMetadata),
         }
@@ -726,13 +762,7 @@ fn build_device_section(
         "Win32_SystemEnclosure",
         collected_at_unix,
     );
-    let baseboard = SourceRecord::new(
-        snapshot,
-        BASEBOARD,
-        0,
-        "Win32_BaseBoard",
-        collected_at_unix,
-    );
+    let baseboard = SourceRecord::new(snapshot, BASEBOARD, 0, "Win32_BaseBoard", collected_at_unix);
     let bios = SourceRecord::new(snapshot, BIOS, 0, "Win32_BIOS", collected_at_unix);
 
     let product_serial = product.identifier("identifying_number");
@@ -799,13 +829,7 @@ fn build_firmware_section(
         "Confirm-SecureBootUEFI",
         collected_at_unix,
     );
-    let tpm = SourceRecord::new(
-        snapshot,
-        TPM,
-        0,
-        "Win32_Tpm",
-        collected_at_unix,
-    );
+    let tpm = SourceRecord::new(snapshot, TPM, 0, "Win32_Tpm", collected_at_unix);
     let mode = firmware_mode_field(&firmware);
     let (secure_boot_present, secure_boot_enabled) =
         secure_boot_fields(&secure_boot, mode.value, collected_at_unix);
@@ -826,14 +850,8 @@ fn build_firmware_section(
             secure_boot_present,
             secure_boot_enabled,
             tpm_present: tpm.boolean("present"),
-            tpm_specification_version: tpm.text(
-                "spec_version",
-                PrivacyClass::OperationalMetadata,
-            ),
-            virtualization_indicator: derive_virtualization_indicator(
-                snapshot,
-                collected_at_unix,
-            ),
+            tpm_specification_version: tpm.text("spec_version", PrivacyClass::OperationalMetadata),
+            virtualization_indicator: derive_virtualization_indicator(snapshot, collected_at_unix),
         }],
     }
 }
@@ -927,10 +945,7 @@ fn build_memory_inventory(snapshot: &RawSnapshot, collected_at_unix: u64) -> Mem
                 visible_physical_bytes: visible_memory_field(&operating_system),
                 physical_slot_count: physical_slot_count_field(snapshot, collected_at_unix),
                 populated_slot_count: populated_slot_count_field(snapshot, collected_at_unix),
-                error_correction_capability: error_correction_field(
-                    snapshot,
-                    collected_at_unix,
-                ),
+                error_correction_capability: error_correction_field(snapshot, collected_at_unix),
             }],
         }
     } else {
@@ -1009,7 +1024,11 @@ fn firmware_mode_field(source: &SourceRecord<'_>) -> InventoryField<FirmwareMode
             PrivacyClass::OperationalMetadata,
             source.provenance(),
         ),
-        None if source.snapshot.value(source.section, source.index, "mode").is_some() => {
+        None if source
+            .snapshot
+            .value(source.section, source.index, "mode")
+            .is_some() =>
+        {
             InventoryField::unknown(PrivacyClass::OperationalMetadata, source.provenance())
         }
         None => source.unavailable(PrivacyClass::OperationalMetadata),
@@ -1096,19 +1115,19 @@ fn processor_architecture_field(source: &SourceRecord<'_>) -> InventoryField<Str
     let raw = source
         .snapshot
         .value(source.section, source.index, "architecture");
-    let architecture = raw
-        .and_then(|value| value.parse::<u16>().ok())
-        .and_then(|code| match code {
-            0 => Some("x86"),
-            1 => Some("MIPS"),
-            2 => Some("Alpha"),
-            3 => Some("PowerPC"),
-            5 => Some("ARM"),
-            6 => Some("Itanium"),
-            9 => Some("x64"),
-            12 => Some("ARM64"),
-            _ => None,
-        });
+    let architecture =
+        raw.and_then(|value| value.parse::<u16>().ok())
+            .and_then(|code| match code {
+                0 => Some("x86"),
+                1 => Some("MIPS"),
+                2 => Some("Alpha"),
+                3 => Some("PowerPC"),
+                5 => Some("ARM"),
+                6 => Some("Itanium"),
+                9 => Some("x64"),
+                12 => Some("ARM64"),
+                _ => None,
+            });
 
     match architecture {
         Some(value) => InventoryField::derived(
@@ -1152,9 +1171,7 @@ fn visible_memory_field(source: &SourceRecord<'_>) -> InventoryField<u64> {
                     source.collected_at_unix,
                 ),
             ),
-            None => {
-                InventoryField::unknown(PrivacyClass::OperationalMetadata, source.provenance())
-            }
+            None => InventoryField::unknown(PrivacyClass::OperationalMetadata, source.provenance()),
         },
         None => source.unavailable(PrivacyClass::OperationalMetadata),
     }
@@ -1681,10 +1698,7 @@ fn derived_provenance(source_detail: &'static str, collected_at_unix: u64) -> Pr
     }
 }
 
-fn failed_inventory(
-    collected_at_unix: u64,
-    error_kind: CollectorErrorKind,
-) -> HardwareInventoryV1 {
+fn failed_inventory(collected_at_unix: u64, error_kind: CollectorErrorKind) -> HardwareInventoryV1 {
     let (status, permission) = match error_kind {
         CollectorErrorKind::Unsupported => {
             (CollectionStatus::Unsupported, PermissionState::Unknown)
@@ -1737,10 +1751,7 @@ fn collector_error(safe_message: &'static str) -> CollectorError {
     typed_collector_error(CollectorErrorKind::ParseFailed, safe_message)
 }
 
-fn typed_collector_error(
-    kind: CollectorErrorKind,
-    safe_message: &'static str,
-) -> CollectorError {
+fn typed_collector_error(kind: CollectorErrorKind, safe_message: &'static str) -> CollectorError {
     CollectorError {
         collector: CollectorName::HardwareInventory,
         kind,
@@ -1877,12 +1888,7 @@ mod tests {
             .field(PROCESSOR, 0, "current_clock_mhz", "1800")
             .field(PROCESSOR, 0, "address_width_bits", "64")
             .field(PROCESSOR, 0, "vm_monitor_extensions", "True")
-            .field(
-                PROCESSOR,
-                0,
-                "virtualization_firmware_enabled",
-                "True",
-            )
+            .field(PROCESSOR, 0, "virtualization_firmware_enabled", "True")
             .query(OPERATING_SYSTEM)
             .record(OPERATING_SYSTEM, 0)
             .field(OPERATING_SYSTEM, 0, "visible_memory_kib", "16500000")
@@ -1943,7 +1949,10 @@ mod tests {
                 .as_deref(),
             Some("DDR4")
         );
-        assert_eq!(inventory.storage.devices.status, CollectionStatus::NotReported);
+        assert_eq!(
+            inventory.storage.devices.status,
+            CollectionStatus::NotReported
+        );
     }
 
     #[test]
@@ -2063,12 +2072,7 @@ mod tests {
             .query(FIRMWARE)
             .record(FIRMWARE, 0)
             .field(FIRMWARE, 0, "mode", "Uefi")
-            .field(
-                SECURE_BOOT,
-                0,
-                "query_status",
-                "permission_denied",
-            );
+            .field(SECURE_BOOT, 0, "query_status", "permission_denied");
 
         let inventory = build_inventory(&fixture.snapshot(), 1_000);
         let firmware = &inventory.firmware.records[0];
@@ -2109,7 +2113,10 @@ mod tests {
             inventory.memory.modules.status,
             CollectionStatus::CollectionError
         );
-        assert_eq!(inventory.storage.devices.status, CollectionStatus::NotReported);
+        assert_eq!(
+            inventory.storage.devices.status,
+            CollectionStatus::NotReported
+        );
         assert_eq!(inventory.sensors.status, CollectionStatus::NotReported);
     }
 
@@ -2127,6 +2134,9 @@ mod tests {
         assert!(inventory.processors.is_consistent());
         assert!(inventory.memory.summary.is_consistent());
         assert!(inventory.memory.modules.is_consistent());
-        assert_eq!(inventory.storage.devices.status, CollectionStatus::NotReported);
+        assert_eq!(
+            inventory.storage.devices.status,
+            CollectionStatus::NotReported
+        );
     }
 }
