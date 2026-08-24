@@ -1,6 +1,8 @@
 # CYVORIQ ERASE — W2.1A GUI Visual Design Package — 2026-08-24
 
-> **Status:** PROPOSED — OWNER VISUAL REVIEW REQUIRED
+> **Status:** OWNER APPROVED — FREEZE EFFECTIVE ON MERGE OF PR #30
+>
+> **Approval:** Owner visually reviewed the repository-local prototype and approved all 20 decisions in Section 29 on 2026-08-24.
 >
 > **Branch:** `w2-1a-gui-visual-design`
 >
@@ -728,9 +730,9 @@ The prototype does not prove:
 
 Those require separate implementation and validation gates.
 
-## 29. Design acceptance checklist
+## 29. Owner-approved design decisions
 
-Owner visual review must explicitly confirm or amend:
+The owner approved the following decisions after local prototype review on 2026-08-24:
 
 1. One shared application and five-item primary navigation.
 2. Fourteen-screen inventory and journey order.
@@ -753,7 +755,7 @@ Owner visual review must explicitly confirm or amend:
 19. Accessibility requirements.
 20. Windows 10/11 and display-scaling behavior.
 
-Approval of this package freezes visual direction. It does not approve production implementation or customer release.
+The approval becomes the W2.1A visual freeze when PR #30 is merged. It does not approve production implementation or customer release.
 
 ## 30. Required validation before implementation approval
 
@@ -821,10 +823,10 @@ Every implementation handoff must record:
 - open risks; and
 - next approval gate.
 
-## 34. Immediate next action
+## 34. Immediate next action after approval
 
-Review this document and the local prototype screen by screen. Record owner amendments in the W2.1A pull request.
+Complete the independent review and required checks on PR #30, then merge only after explicit merge authorization.
 
-Only after explicit owner approval and merge may the team freeze the visual direction and plan the first bounded Tauri shell implementation branch.
+After merge, plan the first bounded Tauri shell implementation branch against this frozen design package and the approved W2.1 and W2.2 contracts.
 
 No production deployment or customer release is authorized by W2.1A.
