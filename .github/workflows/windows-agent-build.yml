@@ -52,7 +52,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist | Out-Null
 
           Copy-Item `
-            target\release\cyvoriq-erase-agent.exe `
+            target\release\cyvra-cli.exe `
             dist\CYVORIQ-Verification-Agent-v0.2.1-windows-x64.exe
 
           $hash = (
