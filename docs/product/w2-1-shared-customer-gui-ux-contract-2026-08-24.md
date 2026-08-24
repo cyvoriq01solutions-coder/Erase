@@ -406,7 +406,7 @@ The GUI targets one combined customer report containing:
 - masked device identity;
 - entitlement and binding status where appropriate;
 - QC hardware evidence summary;
-- grading status or `Grade not issued`;
+ - the CYVRA QC grade, or an explicit insufficient-evidence or grading-error status;
 - CYVRA Erase privacy-exposure summary;
 - scope, exclusions and limitations;
 - evidence and provenance hashes;
