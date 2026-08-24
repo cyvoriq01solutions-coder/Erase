@@ -1,7 +1,8 @@
 use crate::{
     application_data::ApplicationDataInventory, cpu::CpuProfile, device::DeviceIdentity,
-    encryption::EncryptionProfile, os::OsProfile, personal_data::PersonalDataInventory,
-    storage::StorageProfile, user_profiles::UserProfileInventory, volume::VolumeProfile,
+    encryption::EncryptionProfile, hardware_inventory_v1::HardwareInventoryV1, os::OsProfile,
+    personal_data::PersonalDataInventory, storage::StorageProfile,
+    user_profiles::UserProfileInventory, volume::VolumeProfile,
 };
 
 /// Read-only operating-system boundary used by GUI, CLI, and future headless callers.
@@ -16,6 +17,12 @@ pub trait PlatformAdapter {
     fn collect_volumes(&self) -> Vec<VolumeProfile>;
     fn collect_encryption(&self) -> EncryptionProfile;
     fn collect_user_profiles(&self) -> UserProfileInventory;
+
+    /// Unsupported and fixture adapters remain explicit instead of fabricating an
+    /// empty hardware result. Windows overrides this with the bounded V1 collector.
+    fn collect_hardware_inventory(&self) -> Option<HardwareInventoryV1> {
+        None
+    }
 
     fn collect_personal_data(
         &self,
@@ -58,6 +65,16 @@ impl PlatformAdapter for NativePlatformAdapter {
 
     fn collect_user_profiles(&self) -> UserProfileInventory {
         crate::user_profiles::collect()
+    }
+
+    fn collect_hardware_inventory(&self) -> Option<HardwareInventoryV1> {
+        if cfg!(target_os = "windows") {
+            Some(crate::windows_hardware::collect(
+                &crate::collector_runtime::CancellationToken::new(),
+            ))
+        } else {
+            None
+        }
     }
 
     fn collect_personal_data(
