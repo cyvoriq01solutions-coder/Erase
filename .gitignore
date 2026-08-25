@@ -17,3 +17,6 @@ coverage/
 .cache/
 .tmp/
 *.tsbuildinfo
+
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
