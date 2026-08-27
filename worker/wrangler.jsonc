@@ -1,37 +1,31 @@
 {
-	"$schema": "./node_modules/wrangler/config-schema.json",
-	"name": "cyvoriq-erase-api",
-	"main": "src/index.ts",
-	"compatibility_date": "2026-08-15",
-	"workers_dev": true,
-	"vars": {
-		"APP_ENV": "development",
-		"API_VERSION": "v1",
-		"AUTH_EMAIL_ENDPOINT": "https://api.resend.com/emails",
-		"AUTH_EMAIL_FROM": "CYVORIQ <auth@otp.cyvra.co.in>",
-		"PORTAL_ORIGINS": "https://www.cyvra.co.in,https://cyvra.co.in",
-		"ADMIN_PORTAL_ORIGIN": "https://admin.cyvra.co.in"
-	},
-	"env": {
-		"staging": {
-			"name": "cyvoriq-erase-api-staging",
-			"vars": {
-				"APP_ENV": "staging",
-				"API_VERSION": "v1"
-			}
-		},
-		"production": {
-			"name": "cyvoriq-erase-api-production",
-			"vars": {
-				"APP_ENV": "production",
-				"API_VERSION": "v1"
-			}
-		}
-	},
-	"hyperdrive": [
-		{
-			"binding": "HYPERDRIVE",
-			"id": "c9c519bc852d4da59806a3df41bd7bda"
-		}
-	]
+  "$schema": "./node_modules/wrangler/config-schema.json",
+
+  "name": "cyvoriq-erase-api",
+
+  "main": "src/index.ts",
+
+  "compatibility_date": "2026-08-15",
+
+  "workers_dev": true,
+
+  "vars": {
+    "APP_ENV": "production",
+    "API_VERSION": "v1",
+
+    "AUTH_EMAIL_ENDPOINT": "https://api.resend.com/emails",
+
+    "AUTH_EMAIL_FROM": "CYVORIQ <auth@otp.cyvra.co.in>",
+
+    "PORTAL_ORIGINS": "https://www.cyvra.co.in,https://cyvra.co.in",
+
+    "ADMIN_PORTAL_ORIGIN": "https://admin.cyvra.co.in"
+  },
+
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "c9c519bc852d4da59806a3df41bd7bda"
+    }
+  ]
 }
