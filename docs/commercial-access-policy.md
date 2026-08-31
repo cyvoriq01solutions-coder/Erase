@@ -29,7 +29,7 @@ The `super_admin` may:
 
 ### Accounts authority
 
-`accounts@cyvra.co.in` is eligible for the `accounts_admin` role, but control-panel access is not automatic. The role must first be approved by an active `super_admin`.
+`accounts@cyvoriq.com` is eligible for the `accounts_admin` role, but control-panel access is not automatic. The role must first be approved by an active `super_admin`.
 
 An active `accounts_admin` may:
 

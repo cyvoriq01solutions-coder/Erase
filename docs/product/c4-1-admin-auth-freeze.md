@@ -51,7 +51,7 @@ No public Admin self-registration exists.
 
 Bootstrap identities:
 - `ceo@cyvoriq.com` -> `super_admin`
-- `accounts@cyvra.co.in` -> `accounts_admin`
+- `accounts@cyvoriq.com` -> `accounts_admin`
 
 CEO bootstrap:
 - the server may create the CEO internal identity if it does not yet exist

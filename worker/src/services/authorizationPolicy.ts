@@ -1,5 +1,5 @@
 export const CEO_SUPER_USER_EMAIL = "ceo@cyvoriq.com";
-export const ACCOUNTS_APPROVER_EMAIL = "accounts@cyvra.co.in";
+export const ACCOUNTS_APPROVER_EMAIL = "accounts@cyvoriq.com";
 
 export type ControlPanelRole = "super_admin" | "accounts_admin";
 export type UserRole = "customer" | ControlPanelRole;

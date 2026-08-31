@@ -210,7 +210,7 @@ function LoginGate({
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  placeholder="name@cyvra.co.in"
+                  placeholder="name@cyvoriq.com"
                   autoComplete="email"
                   required
                   disabled={busy}
@@ -486,7 +486,7 @@ function InternalRolesPage() {
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="name@cyvra.co.in"
+              placeholder="name@cyvoriq.com"
               required
               disabled={inviteBusy}
             />

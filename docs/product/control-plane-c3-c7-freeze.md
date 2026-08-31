@@ -41,7 +41,7 @@ The Cloudflare Worker remains the control-plane authority. The browser does not 
 
 ### Accounts administrator
 
-- Internal identity: `accounts@cyvra.co.in`
+- Internal identity: `accounts@cyvoriq.com`
 - Intended role: `accounts_admin`
 - The role is not self-activating. An authenticated active `super_admin` must approve it.
 - Accounts verification means commercial verification after customer email verification: payment confirmation, purchase approval/rejection, and enabling an entitlement when policy conditions are satisfied.
@@ -97,7 +97,7 @@ The Admin Portal must NOT offer public self-registration or a customer-style `Cr
 Initial authority identities:
 
 - `ceo@cyvoriq.com` -> `super_admin`
-- `accounts@cyvra.co.in` -> `accounts_admin` only after super-admin approval
+- `accounts@cyvoriq.com` -> `accounts_admin` only after super-admin approval
 
 The final admin authentication realm is separate from the customer realm and must use dedicated admin endpoints and a dedicated admin session cookie. Target API contract:
 

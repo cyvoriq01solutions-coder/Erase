@@ -47,7 +47,7 @@ function normalizeOptionalName(value: string | null | undefined): string | null 
 
 export function isCorporateAdminEmail(email: string): boolean {
   const normalized = normalizeEmail(email);
-  return normalized !== null && normalized.endsWith("@cyvra.co.in");
+  return normalized !== null && (normalized.endsWith("@cyvoriq.com") || normalized.endsWith("@cyvra.co.in"));
 }
 
 async function ensureInternalOrganization(client: Client): Promise<void> {
@@ -250,7 +250,7 @@ export async function inviteAdminIdentity(
 ): Promise<AdminIdentity> {
   const email = normalizeEmail(input.email);
   if (email === null || !isCorporateAdminEmail(email)) {
-    throw new Error("A valid @cyvra.co.in corporate email is required");
+    throw new Error("A valid @cyvoriq.com or @cyvra.co.in corporate email is required");
   }
   if (isBootstrapSuperUser(email)) {
     throw new Error("The bootstrap Super Administrator cannot be created through invitations");
