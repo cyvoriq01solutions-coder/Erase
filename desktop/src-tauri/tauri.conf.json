@@ -49,6 +49,33 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": false,
+    "publisher": "CYVORIQ Solutions",
+    "shortDescription": "CYVRA Erase assessment and verification for authorised Windows devices.",
+    "longDescription": "CYVRA Erase is a non-destructive assessment application. This NSIS package is an unsigned engineering installer until Authenticode signing and private R2 release (slices B and signing) are approved. Live activation and collection stay disabled.",
+    "copyright": "Copyright CYVORIQ Solutions. All rights reserved.",
+    "licenseFile": "LICENSE.installer.txt",
+    "category": "Utility",
+    "icon": [
+      "icons/32x32.png",
+      "icons/64x64.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "allowDowngrades": false,
+      "certificateThumbprint": null,
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "perMachine",
+        "displayLanguageSelector": false,
+        "startMenuFolder": "CYVORIQ"
+      }
+    }
   }
 }

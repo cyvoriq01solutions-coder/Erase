@@ -104,7 +104,12 @@ test("Tauri capability and webview policy remain least privilege", () => {
   assert.equal(configuration.app.withGlobalTauri, false);
   assert.equal(configuration.app.security.freezePrototype, true);
   assert.equal(configuration.app.security.assetProtocol.enable, false);
-  assert.equal(configuration.bundle.active, false);
+  assert.equal(configuration.bundle.active, true);
+  assert.deepEqual(configuration.bundle.targets, ["nsis"]);
+  assert.equal(configuration.bundle.windows.nsis.installMode, "perMachine");
+  assert.equal(configuration.bundle.windows.allowDowngrades, false);
+  assert.equal(configuration.bundle.windows.webviewInstallMode.type, "downloadBootstrapper");
+  assert.equal(configuration.bundle.publisher, "CYVORIQ Solutions");
   assert.equal(configuration.app.security.csp["default-src"], "'self'");
   assert.match(configuration.app.security.csp["connect-src"], /ipc:/);
   assert.equal(configuration.app.security.csp["object-src"], "'none'");
@@ -118,6 +123,14 @@ test("foundation does not ship destructive or obsolete customer wording", () => 
   assert.doesNotMatch(combined, />\s*(Erase now|Wipe device|Delete data|Bypass password)\s*</i);
   assert.match(combined, /No data was erased/);
   assert.match(combined, /Grade pending/);
+});
+
+test("NSIS installer licence exists and is assessment-only", () => {
+  const licence = read("src-tauri/LICENSE.installer.txt");
+
+  assert.match(licence, /assessment/i);
+  assert.match(licence, /not a customer\s+release/i);
+  assert.doesNotMatch(licence, /erase customer files/i);
 });
 
 test("root workspace exposes bounded desktop checks", () => {

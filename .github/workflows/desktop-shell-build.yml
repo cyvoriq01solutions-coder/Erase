@@ -102,3 +102,56 @@ jobs:
 
       - name: Compile internal shell without installer
         run: npm run tauri -- build --debug --no-bundle
+
+  windows-nsis-unsigned:
+    name: Unsigned NSIS installer (engineering only)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: desktop
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Set up Rust 1.97.1
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.97.1
+
+      - name: Install exact frontend dependencies
+        run: npm ci
+
+      - name: Build unsigned NSIS setup
+        run: npm run tauri -- build --bundles nsis
+
+      - name: Rename to frozen artifact name
+        shell: pwsh
+        run: |
+          $src = Get-ChildItem -Recurse src-tauri/target -Filter "*-setup.exe" | Select-Object -First 1
+          if (-not $src) { throw "NSIS setup.exe not found" }
+          New-Item -ItemType Directory -Force -Path dist-installer | Out-Null
+          $dest = "dist-installer/CYVRA-Erase-0.3.0-x64-setup.exe"
+          Copy-Item $src.FullName $dest
+          Get-FileHash $dest -Algorithm SHA256 | Format-List
+          Write-Host "UNSIGNED ENGINEERING ARTIFACT. Not a customer release. Do not put on /download or public R2."
+
+      - name: Upload unsigned engineering installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-engineering-not-for-download-page
+          path: desktop/dist-installer/CYVRA-Erase-0.3.0-x64-setup.exe
+          if-no-files-found: error
+          retention-days: 7
