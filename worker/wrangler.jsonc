@@ -15,7 +15,7 @@
 
     "AUTH_EMAIL_ENDPOINT": "https://api.resend.com/emails",
 
-    "AUTH_EMAIL_FROM": "CYVORIQ <auth@otp.cyvra.co.in>",
+    "AUTH_EMAIL_FROM": "CYVRA <auth@cyvra.co.in>",
 
     "PORTAL_ORIGINS": "https://www.cyvra.co.in,https://cyvra.co.in",
 

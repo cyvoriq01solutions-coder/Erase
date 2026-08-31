@@ -13,7 +13,7 @@ Status: FROZEN for MVP control-plane implementation.
 
 ### Super user
 
-`ceo@cyvra.co.in` is the bootstrap `super_admin` identity.
+`ceo@cyvoriq.com` is the bootstrap `super_admin` identity.
 
 After successful email OTP verification, this identity may receive the active `super_admin` role through the server-side bootstrap policy. No other email address may self-bootstrap as `super_admin`.
 

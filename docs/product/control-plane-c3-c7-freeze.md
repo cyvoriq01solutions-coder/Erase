@@ -33,7 +33,7 @@ The Cloudflare Worker remains the control-plane authority. The browser does not 
 
 ### CEO super administrator
 
-- Bootstrap identity: `ceo@cyvra.co.in`
+- Bootstrap identity: `ceo@cyvoriq.com`
 - Role: `super_admin`
 - Possession of the email must still be proven through OTP.
 - No other email may self-bootstrap as `super_admin`.
@@ -96,7 +96,7 @@ The Admin Portal must NOT offer public self-registration or a customer-style `Cr
 
 Initial authority identities:
 
-- `ceo@cyvra.co.in` -> `super_admin`
+- `ceo@cyvoriq.com` -> `super_admin`
 - `accounts@cyvra.co.in` -> `accounts_admin` only after super-admin approval
 
 The final admin authentication realm is separate from the customer realm and must use dedicated admin endpoints and a dedicated admin session cookie. Target API contract:

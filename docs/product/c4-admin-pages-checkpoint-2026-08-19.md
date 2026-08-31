@@ -70,7 +70,7 @@ New Worker routes are implemented on `admin-portal-v1`:
 
 Authority rules:
 
-- `ceo@cyvra.co.in` becomes active `super_admin` after successful email OTP, as already implemented by the auth challenge service.
+- `ceo@cyvoriq.com` becomes active `super_admin` after successful email OTP, as already implemented by the auth challenge service.
 - `accounts@cyvra.co.in` remains pending after email verification until CEO approval.
 - Accounts approval/revocation requires the authenticated bootstrap CEO Super Administrator session.
 - Role changes are transactional in Neon.
@@ -103,7 +103,7 @@ Do not merge PR #15 yet.
 
 1. Wait for `admin.cyvra.co.in` to become Active with valid TLS.
 2. Put Cloudflare Access in front of `admin.cyvra.co.in`.
-3. Initial Access allow identities: `ceo@cyvra.co.in`, `accounts@cyvra.co.in` only.
+3. Initial Access allow identities: `ceo@cyvoriq.com`, `accounts@cyvra.co.in` only.
 4. Configure and verify `api.cyvra.co.in` for the Worker control plane.
 5. Verify Worker branch deployment/typecheck with the new admin routes.
 6. Run real CEO OTP -> admin session -> control-panel test.

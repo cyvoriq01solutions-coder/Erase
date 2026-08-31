@@ -50,7 +50,7 @@ Admin session rules:
 No public Admin self-registration exists.
 
 Bootstrap identities:
-- `ceo@cyvra.co.in` -> `super_admin`
+- `ceo@cyvoriq.com` -> `super_admin`
 - `accounts@cyvra.co.in` -> `accounts_admin`
 
 CEO bootstrap:
