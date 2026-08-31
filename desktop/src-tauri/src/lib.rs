@@ -73,7 +73,10 @@ fn activate_license_windows(activation_key: String) -> Result<ActivationOutcome,
     let value: serde_json::Value = response
         .into_json()
         .map_err(|_| "CYVRA returned an unreadable activation response.".to_string())?;
-    let status = value.get("status").and_then(|item| item.as_str()).unwrap_or("");
+    let status = value
+        .get("status")
+        .and_then(|item| item.as_str())
+        .unwrap_or("");
     let message = value
         .get("message")
         .and_then(|item| item.as_str())
@@ -95,8 +98,8 @@ fn activate_license_windows(activation_key: String) -> Result<ActivationOutcome,
 
 #[cfg(windows)]
 fn windows_machine_guid() -> Result<String, String> {
-    use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
     use winreg::RegKey;
+    use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
 
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let key = hklm
