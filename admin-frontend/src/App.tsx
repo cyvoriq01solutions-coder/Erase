@@ -958,7 +958,7 @@ function AdminShell({
               element={
                 <StatusPage
                   title="Software Releases"
-                  description="Signed installer release metadata and private R2 publication authority."
+                  description="Signed installer release metadata and private Backblaze B2 publication authority."
                 />
               }
             />

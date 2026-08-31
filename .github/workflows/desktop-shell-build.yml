@@ -146,7 +146,7 @@ jobs:
           $dest = "dist-installer/CYVRA-Erase-0.3.0-x64-setup.exe"
           Copy-Item $src.FullName $dest
           Get-FileHash $dest -Algorithm SHA256 | Format-List
-          Write-Host "UNSIGNED ENGINEERING ARTIFACT. Not a customer release. Do not put on /download or public R2."
+          Write-Host "UNSIGNED ENGINEERING ARTIFACT. Not a customer release. Do not put on /download or public B2."
 
       - name: Upload unsigned engineering installer
         uses: actions/upload-artifact@v4
