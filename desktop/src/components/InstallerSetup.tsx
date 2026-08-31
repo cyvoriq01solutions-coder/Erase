@@ -4,7 +4,7 @@ const licenceText = `CYVRA Erase is licensed for one authorised Windows device a
 
 V1 is assessment and verification only. It must not erase, overwrite, encrypt, move or destroy files. It must not collect passwords, recovery keys, email bodies or private file contents. It must not bypass Windows, BitLocker, BIOS, UEFI or corporate controls.
 
-This build is an unsigned engineering installer. Customer download stays on https://www.cyvra.co.in/download after private R2 and signing. Activation keys are not issued in this slice.`;
+This build is an unsigned engineering installer. Customer download stays on https://www.cyvra.co.in/download after Authenticode signing and private Backblaze B2 storage. CYVRA emails the activation key when an administrator issues a licence. This build does not bind that key to this PC.`;
 
 type SetupStep = "welcome" | "licence" | "ready";
 
@@ -29,7 +29,7 @@ export function InstallerSetup({ onFinished }: { onFinished: () => void }) {
               <li>Continue into the application</li>
             </ol>
             <p className="setup-note">
-              Live activation, device binding and package download are not enabled in this slice.
+              An administrator may already have emailed your activation key. Online device binding is not enabled in this build.
             </p>
             <button className="button button-primary" type="button" onClick={() => setStep("licence")}>
               Next
@@ -69,8 +69,7 @@ export function InstallerSetup({ onFinished }: { onFinished: () => void }) {
           <>
             <h1 id="setup-title">Continue into CYVRA Erase</h1>
             <p>
-              The desktop shell is ready. Activation key entry and online device binding remain disabled until a later
-              approved slice. Do not expect a download button or a working product key in this build.
+              The desktop shell is ready. If CYVRA emailed an activation key, keep it. This build shows the field only as a preview; online device binding is not enabled yet.
             </p>
             <label className="setup-key-field" htmlFor="activation-key-preview">
               Activation key
@@ -79,7 +78,7 @@ export function InstallerSetup({ onFinished }: { onFinished: () => void }) {
               id="activation-key-preview"
               type="text"
               disabled
-              placeholder="Not issued in this slice"
+              placeholder="Key is emailed — binding not enabled yet"
               autoComplete="off"
             />
             <div className="setup-actions">

@@ -14,9 +14,9 @@ file contents. It must not bypass Windows, BitLocker, BIOS, UEFI or
 corporate security controls.
 
 This NSIS package is an engineering installer. It is not a customer
-release until it is Authenticode-signed, hashed, stored in private R2,
-and offered only through the authorised Worker download on
-https://www.cyvra.co.in/download.
+release until it is Authenticode-signed, hashed, stored in the private
+Backblaze B2 release bucket, and offered only through the authorised
+Worker download on https://www.cyvra.co.in/download.
 
 By installing you accept these terms. Uninstall uses the normal Windows
 Programs and Features entry for CYVRA Erase.
