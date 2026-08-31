@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { loadShellBootstrap } from "./adapters/desktopBridge";
 import { AppFrame } from "./components/AppFrame";
+import { InstallerSetup } from "./components/InstallerSetup";
 import { ShellScreen } from "./screens/ShellScreens";
 import type { BridgeState, NavigationId } from "./types/shell";
 
 export default function App() {
+  const [setupComplete, setSetupComplete] = useState(false);
   const [current, setCurrent] = useState<NavigationId>("overview");
   const [bridge, setBridge] = useState<BridgeState>({ status: "loading" });
 
@@ -28,6 +30,10 @@ export default function App() {
       active = false;
     };
   }, []);
+
+  if (!setupComplete) {
+    return <InstallerSetup onFinished={() => setSetupComplete(true)} />;
+  }
 
   return (
     <AppFrame bridge={bridge} current={current} onNavigate={setCurrent}>

@@ -1,0 +1,22 @@
+CYVRA Erase — installer licence (assessment product)
+
+Copyright CYVORIQ Solutions.
+
+This software is licensed for use on one authorised Windows device after
+CYVRA has approved the customer account and issued a licence. Identity
+verification on the website is not a licence and does not unlock live
+activation.
+
+CYVRA Erase V1 is assessment and verification only. It must not erase,
+overwrite, encrypt, move or destroy customer files. It must not collect
+passwords, recovery keys, email bodies, message contents or other private
+file contents. It must not bypass Windows, BitLocker, BIOS, UEFI or
+corporate security controls.
+
+This NSIS package is an engineering installer. It is not a customer
+release until it is Authenticode-signed, hashed, stored in private R2,
+and offered only through the authorised Worker download on
+https://www.cyvra.co.in/download.
+
+By installing you accept these terms. Uninstall uses the normal Windows
+Programs and Features entry for CYVRA Erase.
