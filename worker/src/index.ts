@@ -37,9 +37,10 @@ import {
   type CustomerAccessApiEnv,
 } from "./routes/customerAccess";
 import {
+  handleDownloadPackage,
   handleDownloadStatus,
-  type DownloadStatusEnv,
-} from "./routes/downloadStatus";
+  type DownloadPackageEnv,
+} from "./routes/downloadPackage";
 import { handleHealth, type RuntimeEnv } from "./routes/health";
 import { json } from "./services/http";
 
@@ -49,7 +50,7 @@ export interface Env
     AdminAuthApiEnv,
     AdminApiEnv,
     CustomerAccessApiEnv,
-    DownloadStatusEnv,
+    DownloadPackageEnv,
     CorsEnv {}
 
 async function route(request: Request, env: Env): Promise<Response> {
@@ -87,6 +88,13 @@ async function route(request: Request, env: Env): Promise<Response> {
     url.pathname === "/api/v1/auth/download-status"
   ) {
     return handleDownloadStatus(request, env);
+  }
+
+  const downloadMatch = url.pathname.match(
+    /^\/api\/v1\/auth\/download\/([a-z][a-z0-9-]*)$/i,
+  );
+  if (request.method === "GET" && downloadMatch !== null) {
+    return handleDownloadPackage(request, env, downloadMatch[1].toLowerCase());
   }
 
   if (request.method === "POST" && url.pathname === "/api/v1/auth/logout") {

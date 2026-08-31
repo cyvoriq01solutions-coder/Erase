@@ -79,6 +79,7 @@ export function withCorsHeaders(
   const headers = new Headers(response.headers);
   headers.set("Access-Control-Allow-Origin", origin);
   headers.set("Access-Control-Allow-Credentials", "true");
+  headers.set("Access-Control-Expose-Headers", "Content-Disposition, Content-Length, ETag");
   appendVary(headers, "Origin");
 
   return new Response(response.body, {
