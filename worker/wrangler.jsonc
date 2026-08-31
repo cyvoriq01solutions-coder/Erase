@@ -19,7 +19,11 @@
 
     "PORTAL_ORIGINS": "https://www.cyvra.co.in,https://cyvra.co.in",
 
-    "ADMIN_PORTAL_ORIGIN": "https://admin.cyvra.co.in"
+    "ADMIN_PORTAL_ORIGIN": "https://admin.cyvra.co.in",
+
+    "B2_BUCKET": "cyvra-erase-releases",
+    "B2_ENDPOINT": "s3.us-east-005.backblazeb2.com",
+    "B2_REGION": "us-east-005"
   },
 
   "hyperdrive": [
@@ -27,12 +31,5 @@
     "binding": "HYPERDRIVE",
     "id": "a741ce4f02de4b54a32a6cfb5f7d9135"
   }
-],
-
-  "r2_buckets": [
-    {
-      "binding": "RELEASES",
-      "bucket_name": "cyvra-erase-releases"
-    }
-  ]
+]
 }
