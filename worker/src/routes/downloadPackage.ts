@@ -5,15 +5,14 @@ import {
   type HyperdriveBinding,
 } from "../services/database";
 import { json } from "../services/http";
+import { createB2ReleaseStore, type B2StoreEnv } from "../services/b2ReleaseStore";
 import {
   isSetupPackagePresent,
   resolveReleaseArtifact,
-  type ReleaseStore,
 } from "../services/packageRelease";
 
-export interface DownloadPackageEnv {
+export interface DownloadPackageEnv extends B2StoreEnv {
   HYPERDRIVE: HyperdriveBinding;
-  RELEASES: ReleaseStore;
 }
 
 async function requireEntitledCustomer(
@@ -77,7 +76,18 @@ export async function handleDownloadPackage(
     return authority;
   }
 
-  const object = await env.RELEASES.get(artifact.key);
+  const store = createB2ReleaseStore(env);
+  if (store === null) {
+    return json(
+      {
+        error: "release_store_unconfigured",
+        message: "The private release store is not configured.",
+      },
+      { status: 503 },
+    );
+  }
+
+  const object = await store.get(artifact.key);
   if (object === null || object.size <= 0) {
     return json(
       {
@@ -147,7 +157,9 @@ export async function handleDownloadStatus(
   const status = await getCustomerDownloadStatus(env.HYPERDRIVE, session.userId);
   const accessStatus = status?.accessStatus ?? "waiting";
   const entitled = accessStatus === "approved";
-  const packageAvailable = await isSetupPackagePresent(env.RELEASES);
+  const store = createB2ReleaseStore(env);
+  const packageAvailable =
+    store !== null ? await isSetupPackagePresent(store) : false;
 
   let message = "Waiting for CYVRA administration to approve download access.";
   if (accessStatus === "rejected") {
