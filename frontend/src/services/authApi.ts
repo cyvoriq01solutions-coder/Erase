@@ -130,6 +130,8 @@ export interface DownloadStatusResponse {
   accessStatus?: DownloadAccessStatus;
   rejectReason?: string | null;
   packageAvailable?: boolean;
+  licensePrefix?: string | null;
+  licenseActive?: boolean;
   message?: string;
 }
 

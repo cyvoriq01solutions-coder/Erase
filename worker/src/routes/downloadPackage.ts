@@ -51,6 +51,15 @@ async function requireEntitledCustomer(
       { status: 403 },
     );
   }
+  if (status.licenseStatus !== "active") {
+    return json(
+      {
+        error: "license_required",
+        message: "An activation key has not been issued for this account.",
+      },
+      { status: 403 },
+    );
+  }
 
   return {
     userId: session.userId,
@@ -157,6 +166,8 @@ export async function handleDownloadStatus(
   const status = await getCustomerDownloadStatus(env.HYPERDRIVE, session.userId);
   const accessStatus = status?.accessStatus ?? "waiting";
   const entitled = accessStatus === "approved";
+  const licensePrefix = status?.licensePrefix ?? null;
+  const licenseActive = licensePrefix !== null && status?.licenseStatus === "active";
   const store = createB2ReleaseStore(env);
   const packageAvailable =
     store !== null ? await isSetupPackagePresent(store) : false;
@@ -164,11 +175,14 @@ export async function handleDownloadStatus(
   let message = "Waiting for CYVRA administration to approve download access.";
   if (accessStatus === "rejected") {
     message = "Access was not approved.";
-  } else if (entitled && packageAvailable) {
+  } else if (entitled && licenseActive && packageAvailable) {
     message = "Access is approved. Download is authorised from this page only.";
+  } else if (entitled && licenseActive) {
+    message =
+      "Licence issued. The Windows package is not in the private release store yet.";
   } else if (entitled) {
     message =
-      "Access is approved. The Windows package is not in the private release store yet.";
+      "Access is approved. An activation key has not been issued yet.";
   }
 
   return json({
@@ -176,6 +190,8 @@ export async function handleDownloadStatus(
     entitled,
     accessStatus,
     rejectReason: accessStatus === "rejected" ? status?.rejectReason ?? null : null,
+    licensePrefix,
+    licenseActive,
     packageAvailable,
     message,
   });

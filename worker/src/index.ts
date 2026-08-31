@@ -32,6 +32,7 @@ import {
 } from "./routes/auth";
 import {
   handleApproveCustomer,
+  handleIssueCustomerLicense,
   handleListCustomers,
   handleRejectCustomer,
   type CustomerAccessApiEnv,
@@ -141,13 +142,17 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
 
   const customerAccessMatch = url.pathname.match(
-    /^\/api\/v1\/admin\/customers\/([0-9a-f-]{36})\/(approve|reject)$/i,
+    /^\/api\/v1\/admin\/customers\/([0-9a-f-]{36})\/(approve|reject|issue-license)$/i,
   );
   if (request.method === "POST" && customerAccessMatch !== null) {
     const [, userId, action] = customerAccessMatch;
-    return action === "approve"
-      ? handleApproveCustomer(request, env, userId)
-      : handleRejectCustomer(request, env, userId);
+    if (action === "approve") {
+      return handleApproveCustomer(request, env, userId);
+    }
+    if (action === "reject") {
+      return handleRejectCustomer(request, env, userId);
+    }
+    return handleIssueCustomerLicense(request, env, userId);
   }
 
   if (request.method === "GET" && url.pathname === "/api/v1/admin/users") {
