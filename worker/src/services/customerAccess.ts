@@ -1,5 +1,10 @@
 import type { Client } from "pg";
 
+import {
+  activationKeyPrefix,
+  generateActivationKey,
+  hashActivationKey,
+} from "./authCrypto";
 import { withDatabaseTransaction, type HyperdriveBinding } from "./database";
 
 export type CustomerAccessStatus = "waiting" | "approved" | "rejected";
@@ -13,6 +18,8 @@ export interface CustomerAccessRow {
   emailVerifiedAt: string | null;
   accessStatus: CustomerAccessStatus;
   rejectReason: string | null;
+  licensePrefix: string | null;
+  licenseStatus: string | null;
 }
 
 function normalizeReason(raw: string): string {
@@ -51,8 +58,40 @@ function mapRow(row: Record<string, unknown>): CustomerAccessRow {
       row.reject_reason === null || row.reject_reason === undefined
         ? null
         : String(row.reject_reason),
+    licensePrefix:
+      row.license_prefix === null || row.license_prefix === undefined
+        ? null
+        : String(row.license_prefix),
+    licenseStatus:
+      row.license_status === null || row.license_status === undefined
+        ? null
+        : String(row.license_status),
   };
 }
+
+const CUSTOMER_ACCESS_SELECT = `
+          u.id AS user_id,
+          u.organization_id,
+          u.email,
+          u.display_name,
+          u.account_status,
+          u.email_verified_at,
+          COALESCE(d.status, 'waiting') AS access_status,
+          d.reject_reason,
+          lic.key_prefix AS license_prefix,
+          lic.status AS license_status
+`;
+
+const ACTIVE_LICENSE_JOIN = `
+        LEFT JOIN LATERAL (
+          SELECT key_prefix, status
+          FROM licenses
+          WHERE issued_to_user_id = u.id
+            AND status = 'active'
+          ORDER BY issued_at DESC
+          LIMIT 1
+        ) lic ON TRUE
+`;
 
 export async function listVerifiedCustomers(
   hyperdrive: HyperdriveBinding,
@@ -61,14 +100,7 @@ export async function listVerifiedCustomers(
     const result = await client.query(
       `
         SELECT
-          u.id AS user_id,
-          u.organization_id,
-          u.email,
-          u.display_name,
-          u.account_status,
-          u.email_verified_at,
-          COALESCE(d.status, 'waiting') AS access_status,
-          d.reject_reason
+          ${CUSTOMER_ACCESS_SELECT}
         FROM users u
         INNER JOIN organizations o
           ON o.id = u.organization_id
@@ -77,6 +109,7 @@ export async function listVerifiedCustomers(
          AND ur.organization_id = u.organization_id
         LEFT JOIN customer_access_decisions d
           ON d.user_id = u.id
+        ${ACTIVE_LICENSE_JOIN}
         WHERE ur.role = 'customer'
           AND ur.status = 'active'
           AND o.account_type <> 'internal'
@@ -103,14 +136,7 @@ export async function getCustomerDownloadStatus(
     const result = await client.query(
       `
         SELECT
-          u.id AS user_id,
-          u.organization_id,
-          u.email,
-          u.display_name,
-          u.account_status,
-          u.email_verified_at,
-          COALESCE(d.status, 'waiting') AS access_status,
-          d.reject_reason
+          ${CUSTOMER_ACCESS_SELECT}
         FROM users u
         INNER JOIN organizations o
           ON o.id = u.organization_id
@@ -119,6 +145,7 @@ export async function getCustomerDownloadStatus(
          AND ur.organization_id = u.organization_id
         LEFT JOIN customer_access_decisions d
           ON d.user_id = u.id
+        ${ACTIVE_LICENSE_JOIN}
         WHERE u.id = $1
           AND ur.role = 'customer'
         LIMIT 1
@@ -322,5 +349,142 @@ export async function rejectCustomerAccess(
       [targetUserId],
     );
     return mapRow(listed.rows[0] as Record<string, unknown>);
+  });
+}
+
+export class LicenseIssueError extends Error {
+  constructor(
+    readonly code: "access_not_approved" | "license_already_issued",
+    message: string,
+  ) {
+    super(message);
+    this.name = "LicenseIssueError";
+  }
+}
+
+export async function issueCustomerLicense(
+  hyperdrive: HyperdriveBinding,
+  actorUserId: string,
+  actorOrganizationId: string,
+  targetUserId: string,
+  pepper: string,
+): Promise<{ customer: CustomerAccessRow; activationKey: string } | null> {
+  return withDatabaseTransaction(hyperdrive, async (client) => {
+    const target = await lockCustomer(client, targetUserId);
+    if (target === null) {
+      return null;
+    }
+
+    const access = await client.query(
+      `
+        SELECT status
+        FROM customer_access_decisions
+        WHERE user_id = $1
+        FOR UPDATE
+      `,
+      [targetUserId],
+    );
+    if (access.rowCount !== 1 || String(access.rows[0].status) !== "approved") {
+      throw new LicenseIssueError(
+        "access_not_approved",
+        "Issue a licence only after download access is approved.",
+      );
+    }
+
+    const existing = await client.query(
+      `
+        SELECT key_prefix
+        FROM licenses
+        WHERE issued_to_user_id = $1
+          AND status = 'active'
+        FOR UPDATE
+      `,
+      [targetUserId],
+    );
+    if ((existing.rowCount ?? 0) > 0) {
+      throw new LicenseIssueError(
+        "license_already_issued",
+        "An active licence already exists for this customer. The full key is not stored and cannot be shown again.",
+      );
+    }
+
+    const activationKey = generateActivationKey();
+    const prefix = activationKeyPrefix(activationKey);
+    const keyHash = await hashActivationKey(pepper, activationKey);
+    const licenseId = crypto.randomUUID();
+
+    await client.query(
+      `
+        INSERT INTO licenses (
+          id,
+          organization_id,
+          issued_to_user_id,
+          product,
+          key_prefix,
+          key_hash,
+          status,
+          max_devices,
+          metadata
+        ) VALUES ($1, $2, $3, 'CYVORIQ_ERASE', $4, $5, 'active', 1, $6::jsonb)
+      `,
+      [
+        licenseId,
+        target.organizationId,
+        targetUserId,
+        prefix,
+        keyHash,
+        JSON.stringify({ issued_by_user_id: actorUserId }),
+      ],
+    );
+
+    await client.query(
+      `
+        INSERT INTO audit_events (
+          id,
+          organization_id,
+          actor_id,
+          event_type,
+          entity_type,
+          entity_id,
+          details
+        ) VALUES ($1, $2, $3, 'LICENSE_ISSUED', 'license', $4, $5::jsonb)
+      `,
+      [
+        crypto.randomUUID(),
+        actorOrganizationId,
+        actorUserId,
+        licenseId,
+        JSON.stringify({
+          userId: targetUserId,
+          email: target.email.toLowerCase(),
+          keyPrefix: prefix,
+        }),
+      ],
+    );
+
+    const listed = await client.query(
+      `
+        SELECT
+          u.id AS user_id,
+          u.organization_id,
+          u.email,
+          u.display_name,
+          u.account_status,
+          u.email_verified_at,
+          d.status AS access_status,
+          d.reject_reason,
+          $2::text AS license_prefix,
+          'active'::text AS license_status
+        FROM users u
+        INNER JOIN customer_access_decisions d ON d.user_id = u.id
+        WHERE u.id = $1
+      `,
+      [targetUserId, prefix],
+    );
+
+    return {
+      customer: mapRow(listed.rows[0] as Record<string, unknown>),
+      activationKey,
+    };
   });
 }

@@ -177,6 +177,8 @@ export interface CustomerAccessSummary {
   emailVerifiedAt: string | null;
   accessStatus: CustomerAccessStatus;
   rejectReason: string | null;
+  licensePrefix: string | null;
+  licenseStatus: string | null;
 }
 
 export function listCustomers(): Promise<{ customers: CustomerAccessSummary[] }> {
@@ -197,6 +199,15 @@ export function rejectCustomer(
   return requestJson<{ customer: CustomerAccessSummary }>(
     `/api/v1/admin/customers/${encodeURIComponent(userId)}/reject`,
     { method: "POST", body: JSON.stringify({ reason }) },
+  );
+}
+
+export function issueCustomerLicense(
+  userId: string,
+): Promise<{ customer: CustomerAccessSummary; activationKey: string }> {
+  return requestJson<{ customer: CustomerAccessSummary; activationKey: string }>(
+    `/api/v1/admin/customers/${encodeURIComponent(userId)}/issue-license`,
+    { method: "POST" },
   );
 }
 

@@ -119,3 +119,34 @@ export async function hashAdminRateLimitKey(
   );
   return bytesToHex(new Uint8Array(signature));
 }
+
+const LICENSE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+export function generateActivationKey(): string {
+  const groups: string[] = [];
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  for (let group = 0; group < 4; group += 1) {
+    let chunk = "";
+    for (let index = 0; index < 4; index += 1) {
+      chunk += LICENSE_ALPHABET[bytes[group * 4 + index]! % LICENSE_ALPHABET.length];
+    }
+    groups.push(chunk);
+  }
+  return `CYVRA-${groups.join("-")}`;
+}
+
+export function activationKeyPrefix(key: string): string {
+  const parts = key.split("-");
+  return `${parts[0]}-${parts[1]}`;
+}
+
+export async function hashActivationKey(
+  pepper: string,
+  key: string,
+): Promise<string> {
+  const hmacKey = await importHmacKey(pepper);
+  const message = textEncoder.encode(`cyvoriq-erase:license:v1:${key}`);
+  const signature = await crypto.subtle.sign("HMAC", hmacKey, message);
+  return bytesToHex(new Uint8Array(signature));
+}

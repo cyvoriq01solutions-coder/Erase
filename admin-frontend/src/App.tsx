@@ -9,6 +9,7 @@ import {
   beginAdminLogin,
   getAdminSession,
   inviteAdminUser,
+  issueCustomerLicense,
   listAdminUsers,
   listCustomers,
   logout,
@@ -59,6 +60,11 @@ const overviewCards: ModuleCard[] = [
     title: "Commercial approvals",
     description: "Verified customers wait on Customers. Approve or reject with a reason email. Package release is still later.",
     status: "C5",
+  },
+  {
+    title: "Licence issuance",
+    description: "Server-generated activation key, hashed in Neon, emailed once. Windows device bind stays off.",
+    status: "C licence",
   },
   {
     title: "Device activation",
@@ -306,6 +312,7 @@ function CustomersPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [issuedKey, setIssuedKey] = useState<{ email: string; activationKey: string } | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -378,9 +385,10 @@ function CustomersPage() {
       <p className="page-lede">
         Verified customer identities wait here until a Super Administrator or Accounts
         Administrator approves download access. Rejection sends the reason to the customer email.
-        This does not publish a Windows installer.
+        This does not publish a Windows installer. Issuing a licence emails the activation key once;
+        the full key is not stored.
       </p>
-      <div className="safety-banner">NO BROWSER-SIDE DOWNLOAD AUTHORITY · PACKAGE NOT RELEASED</div>
+      <div className="safety-banner">NO BROWSER-SIDE DOWNLOAD AUTHORITY · PACKAGE NOT RELEASED · KEY SHOWN ONCE</div>
 
       <div className="admin-users-card" style={{ marginTop: 28 }}>
         <div className="admin-users-header">
@@ -433,6 +441,16 @@ function CustomersPage() {
                   <strong>{customer.accessStatus}</strong>
                   {customer.rejectReason && <small>{customer.rejectReason}</small>}
                 </div>
+                <div className="admin-user-state">
+                  <span>Licence</span>
+                  <strong>
+                    {customer.licensePrefix
+                      ? `${customer.licensePrefix}…`
+                      : customer.accessStatus === "approved"
+                        ? "Not issued"
+                        : "—"}
+                  </strong>
+                </div>
                 <div className="admin-user-actions">
                   {customer.accessStatus !== "approved" && (
                     <button
@@ -455,6 +473,39 @@ function CustomersPage() {
                       }}
                     >
                       Approve
+                    </button>
+                  )}
+                  {customer.accessStatus === "approved" && !customer.licensePrefix && (
+                    <button
+                      className="primary-button compact-button"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setBusy(true);
+                        setError("");
+                        setMessage("");
+                        void issueCustomerLicense(customer.id)
+                          .then((result) => {
+                            setIssuedKey({
+                              email: result.customer.email,
+                              activationKey: result.activationKey,
+                            });
+                            setMessage(
+                              `Licence issued for ${result.customer.email}. Copy the key now; it will not be shown again.`,
+                            );
+                            return refresh();
+                          })
+                          .catch((caught) => {
+                            setError(
+                              caught instanceof ApiError
+                                ? caught.message
+                                : "Licence issuance failed.",
+                            );
+                          })
+                          .finally(() => setBusy(false));
+                      }}
+                    >
+                      Issue licence
                     </button>
                   )}
                   <button
@@ -501,6 +552,23 @@ function CustomersPage() {
       </div>
       {message && <p className="notice success role-notice">{message}</p>}
       {error && <p className="notice error role-notice">{error}</p>}
+      {issuedKey && (
+        <div className="notice success role-notice" role="status">
+          <p>
+            Full activation key for <strong>{issuedKey.email}</strong> (shown once):
+          </p>
+          <p>
+            <code style={{ fontSize: 18, letterSpacing: "0.04em" }}>{issuedKey.activationKey}</code>
+          </p>
+          <button
+            className="secondary-button compact-button"
+            type="button"
+            onClick={() => void navigator.clipboard.writeText(issuedKey.activationKey)}
+          >
+            Copy key
+          </button>
+        </div>
+      )}
     </section>
   );
 }

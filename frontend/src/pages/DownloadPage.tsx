@@ -138,20 +138,32 @@ export default function DownloadPage() {
                   </strong>
                 </div>
                 <div>
+                  <span>Licence</span>
+                  <strong>
+                    {download?.licenseActive && download.licensePrefix
+                      ? `Issued · ${download.licensePrefix}… (full key emailed)`
+                      : download?.entitled
+                        ? "Not issued yet"
+                        : "Locked until entitlement is approved"}
+                  </strong>
+                </div>
+                <div>
                   <span>CYVRA Erase package</span>
                   <strong>
-                    {download?.entitled && download.packageAvailable
+                    {download?.entitled && download.licenseActive && download.packageAvailable
                       ? "Ready · authorised download"
-                      : download?.entitled
+                      : download?.entitled && download.licenseActive
                         ? "Approved · installer not in private store yet"
-                        : "Locked until entitlement is approved"}
+                        : download?.entitled
+                          ? "Approved · licence and package still required"
+                          : "Locked until entitlement is approved"}
                   </strong>
                 </div>
               </div>
               {download?.accessStatus === "rejected" && download.rejectReason && (
                 <small>Reason: {download.rejectReason}</small>
               )}
-              {download?.entitled && download.packageAvailable ? (
+              {download?.entitled && download.licenseActive && download.packageAvailable ? (
                 <button
                   className="button button-orange button-primary-cta"
                   type="button"
@@ -162,9 +174,11 @@ export default function DownloadPage() {
                 </button>
               ) : (
                 <button className="button button-orange button-primary-cta" type="button" disabled>
-                  {download?.entitled
+                  {download?.entitled && download.licenseActive
                     ? "Download Locked · Package Not Released"
-                    : "Download Locked · Entitlement Required"}
+                    : download?.entitled
+                      ? "Download Locked · Licence Not Issued"
+                      : "Download Locked · Entitlement Required"}
                 </button>
               )}
               {downloadError && <small>{downloadError}</small>}
