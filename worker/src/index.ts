@@ -31,6 +31,16 @@ import {
   type AuthApiEnv,
 } from "./routes/auth";
 import {
+  handleApproveCustomer,
+  handleListCustomers,
+  handleRejectCustomer,
+  type CustomerAccessApiEnv,
+} from "./routes/customerAccess";
+import {
+  handleDownloadStatus,
+  type DownloadStatusEnv,
+} from "./routes/downloadStatus";
+import {
   handleDatabaseHealth,
   type DatabaseHealthEnv,
 } from "./routes/databaseHealth";
@@ -48,6 +58,8 @@ export interface Env
     AuthApiEnv,
     AdminAuthApiEnv,
     AdminApiEnv,
+    CustomerAccessApiEnv,
+    DownloadStatusEnv,
     CorsEnv {}
 
 async function route(request: Request, env: Env): Promise<Response> {
@@ -88,6 +100,13 @@ async function route(request: Request, env: Env): Promise<Response> {
     return handleSession(request, env);
   }
 
+  if (
+    request.method === "GET" &&
+    url.pathname === "/api/v1/auth/download-status"
+  ) {
+    return handleDownloadStatus(request, env);
+  }
+
   if (request.method === "POST" && url.pathname === "/api/v1/auth/logout") {
     return handleLogout(request, env);
   }
@@ -125,6 +144,20 @@ async function route(request: Request, env: Env): Promise<Response> {
   // reads only the dedicated Admin cookie during the C4.1 migration.
   if (request.method === "GET" && url.pathname === "/api/v1/admin/session") {
     return handleAdminSession(request, env);
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/v1/admin/customers") {
+    return handleListCustomers(request, env);
+  }
+
+  const customerAccessMatch = url.pathname.match(
+    /^\/api\/v1\/admin\/customers\/([0-9a-f-]{36})\/(approve|reject)$/i,
+  );
+  if (request.method === "POST" && customerAccessMatch !== null) {
+    const [, userId, action] = customerAccessMatch;
+    return action === "approve"
+      ? handleApproveCustomer(request, env, userId)
+      : handleRejectCustomer(request, env, userId);
   }
 
   if (request.method === "GET" && url.pathname === "/api/v1/admin/users") {

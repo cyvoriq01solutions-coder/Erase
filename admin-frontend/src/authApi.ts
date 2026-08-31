@@ -167,6 +167,39 @@ export function revokeAdminUser(userId: string): Promise<AdminRoleActionResponse
   );
 }
 
+export type CustomerAccessStatus = "waiting" | "approved" | "rejected";
+
+export interface CustomerAccessSummary {
+  id: string;
+  email: string;
+  displayName: string | null;
+  accountStatus: string;
+  emailVerifiedAt: string | null;
+  accessStatus: CustomerAccessStatus;
+  rejectReason: string | null;
+}
+
+export function listCustomers(): Promise<{ customers: CustomerAccessSummary[] }> {
+  return requestJson<{ customers: CustomerAccessSummary[] }>("/api/v1/admin/customers");
+}
+
+export function approveCustomer(userId: string): Promise<{ customer: CustomerAccessSummary }> {
+  return requestJson<{ customer: CustomerAccessSummary }>(
+    `/api/v1/admin/customers/${encodeURIComponent(userId)}/approve`,
+    { method: "POST" },
+  );
+}
+
+export function rejectCustomer(
+  userId: string,
+  reason: string,
+): Promise<{ customer: CustomerAccessSummary }> {
+  return requestJson<{ customer: CustomerAccessSummary }>(
+    `/api/v1/admin/customers/${encodeURIComponent(userId)}/reject`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+}
+
 export function activeAdminRole(user: SessionUser): AdminRole | null {
   if (user.roles.includes("super_admin")) return "super_admin";
   if (user.roles.includes("accounts_admin")) return "accounts_admin";

@@ -122,6 +122,21 @@ export function getSession(): Promise<SessionResponse> {
   return requestJson<SessionResponse>("/api/v1/auth/session");
 }
 
+export type DownloadAccessStatus = "waiting" | "approved" | "rejected";
+
+export interface DownloadStatusResponse {
+  authenticated: boolean;
+  entitled: boolean;
+  accessStatus?: DownloadAccessStatus;
+  rejectReason?: string | null;
+  packageAvailable?: boolean;
+  message?: string;
+}
+
+export function getDownloadStatus(): Promise<DownloadStatusResponse> {
+  return requestJson<DownloadStatusResponse>("/api/v1/auth/download-status");
+}
+
 export function logout(): Promise<void> {
   return requestJson<void>("/api/v1/auth/logout", { method: "POST" });
 }
