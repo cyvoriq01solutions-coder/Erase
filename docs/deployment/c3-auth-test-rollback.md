@@ -62,7 +62,7 @@ After cleanup, verify:
 
 1. `https://cyvra.co.in` loads the production site.
 2. `https://api.cyvra.co.in/api/v1/health` returns `status: ok`.
-3. `https://api.cyvra.co.in/api/v1/db/health` remains healthy.
+3. Unauthenticated `https://api.cyvra.co.in/api/v1/db/health` and `/api/v1/db/tables` return 404.
 4. `https://admin.cyvra.co.in` still resolves to the isolated Admin Pages project.
 5. `auth-test.cyvra.co.in` no longer resolves as a customer test surface.
 6. Production `PORTAL_ORIGINS` no longer contains the temporary test hostname.
