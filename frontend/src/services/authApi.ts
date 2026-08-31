@@ -137,6 +137,40 @@ export function getDownloadStatus(): Promise<DownloadStatusResponse> {
   return requestJson<DownloadStatusResponse>("/api/v1/auth/download-status");
 }
 
+export async function downloadSetupPackage(): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/download/setup`, {
+    method: "GET",
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    let message = "The CYVORIQ service could not complete this request.";
+    let code: string | undefined;
+    try {
+      const body = (await response.json()) as { message?: unknown; error?: unknown };
+      if (typeof body.message === "string") {
+        message = body.message;
+      }
+      if (typeof body.error === "string") {
+        code = body.error;
+      }
+    } catch {
+      // Keep the generic message when the body is not JSON.
+    }
+    throw new ApiError(message, response.status, code);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = "CYVRA-Erase-0.3.0-x64-setup.exe";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
 export function logout(): Promise<void> {
   return requestJson<void>("/api/v1/auth/logout", { method: "POST" });
 }

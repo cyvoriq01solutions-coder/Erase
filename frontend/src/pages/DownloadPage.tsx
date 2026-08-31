@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router";
-import { getDownloadStatus, getSession, logout, type DownloadStatusResponse, type SessionUser } from "../services/authApi";
+import { downloadSetupPackage, getDownloadStatus, getSession, logout, type DownloadStatusResponse, type SessionUser } from "../services/authApi";
 
 const gates = [
   ["01", "Create or sign in to your CYVORIQ account", "Your email becomes the verified account identity; no separate username is required."],
@@ -18,6 +18,8 @@ export default function DownloadPage() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [download, setDownload] = useState<DownloadStatusResponse | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -50,6 +52,22 @@ export default function DownloadPage() {
       active = false;
     };
   }, []);
+
+  async function handleDownload() {
+    setDownloadError(null);
+    setDownloading(true);
+    try {
+      await downloadSetupPackage();
+    } catch (error) {
+      setDownloadError(
+        error instanceof Error
+          ? error.message
+          : "Download could not start. No public installer URL was exposed.",
+      );
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -122,20 +140,34 @@ export default function DownloadPage() {
                 <div>
                   <span>CYVRA Erase package</span>
                   <strong>
-                    {download?.entitled
-                      ? "Approved · installer not released yet"
-                      : "Locked until entitlement is approved"}
+                    {download?.entitled && download.packageAvailable
+                      ? "Ready · authorised download"
+                      : download?.entitled
+                        ? "Approved · installer not in private store yet"
+                        : "Locked until entitlement is approved"}
                   </strong>
                 </div>
               </div>
               {download?.accessStatus === "rejected" && download.rejectReason && (
                 <small>Reason: {download.rejectReason}</small>
               )}
-              <button className="button button-orange button-primary-cta" type="button" disabled>
-                {download?.entitled
-                  ? "Download Locked · Package Not Released"
-                  : "Download Locked · Entitlement Required"}
-              </button>
+              {download?.entitled && download.packageAvailable ? (
+                <button
+                  className="button button-orange button-primary-cta"
+                  type="button"
+                  onClick={() => void handleDownload()}
+                  disabled={downloading}
+                >
+                  {downloading ? "Preparing download..." : "Download CYVRA Erase"}
+                </button>
+              ) : (
+                <button className="button button-orange button-primary-cta" type="button" disabled>
+                  {download?.entitled
+                    ? "Download Locked · Package Not Released"
+                    : "Download Locked · Entitlement Required"}
+                </button>
+              )}
+              {downloadError && <small>{downloadError}</small>}
               <button className="download-signout" type="button" onClick={handleSignOut} disabled={signingOut}>
                 {signingOut ? "Signing out..." : "Sign Out"}
               </button>

@@ -27,5 +27,12 @@
     "binding": "HYPERDRIVE",
     "id": "a741ce4f02de4b54a32a6cfb5f7d9135"
   }
-]
+],
+
+  "r2_buckets": [
+    {
+      "binding": "RELEASES",
+      "bucket_name": "cyvra-erase-releases"
+    }
+  ]
 }
