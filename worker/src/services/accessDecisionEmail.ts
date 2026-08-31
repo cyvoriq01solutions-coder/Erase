@@ -86,7 +86,7 @@ export async function deliverLicenseIssuedEmail(
     `Activation key: ${input.activationKey}`,
     "",
     "Store this key. CYVORIQ does not keep the full key after issuance.",
-    "Windows device binding is not live yet. Do not share the key.",
+    "Enter this key in CYVRA Erase on one authorised Windows PC. Do not share the key.",
     "",
     "Sign in at https://www.cyvra.co.in/download",
   ].join("\n");
@@ -109,7 +109,7 @@ export async function deliverLicenseIssuedEmail(
           <p>An administrator issued your CYVRA Erase licence.</p>
           <p><strong>Prefix:</strong> ${escapeHtml(input.keyPrefix)}</p>
           <p><strong>Activation key:</strong> <code style="font-size:16px;">${safeKey}</code></p>
-          <p>Store this key. CYVORIQ does not keep the full key after issuance. Windows device binding is not live yet.</p>
+          <p>Store this key. CYVORIQ does not keep the full key after issuance. Enter it in CYVRA Erase on one authorised Windows PC.</p>
           <p>Sign in at <a href="https://www.cyvra.co.in/download">www.cyvra.co.in/download</a>.</p>
         </div>
       `,

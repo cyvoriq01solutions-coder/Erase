@@ -150,3 +150,15 @@ export async function hashActivationKey(
   const signature = await crypto.subtle.sign("HMAC", hmacKey, message);
   return bytesToHex(new Uint8Array(signature));
 }
+
+export async function hashDeviceFingerprint(
+  pepper: string,
+  machineGuid: string,
+): Promise<string> {
+  const hmacKey = await importHmacKey(pepper);
+  const message = textEncoder.encode(
+    `cyvoriq-erase:device:v1:${machineGuid.trim().toLowerCase()}`,
+  );
+  const signature = await crypto.subtle.sign("HMAC", hmacKey, message);
+  return bytesToHex(new Uint8Array(signature));
+}

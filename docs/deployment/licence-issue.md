@@ -15,7 +15,7 @@ Format: `CYVRA-XXXX-XXXX-XXXX-XXXX` (Crockford-style alphabet, no 0/O/1/I).
 
 - Email: full key once
 - `/download`: prefix only + “full key emailed”
-- Windows first-run activation remains disabled (`live_activation_enabled: false`)
+- Windows first-run activation is live (`live_activation_enabled: true`); see device-bind.md
 
 ## API
 
