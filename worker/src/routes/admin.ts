@@ -55,7 +55,7 @@ async function readJsonObject(request: Request): Promise<Record<string, unknown>
   return parsed as Record<string, unknown>;
 }
 
-async function requireAdminSession(
+export async function requireAdminSession(
   request: Request,
   env: AdminApiEnv,
 ): Promise<{ session: AuthenticatedAdminSession; roles: ActiveRole[] } | Response> {

@@ -5,14 +5,18 @@ import {
   ApiError,
   activeAdminRole,
   approveAdminUser,
+  approveCustomer,
   beginAdminLogin,
   getAdminSession,
   inviteAdminUser,
   listAdminUsers,
+  listCustomers,
   logout,
+  rejectCustomer,
   revokeAdminUser,
   type AdminRole,
   type AdminUserSummary,
+  type CustomerAccessSummary,
   type SessionUser,
   verifyAdminCode,
 } from "./authApi";
@@ -53,8 +57,8 @@ const overviewCards: ModuleCard[] = [
   },
   {
     title: "Commercial approvals",
-    description: "Payment, purchase, licence and entitlement authority stays server-controlled.",
-    status: "C5 pending",
+    description: "Verified customers wait on Customers. Approve or reject with a reason email. Package release is still later.",
+    status: "C5",
   },
   {
     title: "Device activation",
@@ -289,6 +293,214 @@ function StatusPage({ title, description }: { title: string; description: string
           Worker authorization, audit and data-boundary tests pass.
         </p>
       </div>
+    </section>
+  );
+}
+
+function CustomersPage() {
+  const [customers, setCustomers] = useState<CustomerAccessSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function refresh() {
+    setLoading(true);
+    try {
+      const result = await listCustomers();
+      setCustomers(result.customers);
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : "Verified customers could not be loaded.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const waitingIds = customers
+    .filter((customer) => customer.accessStatus === "waiting")
+    .map((customer) => customer.id);
+  const selectedWaiting = waitingIds.filter((id) => selected[id]);
+
+  async function approveSelected() {
+    if (selectedWaiting.length === 0) {
+      setError("Select at least one waiting customer.");
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    setError("");
+    try {
+      for (const id of selectedWaiting) {
+        await approveCustomer(id);
+      }
+      setSelected({});
+      setMessage(`Approved ${selectedWaiting.length} customer(s). Download remains locked until the package is released.`);
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : "Approval failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitReject(userId: string) {
+    setBusy(true);
+    setMessage("");
+    setError("");
+    try {
+      await rejectCustomer(userId, rejectReason);
+      setRejectingId(null);
+      setRejectReason("");
+      setMessage("Customer access was rejected and an email with the reason was sent.");
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : "Rejection failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="content-page">
+      <span className="eyebrow">C5 ACCESS DECISIONS</span>
+      <h1>Customers</h1>
+      <p className="page-lede">
+        Verified customer identities wait here until a Super Administrator or Accounts
+        Administrator approves download access. Rejection sends the reason to the customer email.
+        This does not publish a Windows installer.
+      </p>
+      <div className="safety-banner">NO BROWSER-SIDE DOWNLOAD AUTHORITY · PACKAGE NOT RELEASED</div>
+
+      <div className="admin-users-card" style={{ marginTop: 28 }}>
+        <div className="admin-users-header">
+          <div>
+            <span className="eyebrow">NEON RBAC</span>
+            <h2>Waiting and decided customers</h2>
+          </div>
+          <div className="admin-user-actions">
+            <button className="secondary-button compact-button" type="button" onClick={() => void refresh()} disabled={loading || busy}>
+              Refresh
+            </button>
+            <button
+              className="primary-button compact-button"
+              type="button"
+              onClick={() => void approveSelected()}
+              disabled={busy || selectedWaiting.length === 0}
+            >
+              Approve selected
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
+          <p className="muted">Loading verified customers...</p>
+        ) : customers.length === 0 ? (
+          <p className="muted">No verified customers yet.</p>
+        ) : (
+          <div className="admin-user-list">
+            {customers.map((customer) => (
+              <article key={customer.id} className="admin-user-row">
+                <label className="admin-user-identity">
+                  {customer.accessStatus === "waiting" && (
+                    <input
+                      type="checkbox"
+                      checked={Boolean(selected[customer.id])}
+                      onChange={(event) =>
+                        setSelected((current) => ({
+                          ...current,
+                          [customer.id]: event.target.checked,
+                        }))
+                      }
+                      disabled={busy}
+                    />
+                  )}
+                  <strong>{customer.displayName || customer.email}</strong>
+                  <span>{customer.email}</span>
+                </label>
+                <div className="admin-user-state">
+                  <span>Access</span>
+                  <strong>{customer.accessStatus}</strong>
+                  {customer.rejectReason && <small>{customer.rejectReason}</small>}
+                </div>
+                <div className="admin-user-actions">
+                  {customer.accessStatus !== "approved" && (
+                    <button
+                      className="primary-button compact-button"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setBusy(true);
+                        setError("");
+                        void approveCustomer(customer.id)
+                          .then(() => refresh())
+                          .catch((caught) => {
+                            setError(
+                              caught instanceof ApiError
+                                ? caught.message
+                                : "Approval failed.",
+                            );
+                          })
+                          .finally(() => setBusy(false));
+                      }}
+                    >
+                      Approve
+                    </button>
+                  )}
+                  <button
+                    className="danger-button compact-button"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setRejectingId(customer.id);
+                      setRejectReason("");
+                    }}
+                  >
+                    Reject
+                  </button>
+                </div>
+                {rejectingId === customer.id && (
+                  <form
+                    className="stack-form"
+                    style={{ gridColumn: "1 / -1" }}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void submitReject(customer.id);
+                    }}
+                  >
+                    <label>
+                      <span>Reason sent to the customer (8–500 characters)</span>
+                      <input
+                        value={rejectReason}
+                        onChange={(event) => setRejectReason(event.target.value)}
+                        required
+                        minLength={8}
+                        maxLength={500}
+                        disabled={busy}
+                      />
+                    </label>
+                    <button className="danger-button" type="submit" disabled={busy}>
+                      Send rejection email
+                    </button>
+                  </form>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+      {message && <p className="notice success role-notice">{message}</p>}
+      {error && <p className="notice error role-notice">{error}</p>}
     </section>
   );
 }
@@ -627,15 +839,7 @@ function AdminShell({
         <main className="workspace-main">
           <Routes>
             <Route path="/" element={<OverviewPage role={role} />} />
-            <Route
-              path="/customers"
-              element={
-                <StatusPage
-                  title="Customers"
-                  description="Verified customer identities, account state and organization context."
-                />
-              }
-            />
+            <Route path="/customers" element={<CustomersPage />} />
             <Route
               path="/orders"
               element={

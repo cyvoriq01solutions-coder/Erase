@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router";
-import { getSession, logout, type SessionUser } from "../services/authApi";
+import { getDownloadStatus, getSession, logout, type DownloadStatusResponse, type SessionUser } from "../services/authApi";
 
 const gates = [
   ["01", "Create or sign in to your CYVORIQ account", "Your email becomes the verified account identity; no separate username is required."],
@@ -16,19 +16,27 @@ type AccessState = "checking" | "anonymous" | "authenticated" | "unavailable";
 export default function DownloadPage() {
   const [accessState, setAccessState] = useState<AccessState>("checking");
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [download, setDownload] = useState<DownloadStatusResponse | null>(null);
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     let active = true;
 
     getSession()
-      .then((session) => {
+      .then(async (session) => {
         if (!active) return;
         if (session.authenticated) {
           setUser(session.user);
+          try {
+            const status = await getDownloadStatus();
+            if (active) setDownload(status);
+          } catch {
+            if (active) setDownload(null);
+          }
           setAccessState("authenticated");
         } else {
           setUser(null);
+          setDownload(null);
           setAccessState("anonymous");
         }
       })
@@ -101,16 +109,40 @@ export default function DownloadPage() {
               <div className="download-session-status" aria-label="Customer access status">
                 <div><span>Identity</span><strong>Verified</strong></div>
                 <div><span>Account</span><strong>Active</strong></div>
-                <div><span>Commercial entitlement</span><strong>Server verification required</strong></div>
-                <div><span>CYVRA Erase package</span><strong>Locked until entitlement is approved</strong></div>
+                <div>
+                  <span>Commercial entitlement</span>
+                  <strong>
+                    {download?.accessStatus === "approved"
+                      ? "Approved"
+                      : download?.accessStatus === "rejected"
+                        ? "Not approved"
+                        : "Waiting for CYVRA approval"}
+                  </strong>
+                </div>
+                <div>
+                  <span>CYVRA Erase package</span>
+                  <strong>
+                    {download?.entitled
+                      ? "Approved · installer not released yet"
+                      : "Locked until entitlement is approved"}
+                  </strong>
+                </div>
               </div>
+              {download?.accessStatus === "rejected" && download.rejectReason && (
+                <small>Reason: {download.rejectReason}</small>
+              )}
               <button className="button button-orange button-primary-cta" type="button" disabled>
-                Download Locked · Entitlement Required
+                {download?.entitled
+                  ? "Download Locked · Package Not Released"
+                  : "Download Locked · Entitlement Required"}
               </button>
               <button className="download-signout" type="button" onClick={handleSignOut} disabled={signingOut}>
                 {signingOut ? "Signing out..." : "Sign Out"}
               </button>
-              <small>Email verification confirms identity only. Payment, approval, licence and download entitlement remain server-controlled.</small>
+              <small>
+                {download?.message ||
+                  "Email verification confirms identity only. Administration approval and package release remain server-controlled."}
+              </small>
             </>
           )}
 
