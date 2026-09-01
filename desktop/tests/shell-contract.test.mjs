@@ -137,6 +137,13 @@ test("foundation does not ship destructive or obsolete customer wording", () => 
   assert.match(combined, /Data purge/);
   assert.match(combined, /willingly and knowingly/);
   assert.match(combined, /button-danger/);
+  assert.match(combined, /Save as PDF/);
+  assert.match(combined, /pre-sanitization assessment/);
+  assert.match(combined, /Battery health/);
+  assert.match(combined, /not collected in this scan/i);
+  assert.match(combined, /HDMI ports/);
+  assert.doesNotMatch(combined, /Battery health: 0%/);
+  assert.doesNotMatch(combined, /HDMI ports:\s*0/);
 });
 
 test("NSIS installer licence exists and is assessment-only", () => {
