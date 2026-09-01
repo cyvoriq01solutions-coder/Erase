@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
-import { loadShellBootstrap } from "./adapters/desktopBridge";
+import { loadShellBootstrap, runDeviceVerification } from "./adapters/desktopBridge";
 import { AppFrame } from "./components/AppFrame";
 import { InstallerSetup } from "./components/InstallerSetup";
 import { ShellScreen } from "./screens/ShellScreens";
-import type { BridgeState, NavigationId } from "./types/shell";
+import type { BridgeState, NavigationId, VerificationPhase, VerificationRecord } from "./types/shell";
 
 export default function App() {
   const [setupComplete, setSetupComplete] = useState(false);
   const [current, setCurrent] = useState<NavigationId>("overview");
   const [bridge, setBridge] = useState<BridgeState>({ status: "loading" });
+  const [verificationPhase, setVerificationPhase] = useState<VerificationPhase>("idle");
+  const [verification, setVerification] = useState<VerificationRecord | null>(null);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -30,6 +33,22 @@ export default function App() {
       active = false;
     };
   }, []);
+
+  async function handleRunVerification() {
+    setVerificationError(null);
+    setVerificationPhase("running");
+    try {
+      const record = await runDeviceVerification();
+      setVerification(record);
+      setVerificationPhase("complete");
+      setCurrent("results");
+    } catch (error) {
+      setVerificationPhase("error");
+      setVerificationError(
+        error instanceof Error ? error.message : "CYVRA could not complete device verification.",
+      );
+    }
+  }
 
   if (bridge.status === "loading") {
     return (
@@ -55,8 +74,23 @@ export default function App() {
   }
 
   return (
-    <AppFrame bridge={bridge} current={current} onNavigate={setCurrent}>
-      <ShellScreen current={current} bridge={bridge} onNavigate={setCurrent} />
+    <AppFrame
+      bridge={bridge}
+      current={current}
+      onNavigate={setCurrent}
+      verificationPhase={verificationPhase}
+    >
+      <ShellScreen
+        current={current}
+        bridge={bridge}
+        verificationPhase={verificationPhase}
+        verification={verification}
+        verificationError={verificationError}
+        onNavigate={setCurrent}
+        onRunVerification={() => {
+          void handleRunVerification();
+        }}
+      />
     </AppFrame>
   );
 }

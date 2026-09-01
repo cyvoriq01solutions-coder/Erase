@@ -6,6 +6,7 @@ pub mod device;
 pub mod encryption;
 pub mod evidence;
 pub mod hardware_inventory_v1;
+pub mod hardware_validation;
 pub mod os;
 pub mod pdem;
 pub mod personal_data;
@@ -178,6 +179,58 @@ impl ScanResult {
     }
 }
 
+#[derive(Debug)]
+pub struct CustomerVerification {
+    pub hardware_passed: bool,
+    pub hardware_result: String,
+    pub hardware_validation: String,
+    pub report_json: String,
+    pub manufacturer: String,
+    pub model: String,
+    pub hostname: String,
+    pub os_caption: String,
+    pub personal_location_count: u64,
+    pub pdem_object_count: u64,
+    pub content_inspected: bool,
+    pub destructive_operations_enabled: bool,
+    pub assessment_status: String,
+    pub assessment_summary: String,
+}
+
+pub fn run_customer_verification() -> CustomerVerification {
+    let scan = run_scan();
+    let (hardware_validation, hardware_passed, hardware_result) = match &scan.hardware_inventory {
+        Some(inventory) => {
+            let report = hardware_validation::build_report(inventory);
+            let result = if report.passed { "pass" } else { "fail" };
+            (report.lines.join("\n"), report.passed, result.to_string())
+        }
+        None => (
+            hardware_validation::not_windows_text(),
+            false,
+            "not_windows".to_string(),
+        ),
+    };
+
+    CustomerVerification {
+        hardware_passed,
+        hardware_result,
+        hardware_validation,
+        report_json: scan.render_json(),
+        manufacturer: scan.device.manufacturer.clone(),
+        model: scan.device.model.clone(),
+        hostname: scan.device.hostname.clone(),
+        os_caption: scan.operating_system.caption.clone(),
+        personal_location_count: scan.personal_data.locations.len() as u64,
+        pdem_object_count: scan.pdem.objects.len() as u64,
+        content_inspected: scan.personal_data.content_inspected
+            || scan.application_data.content_inspected,
+        destructive_operations_enabled: scan.storage.destructive_operations_enabled,
+        assessment_status: scan.assessment.status.to_string(),
+        assessment_summary: scan.assessment.summary.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{PlatformAdapter, profile_paths, run_scan_with};
@@ -325,6 +378,7 @@ mod tests {
         assert!(!scan.application_data.content_inspected);
 
         let report = scan.render_json();
+        assert!(report.contains(r#""product": "CYVRA Erase Verification""#));
         assert!(report.contains(r#""agentVersion": "0.2.1""#));
         assert!(report.contains(r#""scanMode": "non_destructive""#));
         assert!(report.contains(r#""destructiveOperationsEnabled": false"#));

@@ -96,7 +96,7 @@ pub fn render(
 
     format!(
         r#"{{
-  "product": "CYVORIQ Verification Agent",
+  "product": "CYVRA Erase Verification",
   "agentVersion": "0.2.1",
   "scanMode": "{}",
   "device": {{

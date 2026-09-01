@@ -25,6 +25,25 @@ export interface ShellBootstrap {
   reportAuthenticationEnabled: boolean;
 }
 
+export type VerificationPhase = "idle" | "running" | "complete" | "error";
+
+export interface VerificationRecord {
+  hardwareResult: string;
+  hardwarePassed: boolean;
+  hardwareValidation: string;
+  reportJson: string;
+  manufacturer: string;
+  model: string;
+  hostname: string;
+  osCaption: string;
+  personalLocationCount: number;
+  pdemObjectCount: number;
+  contentInspected: boolean;
+  destructiveOperationsEnabled: boolean;
+  assessmentStatus: string;
+  assessmentSummary: string;
+  message: string;
+}
 export type BridgeState =
   | { status: "loading" }
   | { status: "ready"; bootstrap: ShellBootstrap }
@@ -62,13 +81,12 @@ export function assertSafeShellBootstrap(value: unknown): ShellBootstrap {
 
   const lockedOff = [
     "destructiveOperationsEnabled",
-    "liveCollectionEnabled",
     "gradingIssuanceEnabled",
     "reportAuthenticationEnabled",
   ] as const;
 
   if (lockedOff.some((key) => value[key] !== false)) {
-    throw new Error("Unsafe capability enabled in W2.1B shell foundation");
+    throw new Error("Unsafe capability enabled in CYVRA Erase");
   }
 
   return value as unknown as ShellBootstrap;
