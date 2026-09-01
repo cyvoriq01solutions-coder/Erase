@@ -505,6 +505,19 @@ a:focus-visible,
   border: 1px solid #a9bfd3;
 }
 
+.button-quiet {
+  min-height: 34px;
+  padding: 0 12px;
+  color: var(--navy);
+  background: transparent;
+  border: 1px solid #a9bfd3;
+  font-size: 12px;
+}
+
+.button-quiet:hover:not(:disabled) {
+  background: var(--surface-blue);
+}
+
 .button-secondary:hover:not(:disabled) {
   background: var(--surface-blue);
   border-color: var(--blue);
@@ -853,6 +866,13 @@ a:focus-visible,
   font-size: 10px;
 }
 
+.safety-footer span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .safety-footer strong {
   display: inline-flex;
   align-items: center;
@@ -1135,4 +1155,171 @@ a:focus-visible,
   border-radius: 8px;
   background: var(--surface);
   color: var(--muted);
+}
+
+.panel-lead {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.drive-list {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+
+.drive-card {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.drive-card-selected {
+  background: var(--surface-blue);
+  border-color: #9ec6e4;
+}
+
+.drive-card input {
+  margin-top: 6px;
+}
+
+.drive-letter {
+  min-width: 36px;
+  color: var(--blue);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.drive-card strong,
+.drive-kind,
+.drive-hint {
+  display: block;
+}
+
+.drive-kind {
+  margin-top: 2px;
+  color: var(--navy);
+  font-size: 12px;
+}
+
+.drive-hint {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.progress-status {
+  margin-top: 16px;
+}
+
+.progress-track {
+  height: 10px;
+  overflow: hidden;
+  background: #d7e4ef;
+  border-radius: 999px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue), var(--cyan));
+  border-radius: inherit;
+  transition: width 240ms ease;
+}
+
+.progress-detail {
+  margin: 10px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.stage-current {
+  border-color: #9ec6e4;
+  background: var(--surface-blue);
+}
+
+.report-panel h3 {
+  margin: 22px 0 8px;
+  color: var(--navy);
+  font-size: 15px;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--white);
+}
+
+.report-table th,
+.report-table td {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  text-align: left;
+  font-size: 13px;
+  vertical-align: top;
+}
+
+.report-table th {
+  width: 34%;
+  color: var(--muted);
+  font-weight: 650;
+  background: var(--surface);
+}
+
+.report-empty-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.email-row {
+  margin-top: 24px;
+}
+
+.email-row label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.email-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.email-actions input {
+  flex: 1 1 220px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+@media (max-width: 720px) {
+  .drive-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .drive-letter {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .titlebar-status .button-quiet {
+    display: none;
+  }
 }

@@ -1,6 +1,6 @@
 use std::process::Command;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VolumeProfile {
     pub drive_letter: String,
     pub label: String,
@@ -8,6 +8,7 @@ pub struct VolumeProfile {
     pub size_bytes: u64,
     pub free_bytes: u64,
     pub health_status: String,
+    pub drive_kind: String,
 }
 
 pub fn collect() -> Vec<VolumeProfile> {
@@ -21,8 +22,19 @@ pub fn collect() -> Vec<VolumeProfile> {
 fn collect_windows_volumes() -> Option<Vec<VolumeProfile>> {
     let script = r#"
 try {
+    $kinds = @{}
+    Get-CimInstance Win32_LogicalDisk -ErrorAction SilentlyContinue | ForEach-Object {
+        if ($_.DeviceID) {
+            $kinds[$_.DeviceID.Substring(0,1).ToUpper()] = [int]$_.DriveType
+        }
+    }
+
     Get-Volume -ErrorAction Stop | ForEach-Object {
         $drive = if ($null -eq $_.DriveLetter) { "" } else { [string]$_.DriveLetter }
+        $kindCode = 0
+        if ($drive -ne "" -and $kinds.ContainsKey($drive.ToUpper())) {
+            $kindCode = [int]$kinds[$drive.ToUpper()]
+        }
 
         $fields = @(
             $drive,
@@ -30,7 +42,8 @@ try {
             ([string]$_.FileSystem).Replace("|"," "),
             [string]$_.Size,
             [string]$_.SizeRemaining,
-            [string]$_.HealthStatus
+            [string]$_.HealthStatus,
+            [string]$kindCode
         )
 
         Write-Output ($fields -join "|")
@@ -68,7 +81,7 @@ catch {
 }
 
 fn parse_volume(line: &str) -> Option<VolumeProfile> {
-    let mut fields = line.splitn(6, '|');
+    let mut fields = line.splitn(7, '|');
 
     Some(VolumeProfile {
         drive_letter: clean(fields.next()?),
@@ -77,7 +90,18 @@ fn parse_volume(line: &str) -> Option<VolumeProfile> {
         size_bytes: fields.next()?.trim().parse().unwrap_or(0),
         free_bytes: fields.next()?.trim().parse().unwrap_or(0),
         health_status: clean(fields.next()?),
+        drive_kind: drive_kind_from_code(fields.next().unwrap_or("0")),
     })
+}
+
+fn drive_kind_from_code(value: &str) -> String {
+    match value.trim() {
+        "2" => "removable".to_string(),
+        "3" => "internal".to_string(),
+        "4" => "network".to_string(),
+        "5" => "optical".to_string(),
+        _ => "other".to_string(),
+    }
 }
 
 fn clean(value: &str) -> String {

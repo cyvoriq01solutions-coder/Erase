@@ -1,9 +1,22 @@
 import { useEffect, useState } from "react";
-import { loadShellBootstrap, runDeviceVerification } from "./adapters/desktopBridge";
+import {
+  closeApplication,
+  listScanTargets,
+  loadShellBootstrap,
+  runDeviceVerification,
+  subscribeVerificationProgress,
+} from "./adapters/desktopBridge";
 import { AppFrame } from "./components/AppFrame";
 import { InstallerSetup } from "./components/InstallerSetup";
 import { ShellScreen } from "./screens/ShellScreens";
-import type { BridgeState, NavigationId, VerificationPhase, VerificationRecord } from "./types/shell";
+import type {
+  BridgeState,
+  NavigationId,
+  ScanTarget,
+  VerificationPhase,
+  VerificationProgress,
+  VerificationRecord,
+} from "./types/shell";
 
 export default function App() {
   const [setupComplete, setSetupComplete] = useState(false);
@@ -12,6 +25,9 @@ export default function App() {
   const [verificationPhase, setVerificationPhase] = useState<VerificationPhase>("idle");
   const [verification, setVerification] = useState<VerificationRecord | null>(null);
   const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<VerificationProgress | null>(null);
+  const [scanTargets, setScanTargets] = useState<ScanTarget[]>([]);
+  const [selectedDrives, setSelectedDrives] = useState<string[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -34,12 +50,60 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!setupComplete) return;
+    let active = true;
+
+    listScanTargets()
+      .then((targets) => {
+        if (!active) return;
+        setScanTargets(targets);
+        setSelectedDrives((currentLetters) => {
+          if (currentLetters.length > 0) return currentLetters;
+          if (targets.length === 0) return ["C"];
+          const defaults = targets.filter((target) => target.defaultSelected).map((target) => target.letter);
+          return defaults.length > 0 ? defaults : [targets[0].letter];
+        });
+      })
+      .catch(() => {
+        if (active) setScanTargets([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [setupComplete]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void subscribeVerificationProgress((next) => {
+      setProgress(next);
+    }).then((stop) => {
+      unlisten = stop;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
   async function handleRunVerification() {
     setVerificationError(null);
+    setProgress({
+      percent: 2,
+      stageIndex: 0,
+      stage: "Preparing verification",
+      detail: "Starting a local assessment on the selected drives.",
+    });
     setVerificationPhase("running");
     try {
-      const record = await runDeviceVerification();
+      const record = await runDeviceVerification(selectedDrives);
       setVerification(record);
+      setProgress({
+        percent: 100,
+        stageIndex: 7,
+        stage: "Preparing results",
+        detail: "The local assessment is ready to review.",
+      });
       setVerificationPhase("complete");
       setCurrent("results");
     } catch (error) {
@@ -48,6 +112,15 @@ export default function App() {
         error instanceof Error ? error.message : "CYVRA could not complete device verification.",
       );
     }
+  }
+
+  function handleToggleDrive(letter: string) {
+    if (verificationPhase === "running") return;
+    setSelectedDrives((currentLetters) =>
+      currentLetters.includes(letter)
+        ? currentLetters.filter((item) => item !== letter)
+        : [...currentLetters, letter],
+    );
   }
 
   if (bridge.status === "loading") {
@@ -79,6 +152,10 @@ export default function App() {
       current={current}
       onNavigate={setCurrent}
       verificationPhase={verificationPhase}
+      progress={progress}
+      onExit={() => {
+        void closeApplication();
+      }}
     >
       <ShellScreen
         current={current}
@@ -86,9 +163,16 @@ export default function App() {
         verificationPhase={verificationPhase}
         verification={verification}
         verificationError={verificationError}
+        progress={progress}
+        scanTargets={scanTargets}
+        selectedDrives={selectedDrives}
+        onToggleDrive={handleToggleDrive}
         onNavigate={setCurrent}
         onRunVerification={() => {
           void handleRunVerification();
+        }}
+        onExit={() => {
+          void closeApplication();
         }}
       />
     </AppFrame>
