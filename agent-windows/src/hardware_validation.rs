@@ -357,11 +357,10 @@ pub fn customer_hardware_fields(inventory: &HardwareInventoryV1) -> Vec<(String,
 }
 
 fn push_row(rows: &mut Vec<(String, String)>, label: &str, value: Option<String>) {
-    if let Some(value) = value {
-        if !value.is_empty() && value != "unknown" {
-            rows.push((label.to_string(), value));
-        }
-    }
+    let Some(value) = value.filter(|value| !value.is_empty() && value.as_str() != "unknown") else {
+        return;
+    };
+    rows.push((label.to_string(), value));
 }
 
 fn plain_field<T>(field: &InventoryField<T>) -> Option<String>
