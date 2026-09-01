@@ -153,8 +153,8 @@ fn activate_license_windows(activation_key: String) -> Result<ActivationOutcome,
 
 #[cfg(windows)]
 fn windows_machine_guid() -> Result<String, String> {
-    use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
     use winreg::RegKey;
+    use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
 
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let key = hklm
@@ -203,9 +203,11 @@ mod tests {
         assert!(!outcome.destructive_operations_enabled);
         assert!(!outcome.content_inspected);
         assert!(outcome.report_json.contains("CYVRA Erase Verification"));
-        assert!(outcome
-            .hardware_validation
-            .contains("destructive_operations=false"));
+        assert!(
+            outcome
+                .hardware_validation
+                .contains("destructive_operations=false")
+        );
         assert!(
             outcome.hardware_result == "pass"
                 || outcome.hardware_result == "fail"
