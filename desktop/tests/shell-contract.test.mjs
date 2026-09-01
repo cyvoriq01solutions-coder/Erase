@@ -144,6 +144,10 @@ test("foundation does not ship destructive or obsolete customer wording", () => 
   assert.match(combined, /HDMI ports/);
   assert.doesNotMatch(combined, /Battery health: 0%/);
   assert.doesNotMatch(combined, /HDMI ports:\s*0/);
+  assert.match(combined, /BIOS \/ OEM serial/);
+  assert.match(combined, /Chassis serial/);
+  assert.match(combined, /Motherboard serial/);
+  assert.doesNotMatch(combined, /Windows product key/i);
 });
 
 test("NSIS installer licence exists and is assessment-only", () => {

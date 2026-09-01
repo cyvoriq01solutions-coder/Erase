@@ -463,6 +463,8 @@ where
         "Operating system",
         scan.operating_system.caption.clone(),
     );
+    overlay_bios_serial_from_device(&mut hardware_fields, &scan.device.serial_number);
+    append_disk_serials(&mut hardware_fields, &scan.storage);
 
     CustomerVerification {
         hardware_passed,
@@ -500,6 +502,56 @@ fn prepend_field(fields: &mut Vec<NamedValue>, label: &str, value: String) {
             value,
         },
     );
+}
+
+fn looks_like_missing_serial(value: &str) -> bool {
+    let compact: String = value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .map(|character| character.to_ascii_lowercase())
+        .collect();
+    compact.is_empty()
+        || compact == "unknown"
+        || compact == "tobefilledbyoem"
+        || compact == "defaultstring"
+        || compact == "systemserialnumber"
+        || compact == "none"
+        || compact == "na"
+}
+
+fn overlay_bios_serial_from_device(fields: &mut Vec<NamedValue>, serial: &str) {
+    let serial = serial.trim();
+    if looks_like_missing_serial(serial) {
+        return;
+    }
+    const LABEL: &str = "BIOS / OEM serial";
+    const MISSING: &str = "Not reported by firmware";
+    if let Some(row) = fields.iter_mut().find(|field| field.label == LABEL) {
+        if row.value == MISSING {
+            row.value = serial.to_string();
+        }
+        return;
+    }
+    fields.push(NamedValue {
+        label: LABEL.to_string(),
+        value: serial.to_string(),
+    });
+}
+
+fn append_disk_serials(fields: &mut Vec<NamedValue>, storage: &crate::storage::StorageProfile) {
+    for disk in &storage.disks {
+        if looks_like_missing_serial(&disk.serial_number) {
+            continue;
+        }
+        let label = format!("Disk {} serial", disk.index);
+        if fields.iter().any(|field| field.label == label) {
+            continue;
+        }
+        fields.push(NamedValue {
+            label,
+            value: disk.serial_number.trim().to_string(),
+        });
+    }
 }
 
 fn location_groups(scan: &ScanResult) -> Vec<NamedValue> {

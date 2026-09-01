@@ -1,6 +1,11 @@
 import { useMemo, useState } from "react";
 import { Notice } from "../components/Notice";
-import { makeReportId, peripheralHealthRows, saveAssessmentPdf } from "../report/assessmentPdf";
+import {
+  lookupField,
+  makeReportId,
+  peripheralHealthRows,
+  saveAssessmentPdf,
+} from "../report/assessmentPdf";
 import type {
   BridgeState,
   NamedValue,
@@ -439,6 +444,24 @@ function ReportScreen({
       { label: "Computer name", value: verification.hostname },
       { label: "Manufacturer", value: verification.manufacturer },
       { label: "Model", value: verification.model },
+      {
+        label: "BIOS / OEM serial",
+        value:
+          lookupField(verification.hardwareFields, ["bios / oem serial"]) ??
+          "Not reported by firmware",
+      },
+      {
+        label: "Chassis serial",
+        value:
+          lookupField(verification.hardwareFields, ["chassis serial"]) ??
+          "Not reported by firmware",
+      },
+      {
+        label: "Motherboard serial",
+        value:
+          lookupField(verification.hardwareFields, ["motherboard serial"]) ??
+          "Not reported by firmware",
+      },
       { label: "Operating system", value: verification.osCaption },
       { label: "Drives included", value: verification.scannedDrives },
       { label: "Hardware result", value: hardwareResultLabel(verification.hardwareResult) },
@@ -469,6 +492,7 @@ function ReportScreen({
       "",
       `Computer: ${verification.hostname}`,
       `Device: ${verification.manufacturer} ${verification.model}`,
+      `BIOS / OEM serial: ${lookupField(verification.hardwareFields, ["bios / oem serial"]) ?? "Not reported by firmware"}`,
       `Operating system: ${verification.osCaption}`,
       `Drives included: ${verification.scannedDrives}`,
       `Hardware result: ${hardwareResultLabel(verification.hardwareResult)}`,

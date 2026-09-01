@@ -223,6 +223,28 @@ export function buildAssessmentDocument(verification: VerificationRecord, genera
       { label: "Computer name", value: verification.hostname },
       { label: "Manufacturer", value: verification.manufacturer },
       { label: "Model", value: verification.model },
+      {
+        label: "BIOS / OEM serial",
+        value:
+          lookupField(verification.hardwareFields, ["bios / oem serial"]) ??
+          "Not reported by firmware",
+      },
+      {
+        label: "Chassis serial",
+        value:
+          lookupField(verification.hardwareFields, ["chassis serial"]) ??
+          "Not reported by firmware",
+      },
+      {
+        label: "Motherboard serial",
+        value:
+          lookupField(verification.hardwareFields, ["motherboard serial"]) ??
+          "Not reported by firmware",
+      },
+      {
+        label: "SMBIOS UUID",
+        value: lookupField(verification.hardwareFields, ["smbios uuid"]) ?? "Not reported by firmware",
+      },
       { label: "Operating system", value: verification.osCaption },
       { label: "Drives included in this scan", value: verification.scannedDrives },
       {
