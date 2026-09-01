@@ -2,8 +2,8 @@
 //! Does not spawn a process. Assessment only.
 
 use crate::hardware_inventory_v1::{
-    CollectionStatus, DeviceClassification, FirmwareMode, FormFactor, HardwareInventoryV1,
-    InventoryField, SCHEMA_VERSION,
+    CollectionStatus, DeviceClassification, DeviceIdentifier, FirmwareMode, FormFactor,
+    HardwareInventoryV1, InventoryField, SCHEMA_VERSION,
 };
 #[cfg(target_os = "windows")]
 use crate::{CollectorErrorKind, collector_runtime::CancellationToken};
@@ -285,6 +285,36 @@ pub fn customer_hardware_fields(inventory: &HardwareInventoryV1) -> Vec<(String,
             "Form factor",
             mapped_field(&device.form_factor, form_factor_name),
         );
+        push_audit_identifier(
+            &mut rows,
+            "BIOS / OEM serial",
+            identifier_field(&device.serial_number),
+            true,
+        );
+        push_audit_identifier(
+            &mut rows,
+            "Chassis serial",
+            identifier_field(&device.chassis_serial_number),
+            true,
+        );
+        push_audit_identifier(
+            &mut rows,
+            "Motherboard serial",
+            identifier_field(&device.baseboard_serial_number),
+            true,
+        );
+        push_audit_identifier(
+            &mut rows,
+            "SMBIOS UUID",
+            identifier_field(&device.system_uuid),
+            false,
+        );
+        push_audit_identifier(
+            &mut rows,
+            "Asset tag",
+            identifier_field(&device.asset_tag),
+            false,
+        );
     }
 
     if let Some(firmware) = inventory.firmware.records.first() {
@@ -353,7 +383,42 @@ pub fn customer_hardware_fields(inventory: &HardwareInventoryV1) -> Vec<(String,
         );
     }
 
+    for module in &inventory.memory.modules.records {
+        let Some(serial) = identifier_field(&module.serial_number) else {
+            continue;
+        };
+        let locator = plain_field(&module.locator).unwrap_or_else(|| "module".to_string());
+        push_row(
+            &mut rows,
+            &format!("Memory serial ({locator})"),
+            Some(serial),
+        );
+    }
+
     rows
+}
+
+const FIRMWARE_NOT_REPORTED: &str = "Not reported by firmware";
+
+fn identifier_field(field: &InventoryField<DeviceIdentifier>) -> Option<String> {
+    field
+        .value
+        .as_ref()
+        .map(|value| flatten_text(value.expose_for_authorized_use()))
+        .filter(|value| !value.is_empty())
+}
+
+fn push_audit_identifier(
+    rows: &mut Vec<(String, String)>,
+    label: &str,
+    value: Option<String>,
+    required: bool,
+) {
+    match value {
+        Some(value) => rows.push((label.to_string(), value)),
+        None if required => rows.push((label.to_string(), FIRMWARE_NOT_REPORTED.to_string())),
+        None => {}
+    }
 }
 
 fn push_row(rows: &mut Vec<(String, String)>, label: &str, value: Option<String>) {
@@ -715,6 +780,79 @@ mod tests {
         let output = build_report(&inventory).lines.join("\n");
         assert!(output.contains("identifiers=redacted"));
         assert!(!output.contains("DO-NOT-PRINT-SERIAL"));
+
+        let customer = customer_hardware_fields(&inventory);
+        assert!(
+            customer.iter().any(|(label, value)| {
+                label == "BIOS / OEM serial" && value == "DO-NOT-PRINT-SERIAL"
+            }),
+            "{customer:?}"
+        );
+    }
+
+    #[test]
+    fn customer_report_exposes_authorized_serials() {
+        let mut inventory = HardwareInventoryV1::not_collected(1_000);
+        let provenance = Provenance::not_collected(1_000);
+        let unknown_text =
+            || InventoryField::<String>::unknown(PrivacyClass::NonSensitive, provenance.clone());
+        let unknown_identifier = || {
+            InventoryField::<DeviceIdentifier>::unknown(
+                PrivacyClass::DeviceIdentifier,
+                provenance.clone(),
+            )
+        };
+        inventory.device_and_chassis = InventorySection {
+            status: CollectionStatus::Reported,
+            provenance: provenance.clone(),
+            records: vec![DeviceAndChassisIdentity {
+                system_manufacturer: unknown_text(),
+                system_model: unknown_text(),
+                system_family: unknown_text(),
+                serial_number: InventoryField::reported(
+                    DeviceIdentifier::from_reported("LENOVO-SN-80XV")
+                        .expect("test identifier"),
+                    Confidence::High,
+                    PrivacyClass::DeviceIdentifier,
+                    provenance.clone(),
+                ),
+                system_uuid: unknown_identifier(),
+                chassis_manufacturer: unknown_text(),
+                chassis_type: unknown_text(),
+                chassis_serial_number: unknown_identifier(),
+                baseboard_manufacturer: unknown_text(),
+                baseboard_product: unknown_text(),
+                baseboard_version: unknown_text(),
+                baseboard_serial_number: InventoryField::reported(
+                    DeviceIdentifier::from_reported("BOARD-88")
+                        .expect("test identifier"),
+                    Confidence::High,
+                    PrivacyClass::DeviceIdentifier,
+                    provenance.clone(),
+                ),
+                asset_tag: unknown_identifier(),
+                form_factor: InventoryField::unknown(
+                    PrivacyClass::NonSensitive,
+                    provenance.clone(),
+                ),
+                classification: InventoryField::unknown(
+                    PrivacyClass::NonSensitive,
+                    provenance.clone(),
+                ),
+            }],
+        };
+
+        let customer = customer_hardware_fields(&inventory);
+        assert!(customer.iter().any(|(label, value)| {
+            label == "BIOS / OEM serial" && value == "LENOVO-SN-80XV"
+        }));
+        assert!(customer.iter().any(|(label, value)| {
+            label == "Motherboard serial" && value == "BOARD-88"
+        }));
+        assert!(customer.iter().any(|(label, value)| {
+            label == "Chassis serial" && value == FIRMWARE_NOT_REPORTED
+        }));
+        assert!(!customer.iter().any(|(label, _)| label == "SMBIOS UUID"));
     }
 
     #[test]
