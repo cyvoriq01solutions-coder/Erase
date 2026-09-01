@@ -465,7 +465,6 @@ fn classification_name(value: DeviceClassification) -> &'static str {
         DeviceClassification::Virtual => "virtual",
         DeviceClassification::ConflictingFirmwareData => "conflicting_firmware_data",
         DeviceClassification::Unknown => "unknown",
-        _ => "future_value",
     }
 }
 
@@ -476,7 +475,6 @@ fn form_factor_name(value: FormFactor) -> &'static str {
         FormFactor::Tablet => "tablet",
         FormFactor::VirtualMachine => "virtual_machine",
         FormFactor::Unknown => "unknown",
-        _ => "future_value",
     }
 }
 
@@ -485,7 +483,6 @@ fn firmware_mode_name(value: FirmwareMode) -> &'static str {
         FirmwareMode::Uefi => "uefi",
         FirmwareMode::LegacyBios => "legacy_bios",
         FirmwareMode::Unknown => "unknown",
-        _ => "future_value",
     }
 }
 
@@ -500,7 +497,6 @@ fn error_kind_name(value: CollectorErrorKind) -> &'static str {
         CollectorErrorKind::TimedOut => "timed_out",
         CollectorErrorKind::OutputLimitExceeded => "output_limit_exceeded",
         CollectorErrorKind::Internal => "internal",
-        _ => "future_value",
     }
 }
 
