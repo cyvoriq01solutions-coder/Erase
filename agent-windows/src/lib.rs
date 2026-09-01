@@ -511,6 +511,7 @@ fn looks_like_missing_serial(value: &str) -> bool {
         .map(|character| character.to_ascii_lowercase())
         .collect();
     compact.is_empty()
+        || compact.chars().all(|character| character == '0')
         || compact == "unknown"
         || compact == "tobefilledbyoem"
         || compact == "defaultstring"

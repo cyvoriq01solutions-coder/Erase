@@ -564,26 +564,27 @@ function ReportScreen({
       <ScreenHeader
         eyebrow="LOCAL ASSESSMENT REPORT"
         title="Report"
-        copy="A professional operator copy of this PC’s assessment. Save it as a PDF. This is not a wipe certificate and is not authenticated by CYVRA cloud."
+        copy="A serialized pre-sanitization assessment issued by CYVORIQ Solutions Pvt. Ltd. software. Computer-generated. Not a wipe certificate. Device rating needs physical verification."
       />
 
       {verification ? (
         <section className="content-panel report-panel" aria-labelledby="report-state-title">
           <div id="assessment-print" className="assessment-print">
             <header className="report-letterhead">
-              <p className="report-org">CYVORIQ Solutions · CYVRA Erase</p>
+              <p className="report-org">CYVORIQ Solutions Pvt. Ltd.</p>
+              <p className="report-issuer">Issued by the publisher of CYVRA Erase · computer-generated on this PC</p>
               <span className="card-label">REPORT A</span>
-              <h2 id="report-state-title">Local pre-sanitization assessment</h2>
+              <h2 id="report-state-title">Serialized pre-sanitization assessment</h2>
               <p className="report-meta">
-                Report identifier <strong>{reportId}</strong>
+                Document no. <strong>{reportId}</strong>
                 <span aria-hidden="true"> · </span>
-                Generated on this PC <strong>{generatedAt.toLocaleString()}</strong>
+                Generated <strong>{generatedAt.toLocaleString()}</strong>
               </p>
               <p className="local-assessment-notice">
-                This is a local hardware and document-location assessment. It is not a sanitization
-                certificate, not NIST SP 800-88 Purge proof, and not a DPDP compliance certificate. File
-                contents were not opened. No drive was erased. Battery health and connector counts are
-                listed only when this scan collected them — never guessed.
+                This is a computer-generated local assessment. It is not a sanitization certificate,
+                not NIST SP 800-88 Purge proof, and not a DPDP compliance certificate. File contents
+                were not opened. No drive was erased. Device condition rating is possible only after
+                physical verification. Cloud authentication is not enabled in this version.
               </p>
             </header>
             <div className="report-state-grid">
@@ -592,8 +593,8 @@ function ReportScreen({
                 <strong>On this PC</strong>
               </div>
               <div>
-                <span>Cloud authentication</span>
-                <strong>Not requested</strong>
+                <span>Issuing organisation</span>
+                <strong>CYVORIQ Solutions Pvt. Ltd.</strong>
               </div>
               <div>
                 <span>Erasure status</span>
@@ -604,11 +605,17 @@ function ReportScreen({
             <ReportTable title="Assessment summary" rows={summaryRows} empty="No summary available." />
             <ReportTable
               title="Hardware recorded in this scan"
-              rows={verification.hardwareFields}
+              rows={verification.hardwareFields.filter((row) => {
+                const label = row.label.toLowerCase();
+                if (["computer name", "operating system", "manufacturer", "model", "bios / oem serial", "chassis serial", "motherboard serial", "smbios uuid"].includes(label)) {
+                  return false;
+                }
+                return !/serial/i.test(row.label) || !/^0+$/.test(row.value.replace(/[^A-Za-z0-9]/g, ""));
+              })}
               empty="Hardware details were not available on this PC."
             />
             <ReportTable
-              title="Battery, cameras, microphones, and connectors"
+              title="Observations pending collector update or physical inspection"
               rows={healthRows}
               empty="Not collected in this scan."
             />

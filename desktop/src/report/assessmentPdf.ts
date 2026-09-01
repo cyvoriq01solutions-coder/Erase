@@ -8,7 +8,57 @@ const MARGIN_BOTTOM = 56;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_X * 2;
 
 export const NOT_COLLECTED =
-  "Not collected in this scan. CYVRA will not guess a percentage or a port count.";
+  "Not collected in this scan. Deferred in this collector version; Windows can report this later. Physical verification is required for grading.";
+
+const IDENTITY_LABELS = new Set([
+  "computer name",
+  "operating system",
+  "manufacturer",
+  "model",
+  "bios / oem serial",
+  "chassis serial",
+  "motherboard serial",
+  "smbios uuid",
+  "asset tag",
+]);
+
+export function isUnusableSerial(value: string): boolean {
+  const compact = value.replace(/[^A-Za-z0-9]/g, "");
+  if (!compact) {
+    return true;
+  }
+  if (/^0+$/.test(compact)) {
+    return true;
+  }
+  const lower = compact.toLowerCase();
+  return (
+    lower === "unknown" ||
+    lower === "tobefilledbyoem" ||
+    lower === "defaultstring" ||
+    lower === "systemserialnumber" ||
+    lower === "none" ||
+    lower === "na"
+  );
+}
+
+export function displaySerial(value: string | null | undefined): string {
+  if (!value || isUnusableSerial(value)) {
+    return "Not reported by firmware";
+  }
+  return value.trim();
+}
+
+export function hardwareScanRows(fields: NamedValue[]): NamedValue[] {
+  return fields.filter((row) => {
+    if (IDENTITY_LABELS.has(row.label.toLowerCase())) {
+      return false;
+    }
+    if (/serial/i.test(row.label) && isUnusableSerial(row.value)) {
+      return false;
+    }
+    return true;
+  });
+}
 
 export function makeReportId(verification: VerificationRecord, generatedAt: Date): string {
   const day = generatedAt.toISOString().slice(0, 10).replace(/-/g, "");
@@ -22,7 +72,7 @@ export function lookupField(fields: NamedValue[], needles: string[]): string | n
     const label = row.label.toLowerCase();
     if (lowered.some((needle) => label.includes(needle))) {
       const value = row.value.trim();
-      if (value) {
+      if (value && !isUnusableSerial(value) && value !== "Not reported by firmware") {
         return value;
       }
     }
@@ -37,50 +87,18 @@ export function peripheralHealthRows(verification: VerificationRecord): NamedVal
     if (found) {
       return { label, value: found };
     }
-    return { label, value: `${NOT_COLLECTED} ${collectedHint}` };
+    return { label, value: collectedHint };
   };
 
   return [
-    row(
-      "Battery health",
-      ["battery health", "battery wear", "design capacity"],
-      "When collected, this will be remaining full-charge capacity versus design capacity, as a percentage.",
-    ),
-    row(
-      "Battery present",
-      ["battery present", "battery status"],
-      "Windows can report a battery on this chassis in a later collector update.",
-    ),
-    row(
-      "Cameras",
-      ["camera"],
-      "Device count will appear only if Windows enumerated an imaging device.",
-    ),
-    row(
-      "Microphones",
-      ["microphone", "audio endpoint"],
-      "Device count will appear only if Windows enumerated a capture endpoint.",
-    ),
-    row(
-      "USB ports",
-      ["usb port", "usb-a", "usb-c", "usb type"],
-      "Physical connector counts will appear only if firmware or Windows reported them.",
-    ),
-    row(
-      "HDMI ports",
-      ["hdmi"],
-      "CYVRA will not print zero HDMI ports when the collector never asked Windows.",
-    ),
-    row(
-      "DisplayPort",
-      ["displayport", "display port"],
-      "Same rule as HDMI: unknown stays unknown.",
-    ),
-    row(
-      "Ethernet / audio jacks",
-      ["ethernet", "rj45", "audio jack", "headphone"],
-      "Listed only when a connector record exists.",
-    ),
+    row("Battery health %", ["battery health", "battery wear", "design capacity"], NOT_COLLECTED),
+    row("Battery present", ["battery present", "battery status"], NOT_COLLECTED),
+    row("Cameras", ["camera"], NOT_COLLECTED),
+    row("Microphones", ["microphone", "audio endpoint"], NOT_COLLECTED),
+    row("USB ports", ["usb port", "usb-a", "usb-c", "usb type"], NOT_COLLECTED),
+    row("HDMI ports", ["hdmi"], NOT_COLLECTED),
+    row("DisplayPort", ["displayport", "display port"], NOT_COLLECTED),
+    row("Ethernet / audio jacks", ["ethernet", "rj45", "audio jack", "headphone"], NOT_COLLECTED),
   ];
 }
 
@@ -196,23 +214,24 @@ export function buildAssessmentDocument(verification: VerificationRecord, genera
   const reportId = makeReportId(verification, generatedAt);
   const generatedLabel = generatedAt.toLocaleString();
   const items: PdfItem[] = [
-    { kind: "text", style: "kicker", text: "CYVORIQ SOLUTIONS  ·  CYVRA ERASE  ·  REPORT A" },
-    { kind: "text", style: "title", text: "Local pre-sanitization assessment" },
+    { kind: "text", style: "kicker", text: "CYVORIQ SOLUTIONS PVT. LTD." },
+    { kind: "text", style: "kicker", text: "CYVRA ERASE  ·  REPORT A  ·  PRE-SANITIZATION ASSET ASSESSMENT" },
+    { kind: "text", style: "title", text: "Serialized local assessment" },
     {
       kind: "text",
       style: "meta",
-      text: `Report identifier  ${reportId}    Generated on this PC  ${generatedLabel}`,
+      text: `Document no. ${reportId}    Generated ${generatedLabel}    Host ${verification.hostname}`,
     },
     {
       kind: "text",
       style: "meta",
-      text: "Classification: operator copy  ·  Cloud authentication: not requested  ·  Erasure status: no data was erased",
+      text: "Classification: operator copy    Data erased: No    Cloud authentication: not enabled in this version",
     },
     { kind: "gap", size: 8 },
     {
       kind: "text",
       style: "notice",
-      text: "This document is a local hardware and document-location assessment produced by CYVRA Erase running on this Windows PC. It is not a sanitization certificate, not NIST SP 800-88 Purge proof, and not a DPDP compliance certificate. File contents were not opened. No drive was erased.",
+      text: "This is a computer-generated report produced on the assessed Windows PC by CYVRA Erase, software of CYVORIQ Solutions Pvt. Ltd. It is issued as a serialized intake / pre-sanitization assessment (Report A). It is not a Certificate of Sanitization or Destruction, not NIST SP 800-88 Purge proof, and not a DPDP compliance certificate. File contents were not opened. No drive was erased. Device condition grading, cosmetic rating, and physical port confirmation are possible only after physical verification by a technician.",
     },
   ];
 
@@ -225,25 +244,19 @@ export function buildAssessmentDocument(verification: VerificationRecord, genera
       { label: "Model", value: verification.model },
       {
         label: "BIOS / OEM serial",
-        value:
-          lookupField(verification.hardwareFields, ["bios / oem serial"]) ??
-          "Not reported by firmware",
+        value: displaySerial(lookupField(verification.hardwareFields, ["bios / oem serial"])),
       },
       {
         label: "Chassis serial",
-        value:
-          lookupField(verification.hardwareFields, ["chassis serial"]) ??
-          "Not reported by firmware",
+        value: displaySerial(lookupField(verification.hardwareFields, ["chassis serial"])),
       },
       {
         label: "Motherboard serial",
-        value:
-          lookupField(verification.hardwareFields, ["motherboard serial"]) ??
-          "Not reported by firmware",
+        value: displaySerial(lookupField(verification.hardwareFields, ["motherboard serial"])),
       },
       {
         label: "SMBIOS UUID",
-        value: lookupField(verification.hardwareFields, ["smbios uuid"]) ?? "Not reported by firmware",
+        value: displaySerial(lookupField(verification.hardwareFields, ["smbios uuid"])),
       },
       { label: "Operating system", value: verification.osCaption },
       { label: "Drives included in this scan", value: verification.scannedDrives },
@@ -263,13 +276,13 @@ export function buildAssessmentDocument(verification: VerificationRecord, genera
   addSection(
     items,
     "2. Hardware recorded in this scan",
-    verification.hardwareFields,
+    hardwareScanRows(verification.hardwareFields),
     "Hardware details were not available on this PC.",
   );
 
   addSection(
     items,
-    "3. Battery, cameras, microphones, and connectors",
+    "3. Observations pending collector update or physical inspection",
     peripheralHealthRows(verification),
     NOT_COLLECTED,
   );
@@ -288,7 +301,7 @@ export function buildAssessmentDocument(verification: VerificationRecord, genera
   );
 
   items.push({ kind: "gap", size: 10 });
-  items.push({ kind: "text", style: "heading", text: "5. Method and boundary" });
+  items.push({ kind: "text", style: "heading", text: "5. Method, limitations and issuing body" });
   items.push({ kind: "rule" });
   items.push({
     kind: "text",
@@ -298,12 +311,25 @@ export function buildAssessmentDocument(verification: VerificationRecord, genera
   items.push({
     kind: "text",
     style: "body",
-    text: "Collection is read-only. Battery health percentage and physical port counts are printed only when this scan collected them. Unknown values stay unknown. A later hardware-collector update can add design capacity versus full-charge capacity, imaging devices, audio capture endpoints, and connector records from Windows.",
+    text: "Method: read-only Windows firmware and CIM inventory plus document-location metadata (names and sizes). Battery health, cameras, microphones and connector counts are omitted until the hardware-collector update queries them, or a technician records them at physical intake. All-zero disk serials from Windows are treated as not reported.",
   });
   items.push({
     kind: "text",
     style: "body",
-    text: "Keep this PDF off the disks you may later erase. After a full-PC purge this application will not run on that computer.",
+    text: "Keep this PDF off disks you may later erase. After a full-PC purge this application will not run on that computer.",
+  });
+  items.push({ kind: "gap", size: 8 });
+  items.push({ kind: "text", style: "heading", text: "6. Issuing organisation" });
+  items.push({ kind: "rule" });
+  items.push({
+    kind: "text",
+    style: "body",
+    text: "Issued by CYVORIQ Solutions Pvt. Ltd. as publisher of CYVRA Erase. This document is computer-generated on the assessed PC. It is not cloud-authenticated in this version. It does not certify sanitization, destruction, resale grade, or legal compliance. Device rating is possible only after physical verification.",
+  });
+  items.push({
+    kind: "text",
+    style: "body",
+    text: "Operator / technician (physical verification): ________________________    Date: __________",
   });
 
   return items;
@@ -375,7 +401,7 @@ function assemblePdf(pageStreams: string[], footer: string): Uint8Array {
       "0.024 0.161 0.373 rg",
       `${MARGIN_X} ${PAGE_HEIGHT - 28} ${CONTENT_WIDTH} 10 re f`,
       "1 1 1 rg",
-      emitText(MARGIN_X + 6, PAGE_HEIGHT - 26, "F2", 7, "CYVRA ERASE  ·  LOCAL ASSESSMENT  ·  NOT A SANITIZATION CERTIFICATE"),
+      emitText(MARGIN_X + 6, PAGE_HEIGHT - 26, "F2", 7, "CYVORIQ SOLUTIONS PVT. LTD.  ·  COMPUTER-GENERATED  ·  NOT A SANITIZATION CERTIFICATE"),
       "0 0 0 rg",
       stream,
       "0.37 0.44 0.53 rg",
@@ -419,7 +445,7 @@ export function buildAssessmentPdf(verification: VerificationRecord, generatedAt
   const items = buildAssessmentDocument(verification, generatedAt);
   const reportId = makeReportId(verification, generatedAt);
   const pages = paginate(items);
-  return assemblePdf(pages, `${reportId}  ·  prepared on this Windows PC  ·  CYVORIQ Solutions`);
+  return assemblePdf(pages, `${reportId}  ·  CYVORIQ Solutions Pvt. Ltd.  ·  not a sanitization certificate`);
 }
 
 export function saveAssessmentPdf(verification: VerificationRecord): { filename: string; reportId: string } {
