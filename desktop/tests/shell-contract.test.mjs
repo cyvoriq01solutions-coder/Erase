@@ -134,6 +134,9 @@ test("foundation does not ship destructive or obsolete customer wording", () => 
   assert.match(combined, /Generate report/);
   assert.match(combined, /Purge stays off|PURGE/);
   assert.match(combined, /Exit CYVRA Erase/);
+  assert.match(combined, /Data purge/);
+  assert.match(combined, /willingly and knowingly/);
+  assert.match(combined, /button-danger/);
 });
 
 test("NSIS installer licence exists and is assessment-only", () => {

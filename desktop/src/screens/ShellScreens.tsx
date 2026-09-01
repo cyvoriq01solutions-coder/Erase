@@ -424,6 +424,9 @@ function ReportScreen({
 }: Pick<ShellScreenProps, "verification" | "onNavigate">) {
   const [email, setEmail] = useState("");
   const [emailNote, setEmailNote] = useState<string | null>(null);
+  const [consentChecked, setConsentChecked] = useState(false);
+  const [reportEmailed, setReportEmailed] = useState(false);
+  const [purgeNote, setPurgeNote] = useState<string | null>(null);
 
   const summaryRows = useMemo<NamedValue[]>(() => {
     if (!verification) return [];
@@ -470,7 +473,23 @@ function ReportScreen({
       "CYVRA Erase local assessment report",
     )}&body=${encodeURIComponent(body)}`;
     window.location.assign(href);
-    setEmailNote("Your email application should open with this report.");
+    setReportEmailed(true);
+    setEmailNote("Your email application should open with this report. Email it before any data purge.");
+  }
+
+  function handlePurgeIntent() {
+    if (!verification) return;
+    if (!reportEmailed) {
+      setPurgeNote("Email the assessment report first. After a full-PC purge this application cannot send it.");
+      return;
+    }
+    if (!consentChecked) {
+      setPurgeNote("Tick the consent box before Data purge.");
+      return;
+    }
+    setPurgeNote(
+      "The report has been handed to your email application. Data purge is not enabled in this installer. Nothing was erased. A CYVRA Purge licence and a later signed build are required.",
+    );
   }
 
   return (
@@ -536,6 +555,42 @@ function ReportScreen({
             </div>
             {emailNote ? <p className="setup-note">{emailNote}</p> : null}
           </div>
+
+          <section className="purge-consent" aria-labelledby="purge-consent-title">
+            <h3 id="purge-consent-title">Data purge (not enabled)</h3>
+            <p>
+              Data purge permanently destroys data on the drives you select. Treat it as formatting those
+              drives. It cannot be undone. After a full-PC purge, Windows and CYVRA Erase will not run on
+              this computer, so the assessment report must go to email first.
+            </p>
+            <label className="purge-consent-check" htmlFor="purge-consent-box">
+              <input
+                id="purge-consent-box"
+                type="checkbox"
+                checked={consentChecked}
+                onChange={(event) => {
+                  setConsentChecked(event.target.checked);
+                  setPurgeNote(null);
+                }}
+              />
+              <span>
+                I understand I am opting in willingly and knowingly. Data purge is as irreversible as
+                formatting the selected drives. I have emailed, or will email, this report first because
+                CYVRA Erase cannot send it after a full-PC purge.
+              </span>
+            </label>
+            <div className="action-row">
+              <button
+                className="button button-danger"
+                type="button"
+                disabled={!consentChecked || !reportEmailed}
+                onClick={handlePurgeIntent}
+              >
+                Data purge
+              </button>
+            </div>
+            {purgeNote ? <p className="setup-note">{purgeNote}</p> : null}
+          </section>
 
           <div className="action-row">
             <button className="button button-secondary" type="button" onClick={() => onNavigate("results")}>
