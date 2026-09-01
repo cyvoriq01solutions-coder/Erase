@@ -147,7 +147,11 @@ test("foundation does not ship destructive or obsolete customer wording", () => 
   assert.match(combined, /BIOS \/ OEM serial/);
   assert.match(combined, /Chassis serial/);
   assert.match(combined, /Motherboard serial/);
+  assert.match(combined, /CYVORIQ Solutions Pvt/);
+  assert.match(combined, /computer-generated/);
+  assert.match(combined, /physical verification/);
   assert.doesNotMatch(combined, /Windows product key/i);
+  assert.doesNotMatch(combined, /NIST certified/i);
 });
 
 test("NSIS installer licence exists and is assessment-only", () => {

@@ -1385,6 +1385,15 @@ a:focus-visible,
   text-transform: uppercase;
 }
 
+.report-issuer {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 650;
+}
+
 .report-letterhead h2 {
   margin: 6px 0 8px;
 }
