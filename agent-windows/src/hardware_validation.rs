@@ -3,7 +3,7 @@
 
 use crate::hardware_inventory_v1::{
     CollectionStatus, DeviceClassification, DeviceIdentifier, FirmwareMode, FormFactor,
-    HardwareInventoryV1, InventoryField, SCHEMA_VERSION,
+    HardwareInventoryV1, InventoryField, PortCategory, SCHEMA_VERSION, SensorCategory,
 };
 #[cfg(target_os = "windows")]
 use crate::{CollectorErrorKind, collector_runtime::CancellationToken};
@@ -395,7 +395,133 @@ pub fn customer_hardware_fields(inventory: &HardwareInventoryV1) -> Vec<(String,
         );
     }
 
+    append_battery_rows(&mut rows, inventory);
+    append_sensor_rows(&mut rows, inventory);
+    append_port_rows(&mut rows, inventory);
+
     rows
+}
+
+fn append_battery_rows(rows: &mut Vec<(String, String)>, inventory: &HardwareInventoryV1) {
+    let Some(battery) = inventory.batteries.records.first() else {
+        return;
+    };
+    push_row(rows, "Battery present", yes_no_field(&battery.present));
+    if let Some(ratio) = battery.health_ratio.value {
+        if (0.01..=1.5).contains(&ratio) {
+            push_row(
+                rows,
+                "Battery health %",
+                Some(format!(
+                    "{:.0}% full-charge vs design",
+                    (ratio * 100.0).round()
+                )),
+            );
+        }
+    }
+}
+
+fn append_sensor_rows(rows: &mut Vec<(String, String)>, inventory: &HardwareInventoryV1) {
+    push_enumerated_sensor(rows, inventory, SensorCategory::Camera, "Cameras");
+    push_enumerated_sensor(rows, inventory, SensorCategory::Microphone, "Microphones");
+}
+
+fn push_enumerated_sensor(
+    rows: &mut Vec<(String, String)>,
+    inventory: &HardwareInventoryV1,
+    category: SensorCategory,
+    label: &str,
+) {
+    let matching = inventory
+        .sensors
+        .records
+        .iter()
+        .filter(|record| record.category == category)
+        .collect::<Vec<_>>();
+    if matching.is_empty() {
+        return;
+    }
+    let present = matching
+        .iter()
+        .filter(|record| record.present.value == Some(true))
+        .collect::<Vec<_>>();
+    if present.is_empty() {
+        push_row(rows, label, Some("None enumerated by Windows".to_string()));
+        return;
+    }
+    let names = present
+        .iter()
+        .filter_map(|record| plain_field(&record.model))
+        .collect::<Vec<_>>();
+    let value = if names.is_empty() {
+        present.len().to_string()
+    } else {
+        format!("{} — {}", present.len(), names.join(", "))
+    };
+    push_row(rows, label, Some(value));
+}
+
+fn append_port_rows(rows: &mut Vec<(String, String)>, inventory: &HardwareInventoryV1) {
+    let usb = port_count(inventory, PortCategory::UsbA)
+        + port_count(inventory, PortCategory::UsbC)
+        + port_count(inventory, PortCategory::Usb4OrThunderbolt);
+    if usb > 0 {
+        push_row(
+            rows,
+            "USB ports",
+            Some(format!("{usb} firmware connectors")),
+        );
+    }
+    push_port_row(rows, inventory, PortCategory::Hdmi, "HDMI ports");
+    push_port_row(rows, inventory, PortCategory::DisplayPort, "DisplayPort");
+    let jacks = inventory
+        .ports
+        .records
+        .iter()
+        .filter(|record| {
+            matches!(
+                record.category,
+                PortCategory::Ethernet | PortCategory::Audio
+            ) && record.count.value.unwrap_or(0) > 0
+        })
+        .map(|record| record.count.value.unwrap_or(0))
+        .sum::<u32>();
+    if jacks > 0 {
+        push_row(
+            rows,
+            "Ethernet / audio jacks",
+            Some(format!("{jacks} firmware connectors")),
+        );
+    }
+}
+
+fn port_count(inventory: &HardwareInventoryV1, category: PortCategory) -> u32 {
+    inventory
+        .ports
+        .records
+        .iter()
+        .filter(|record| record.category == category)
+        .filter_map(|record| record.count.value)
+        .sum()
+}
+
+fn push_port_row(
+    rows: &mut Vec<(String, String)>,
+    inventory: &HardwareInventoryV1,
+    category: PortCategory,
+    label: &str,
+) {
+    let count = inventory
+        .ports
+        .records
+        .iter()
+        .filter(|record| record.category == category)
+        .filter_map(|record| record.count.value)
+        .sum::<u32>();
+    if count == 0 {
+        return;
+    }
+    push_row(rows, label, Some(format!("{count} firmware connectors")));
 }
 
 const FIRMWARE_NOT_REPORTED: &str = "Not reported by firmware";
@@ -612,12 +738,7 @@ fn deferred_sections_are_untouched(inventory: &HardwareInventoryV1) -> bool {
     ) && section_is_not_reported(
         inventory.graphics.displays.status,
         inventory.graphics.displays.records.len(),
-    ) && section_is_not_reported(
-        inventory.batteries.status,
-        inventory.batteries.records.len(),
-    ) && section_is_not_reported(inventory.ports.status, inventory.ports.records.len())
-        && section_is_not_reported(inventory.sensors.status, inventory.sensors.records.len())
-        && section_is_not_reported(inventory.network.status, inventory.network.records.len())
+    ) && section_is_not_reported(inventory.network.status, inventory.network.records.len())
         && section_is_not_reported(
             inventory.peripherals.status,
             inventory.peripherals.records.len(),

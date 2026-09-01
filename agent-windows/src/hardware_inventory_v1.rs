@@ -447,7 +447,7 @@ pub struct BatteryProfile {
     pub health_ratio: InventoryField<f64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[non_exhaustive]
 pub enum PortCategory {
     UsbA,
@@ -620,12 +620,14 @@ pub fn derive_battery_health_ratio(
     provenance: Provenance,
 ) -> InventoryField<f64> {
     match (designed_capacity_mwh.value, full_charge_capacity_mwh.value) {
-        (Some(designed), Some(full_charge)) if designed > 0 => InventoryField::derived(
-            full_charge as f64 / designed as f64,
-            Confidence::Medium,
-            PrivacyClass::OperationalMetadata,
-            provenance,
-        ),
+        (Some(designed), Some(full_charge)) if designed > 0 && full_charge > 0 => {
+            InventoryField::derived(
+                full_charge as f64 / designed as f64,
+                Confidence::Medium,
+                PrivacyClass::OperationalMetadata,
+                provenance,
+            )
+        }
         _ => InventoryField::unknown(PrivacyClass::OperationalMetadata, provenance),
     }
 }
@@ -731,6 +733,28 @@ mod tests {
         );
         let full_charge = InventoryField::reported(
             40_000_u64,
+            Confidence::High,
+            PrivacyClass::OperationalMetadata,
+            Provenance::fixture(1_000),
+        );
+
+        let ratio =
+            derive_battery_health_ratio(&designed, &full_charge, Provenance::fixture(1_000));
+
+        assert_eq!(ratio.value, None);
+        assert_eq!(ratio.status, CollectionStatus::Unknown);
+    }
+
+    #[test]
+    fn battery_health_is_unknown_when_full_charge_is_zero() {
+        let designed = InventoryField::reported(
+            50_000_u64,
+            Confidence::High,
+            PrivacyClass::OperationalMetadata,
+            Provenance::fixture(1_000),
+        );
+        let full_charge = InventoryField::reported(
+            0_u64,
             Confidence::High,
             PrivacyClass::OperationalMetadata,
             Provenance::fixture(1_000),

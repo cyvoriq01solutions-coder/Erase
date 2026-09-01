@@ -615,7 +615,7 @@ function ReportScreen({
               empty="Hardware details were not available on this PC."
             />
             <ReportTable
-              title="Observations pending collector update or physical inspection"
+              title="Battery, cameras, microphones, and connectors"
               rows={healthRows}
               empty="Not collected in this scan."
             />

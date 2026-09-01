@@ -10,10 +10,11 @@ use crate::{
         CancellationToken, CollectorLimits, TrustedPowerShellScript, run_fixed_powershell,
     },
     hardware_inventory_v1::{
-        CollectionSource, CollectionStatus, Confidence, DeviceAndChassisIdentity,
+        BatteryProfile, CollectionSource, CollectionStatus, Confidence, DeviceAndChassisIdentity,
         DeviceClassification, DeviceIdentifier, FirmwareMode, FirmwareProfile, FormFactor,
         HardwareInventoryV1, InventoryField, InventorySection, MemoryInventory, MemoryModule,
-        MemorySummary, PermissionState, PrivacyClass, ProcessorProfile, Provenance,
+        MemorySummary, PermissionState, PortCategory, PortCountKind, PortRecord, PrivacyClass,
+        ProcessorProfile, Provenance, SensorCategory, SensorPresence, derive_battery_health_ratio,
     },
 };
 use std::{
@@ -41,6 +42,13 @@ const PROCESSOR: &str = "processor";
 const OPERATING_SYSTEM: &str = "operating_system";
 const MEMORY_ARRAY: &str = "memory_array";
 const MEMORY_MODULE: &str = "memory_module";
+const BATTERY: &str = "battery";
+const BATTERY_STATIC: &str = "battery_static";
+const BATTERY_FULL: &str = "battery_full";
+const BATTERY_CYCLE: &str = "battery_cycle";
+const CAMERA: &str = "camera";
+const MICROPHONE: &str = "microphone";
+const PORT_CONNECTOR: &str = "port_connector";
 
 const WINDOWS_HARDWARE_SCRIPT: TrustedPowerShellScript = TrustedPowerShellScript::application_owned(
     r#"
@@ -226,12 +234,135 @@ try {
         Emit-Value 'memory_module' $index 'serial_number' $item.SerialNumber
     }
 } catch { Emit-QueryFailure 'memory_module' $_ }
+
+try {
+    $items = @(Get-CimInstance -ClassName Win32_Battery -Property Name,Manufacturer,DeviceID,Chemistry,DesignCapacity,FullChargeCapacity,Status -ErrorAction Stop)
+    Emit-Value 'battery' 0 'query_ok' $true
+    if ($items.Count -eq 0) {
+        Emit-Value 'battery' 0 'record_present' $true
+        Emit-Value 'battery' 0 'present' $false
+    } else {
+        for ($index = 0; $index -lt $items.Count; $index++) {
+            $item = $items[$index]
+            Emit-Value 'battery' $index 'record_present' $true
+            Emit-Value 'battery' $index 'present' $true
+            Emit-Value 'battery' $index 'name' $item.Name
+            Emit-Value 'battery' $index 'manufacturer' $item.Manufacturer
+            Emit-Value 'battery' $index 'chemistry' $item.Chemistry
+            Emit-Value 'battery' $index 'status' $item.Status
+            if ($item.DesignCapacity -and [int64]$item.DesignCapacity -gt 0) {
+                Emit-Value 'battery' $index 'designed_capacity_mwh' $item.DesignCapacity
+            }
+            if ($item.FullChargeCapacity -and [int64]$item.FullChargeCapacity -gt 0) {
+                Emit-Value 'battery' $index 'full_charge_capacity_mwh' $item.FullChargeCapacity
+            }
+        }
+    }
+} catch { Emit-QueryFailure 'battery' $_ }
+
+try {
+    $items = @(Get-CimInstance -Namespace 'root/WMI' -ClassName BatteryStaticData -ErrorAction Stop)
+    Emit-Value 'battery_static' 0 'query_ok' $true
+    for ($index = 0; $index -lt $items.Count; $index++) {
+        $item = $items[$index]
+        Emit-Value 'battery_static' $index 'record_present' $true
+        if ($item.DesignedCapacity -and [int64]$item.DesignedCapacity -gt 0) {
+            Emit-Value 'battery_static' $index 'designed_capacity_mwh' $item.DesignedCapacity
+        }
+    }
+} catch { Emit-QueryFailure 'battery_static' $_ }
+
+try {
+    $items = @(Get-CimInstance -Namespace 'root/WMI' -ClassName BatteryFullChargedCapacity -ErrorAction Stop)
+    Emit-Value 'battery_full' 0 'query_ok' $true
+    for ($index = 0; $index -lt $items.Count; $index++) {
+        $item = $items[$index]
+        Emit-Value 'battery_full' $index 'record_present' $true
+        if ($item.FullChargedCapacity -and [int64]$item.FullChargedCapacity -gt 0) {
+            Emit-Value 'battery_full' $index 'full_charge_capacity_mwh' $item.FullChargedCapacity
+        }
+    }
+} catch { Emit-QueryFailure 'battery_full' $_ }
+
+try {
+    $items = @(Get-CimInstance -Namespace 'root/WMI' -ClassName BatteryCycleCount -ErrorAction Stop)
+    Emit-Value 'battery_cycle' 0 'query_ok' $true
+    for ($index = 0; $index -lt $items.Count; $index++) {
+        $item = $items[$index]
+        Emit-Value 'battery_cycle' $index 'record_present' $true
+        if ($item.CycleCount -and [int64]$item.CycleCount -gt 0) {
+            Emit-Value 'battery_cycle' $index 'cycle_count' $item.CycleCount
+        }
+    }
+} catch { Emit-QueryFailure 'battery_cycle' $_ }
+
+try {
+    $cameraGuid = '{ca3e7ab9-b4c3-4ae6-8251-579689032b24}'
+    $imageGuid = '{6bdd1fc6-810f-11d0-bec7-08002be2092f}'
+    $items = @()
+    $items += @(Get-CimInstance -ClassName Win32_PnPEntity -Filter "ClassGuid='$cameraGuid'" -Property Name,Caption,Manufacturer,PNPDeviceID -ErrorAction Stop)
+    $items += @(Get-CimInstance -ClassName Win32_PnPEntity -Filter "ClassGuid='$imageGuid'" -Property Name,Caption,Manufacturer,PNPDeviceID -ErrorAction Stop)
+    $seen = @{}
+    $index = 0
+    Emit-Value 'camera' 0 'query_ok' $true
+    foreach ($item in $items) {
+        $id = [string]$item.PNPDeviceID
+        if ([string]::IsNullOrWhiteSpace($id) -or $seen.ContainsKey($id)) { continue }
+        $label = if (-not [string]::IsNullOrWhiteSpace([string]$item.Caption)) { [string]$item.Caption } else { [string]$item.Name }
+        if ($label -match 'Scanner|WIA|Print') { continue }
+        $seen[$id] = $true
+        Emit-Value 'camera' $index 'record_present' $true
+        Emit-Value 'camera' $index 'present' $true
+        Emit-Value 'camera' $index 'name' $label
+        Emit-Value 'camera' $index 'manufacturer' $item.Manufacturer
+        $index++
+    }
+    if ($index -eq 0) {
+        Emit-Value 'camera' 0 'record_present' $true
+        Emit-Value 'camera' 0 'present' $false
+    }
+} catch { Emit-QueryFailure 'camera' $_ }
+
+try {
+    $audioGuid = '{c166523c-fe0c-4a94-a586-f1a80cfbbf32}'
+    $items = @(Get-CimInstance -ClassName Win32_PnPEntity -Filter "ClassGuid='$audioGuid'" -Property Name,Caption,Manufacturer,PNPDeviceID -ErrorAction Stop)
+    $index = 0
+    Emit-Value 'microphone' 0 'query_ok' $true
+    foreach ($item in $items) {
+        $label = if (-not [string]::IsNullOrWhiteSpace([string]$item.Caption)) { [string]$item.Caption } else { [string]$item.Name }
+        if ($label -notmatch 'Microphone|\bMic\b') { continue }
+        Emit-Value 'microphone' $index 'record_present' $true
+        Emit-Value 'microphone' $index 'present' $true
+        Emit-Value 'microphone' $index 'name' $label
+        Emit-Value 'microphone' $index 'manufacturer' $item.Manufacturer
+        $index++
+    }
+    if ($index -eq 0) {
+        Emit-Value 'microphone' 0 'record_present' $true
+        Emit-Value 'microphone' 0 'present' $false
+    }
+} catch { Emit-QueryFailure 'microphone' $_ }
+
+try {
+    $items = @(Get-CimInstance -ClassName Win32_PortConnector -Property InternalReferenceDesignator,ExternalReferenceDesignator,ConnectorType,PortType -ErrorAction Stop)
+    Emit-Value 'port_connector' 0 'query_ok' $true
+    for ($index = 0; $index -lt $items.Count; $index++) {
+        $item = $items[$index]
+        Emit-Value 'port_connector' $index 'record_present' $true
+        Emit-Value 'port_connector' $index 'internal_ref' $item.InternalReferenceDesignator
+        Emit-Value 'port_connector' $index 'external_ref' $item.ExternalReferenceDesignator
+        if ($null -ne $item.ConnectorType) {
+            Emit-Value 'port_connector' $index 'connector_type' (($item.ConnectorType | ForEach-Object { [string]$_ }) -join ',')
+        }
+        Emit-Value 'port_connector' $index 'port_type' $item.PortType
+    }
+} catch { Emit-QueryFailure 'port_connector' $_ }
 "#,
 );
 
 /// Collect the first passive Windows hardware slice and preserve a complete inventory
 /// object even when the bounded command fails. The requested sections carry an honest
-/// failure status; later/deferred sections remain `not_reported`.
+/// failure status; storage, graphics, network, and other later sections remain `not_reported`.
 #[must_use]
 pub fn collect(cancellation: &CancellationToken) -> HardwareInventoryV1 {
     let collected_at_unix = current_unix_timestamp().unwrap_or(0);
@@ -558,6 +689,26 @@ fn is_allowed_field(section: &str, name: &str) -> bool {
                     | "part_number"
                     | "serial_number"
             )
+            | (
+                BATTERY,
+                "present"
+                    | "name"
+                    | "manufacturer"
+                    | "chemistry"
+                    | "status"
+                    | "designed_capacity_mwh"
+                    | "full_charge_capacity_mwh"
+                    | "cycle_count"
+            )
+            | (BATTERY_STATIC, "designed_capacity_mwh")
+            | (BATTERY_FULL, "full_charge_capacity_mwh")
+            | (BATTERY_CYCLE, "cycle_count")
+            | (CAMERA, "present" | "name" | "manufacturer")
+            | (MICROPHONE, "present" | "name" | "manufacturer")
+            | (
+                PORT_CONNECTOR,
+                "internal_ref" | "external_ref" | "connector_type" | "port_type"
+            )
     )
 }
 
@@ -576,6 +727,13 @@ fn is_known_section(section: &str) -> bool {
             | OPERATING_SYSTEM
             | MEMORY_ARRAY
             | MEMORY_MODULE
+            | BATTERY
+            | BATTERY_STATIC
+            | BATTERY_FULL
+            | BATTERY_CYCLE
+            | CAMERA
+            | MICROPHONE
+            | PORT_CONNECTOR
     )
 }
 
@@ -584,6 +742,8 @@ fn is_allowed_index(section: &str, index: usize) -> bool {
         PROCESSOR => index < 64,
         MEMORY_ARRAY => index < 64,
         MEMORY_MODULE => index < 256,
+        BATTERY | BATTERY_STATIC | BATTERY_FULL | BATTERY_CYCLE => index < 8,
+        CAMERA | MICROPHONE | PORT_CONNECTOR => index < 64,
         _ => index == 0,
     }
 }
@@ -725,7 +885,300 @@ fn build_inventory(snapshot: &RawSnapshot, collected_at_unix: u64) -> HardwareIn
     inventory.firmware = build_firmware_section(snapshot, collected_at_unix);
     inventory.processors = build_processor_section(snapshot, collected_at_unix);
     inventory.memory = build_memory_inventory(snapshot, collected_at_unix);
+    inventory.batteries = build_battery_section(snapshot, collected_at_unix);
+    inventory.sensors = build_sensor_section(snapshot, collected_at_unix);
+    inventory.ports = build_port_section(snapshot, collected_at_unix);
     inventory
+}
+
+fn build_battery_section(
+    snapshot: &RawSnapshot,
+    collected_at_unix: u64,
+) -> InventorySection<BatteryProfile> {
+    match snapshot.query_state(BATTERY) {
+        QueryState::NotReported => {
+            InventorySection::not_reported(Provenance::not_collected(collected_at_unix))
+        }
+        QueryState::PermissionDenied | QueryState::Unsupported | QueryState::CollectionError => {
+            empty_section(
+                snapshot.query_state(BATTERY),
+                "Win32_Battery",
+                collected_at_unix,
+            )
+        }
+        QueryState::Available => {
+            let static0 = SourceRecord::new(
+                snapshot,
+                BATTERY_STATIC,
+                0,
+                "BatteryStaticData",
+                collected_at_unix,
+            );
+            let full0 = SourceRecord::new(
+                snapshot,
+                BATTERY_FULL,
+                0,
+                "BatteryFullChargedCapacity",
+                collected_at_unix,
+            );
+            let cycle0 = SourceRecord::new(
+                snapshot,
+                BATTERY_CYCLE,
+                0,
+                "BatteryCycleCount",
+                collected_at_unix,
+            );
+            let mut records = Vec::new();
+            for index in snapshot.record_indices(BATTERY) {
+                let battery =
+                    SourceRecord::new(snapshot, BATTERY, index, "Win32_Battery", collected_at_unix);
+                let mut designed = battery.positive_u64("designed_capacity_mwh");
+                if designed.value.is_none() {
+                    designed = static0.positive_u64("designed_capacity_mwh");
+                }
+                let mut full_charge = battery.positive_u64("full_charge_capacity_mwh");
+                if full_charge.value.is_none() {
+                    full_charge = full0.positive_u64("full_charge_capacity_mwh");
+                }
+                let mut cycle_count = battery.positive_u32("cycle_count");
+                if cycle_count.value.is_none() {
+                    cycle_count = cycle0.positive_u32("cycle_count");
+                }
+                let health_ratio = derive_battery_health_ratio(
+                    &designed,
+                    &full_charge,
+                    derived_provenance(
+                        "full-charge capacity versus design capacity",
+                        collected_at_unix,
+                    ),
+                );
+                records.push(BatteryProfile {
+                    present: battery.boolean("present"),
+                    manufacturer: battery.text("manufacturer", PrivacyClass::NonSensitive),
+                    model: battery.text("name", PrivacyClass::NonSensitive),
+                    serial_number: InventoryField::unknown(
+                        PrivacyClass::DeviceIdentifier,
+                        battery.provenance(),
+                    ),
+                    chemistry: battery.text("chemistry", PrivacyClass::OperationalMetadata),
+                    designed_capacity_mwh: designed,
+                    full_charge_capacity_mwh: full_charge,
+                    remaining_capacity_mwh: InventoryField::unknown(
+                        PrivacyClass::OperationalMetadata,
+                        battery.provenance(),
+                    ),
+                    cycle_count,
+                    charge_status: battery.text("status", PrivacyClass::OperationalMetadata),
+                    health_ratio,
+                });
+            }
+            InventorySection {
+                status: CollectionStatus::Reported,
+                provenance: source_provenance(
+                    "Win32_Battery and root/WMI battery capacity classes",
+                    collected_at_unix,
+                    PermissionState::NotRequired,
+                ),
+                records,
+            }
+        }
+    }
+}
+
+fn build_sensor_section(
+    snapshot: &RawSnapshot,
+    collected_at_unix: u64,
+) -> InventorySection<SensorPresence> {
+    let mut records = Vec::new();
+    records.extend(sensor_records(
+        snapshot,
+        CAMERA,
+        SensorCategory::Camera,
+        "Win32_PnPEntity Camera/Image",
+        collected_at_unix,
+    ));
+    records.extend(sensor_records(
+        snapshot,
+        MICROPHONE,
+        SensorCategory::Microphone,
+        "Win32_PnPEntity AudioEndpoint",
+        collected_at_unix,
+    ));
+    let state = combined_query_state(snapshot, &[CAMERA, MICROPHONE]);
+    if records.is_empty() && !matches!(state, QueryState::Available) {
+        return empty_section(
+            state,
+            "PnP camera and microphone classes",
+            collected_at_unix,
+        );
+    }
+    if records.is_empty() {
+        return InventorySection::not_reported(Provenance::not_collected(collected_at_unix));
+    }
+    InventorySection {
+        status: CollectionStatus::Reported,
+        provenance: source_provenance(
+            "Win32_PnPEntity camera and capture endpoints",
+            collected_at_unix,
+            PermissionState::NotRequired,
+        ),
+        records,
+    }
+}
+
+fn sensor_records(
+    snapshot: &RawSnapshot,
+    section: &'static str,
+    category: SensorCategory,
+    source_detail: &'static str,
+    collected_at_unix: u64,
+) -> Vec<SensorPresence> {
+    if snapshot.query_state(section) != QueryState::Available {
+        return Vec::new();
+    }
+    snapshot
+        .record_indices(section)
+        .into_iter()
+        .map(|index| {
+            let source =
+                SourceRecord::new(snapshot, section, index, source_detail, collected_at_unix);
+            SensorPresence {
+                category,
+                present: source.boolean("present"),
+                manufacturer: source.text("manufacturer", PrivacyClass::NonSensitive),
+                model: source.text("name", PrivacyClass::NonSensitive),
+                hardware_identifier: InventoryField::unknown(
+                    PrivacyClass::DeviceIdentifier,
+                    source.provenance(),
+                ),
+                driver_provider: InventoryField::unknown(
+                    PrivacyClass::OperationalMetadata,
+                    source.provenance(),
+                ),
+                driver_version: InventoryField::unknown(
+                    PrivacyClass::OperationalMetadata,
+                    source.provenance(),
+                ),
+                availability: InventoryField::unknown(
+                    PrivacyClass::OperationalMetadata,
+                    source.provenance(),
+                ),
+            }
+        })
+        .collect()
+}
+
+fn build_port_section(
+    snapshot: &RawSnapshot,
+    collected_at_unix: u64,
+) -> InventorySection<PortRecord> {
+    match snapshot.query_state(PORT_CONNECTOR) {
+        QueryState::NotReported => {
+            InventorySection::not_reported(Provenance::not_collected(collected_at_unix))
+        }
+        QueryState::PermissionDenied | QueryState::Unsupported | QueryState::CollectionError => {
+            empty_section(
+                snapshot.query_state(PORT_CONNECTOR),
+                "Win32_PortConnector",
+                collected_at_unix,
+            )
+        }
+        QueryState::Available => {
+            let mut counts: BTreeMap<PortCategory, u32> = BTreeMap::new();
+            for index in snapshot.record_indices(PORT_CONNECTOR) {
+                let blob = [
+                    snapshot
+                        .value(PORT_CONNECTOR, index, "internal_ref")
+                        .unwrap_or_default(),
+                    snapshot
+                        .value(PORT_CONNECTOR, index, "external_ref")
+                        .unwrap_or_default(),
+                    snapshot
+                        .value(PORT_CONNECTOR, index, "connector_type")
+                        .unwrap_or_default(),
+                    snapshot
+                        .value(PORT_CONNECTOR, index, "port_type")
+                        .unwrap_or_default(),
+                ]
+                .join(" ");
+                if let Some(category) = classify_port(&blob) {
+                    *counts.entry(category).or_insert(0) += 1;
+                }
+            }
+            let provenance = source_provenance(
+                "Win32_PortConnector firmware table",
+                collected_at_unix,
+                PermissionState::NotRequired,
+            );
+            let records = counts
+                .into_iter()
+                .filter(|(_, count)| *count > 0)
+                .map(|(category, count)| PortRecord {
+                    category,
+                    count_kind: PortCountKind::PhysicalConnector,
+                    count: InventoryField::reported(
+                        count,
+                        Confidence::Medium,
+                        PrivacyClass::OperationalMetadata,
+                        provenance.clone(),
+                    ),
+                    manufacturer: InventoryField::unknown(
+                        PrivacyClass::NonSensitive,
+                        provenance.clone(),
+                    ),
+                    model: InventoryField::unknown(PrivacyClass::NonSensitive, provenance.clone()),
+                    hardware_identifier: InventoryField::unknown(
+                        PrivacyClass::DeviceIdentifier,
+                        provenance.clone(),
+                    ),
+                })
+                .collect::<Vec<_>>();
+            InventorySection {
+                status: CollectionStatus::Reported,
+                provenance,
+                records,
+            }
+        }
+    }
+}
+
+fn classify_port(blob: &str) -> Option<PortCategory> {
+    let lowered = blob.to_ascii_lowercase();
+    if lowered.contains("hdmi") {
+        return Some(PortCategory::Hdmi);
+    }
+    if lowered.contains("displayport") || lowered.contains("display port") {
+        return Some(PortCategory::DisplayPort);
+    }
+    if lowered.contains("rj45") || lowered.contains("ethernet") {
+        return Some(PortCategory::Ethernet);
+    }
+    if lowered.contains("headphone")
+        || lowered.contains("audio")
+        || lowered.contains("speaker")
+        || lowered.contains("linein")
+        || lowered.contains("line-in")
+    {
+        return Some(PortCategory::Audio);
+    }
+    if lowered.contains("usb-c")
+        || lowered.contains("usbc")
+        || lowered.contains("type-c")
+        || lowered.contains("type c")
+        || lowered
+            .split(|character: char| !character.is_ascii_digit())
+            .any(|token| token == "31")
+    {
+        return Some(PortCategory::UsbC);
+    }
+    if lowered.contains("usb")
+        || lowered
+            .split(|character: char| !character.is_ascii_digit())
+            .any(|token| matches!(token, "15" | "16" | "22"))
+    {
+        return Some(PortCategory::UsbA);
+    }
+    None
 }
 
 fn build_device_section(
@@ -2137,6 +2590,85 @@ mod tests {
         assert_eq!(
             inventory.storage.devices.status,
             CollectionStatus::NotReported
+        );
+        assert_ne!(inventory.batteries.status, CollectionStatus::NotReported);
+    }
+
+    #[test]
+    fn laptop_battery_health_is_printed_and_hdmi_is_not_guessed() {
+        let mut fixture = branded_laptop_fixture();
+        fixture
+            .query(BATTERY)
+            .record(BATTERY, 0)
+            .field(BATTERY, 0, "present", "True")
+            .field(BATTERY, 0, "name", "Fixture Battery")
+            .field(BATTERY, 0, "designed_capacity_mwh", "50000")
+            .field(BATTERY, 0, "full_charge_capacity_mwh", "40000")
+            .query(CAMERA)
+            .record(CAMERA, 0)
+            .field(CAMERA, 0, "present", "True")
+            .field(CAMERA, 0, "name", "Integrated Camera")
+            .query(MICROPHONE)
+            .record(MICROPHONE, 0)
+            .field(MICROPHONE, 0, "present", "False")
+            .query(PORT_CONNECTOR)
+            .record(PORT_CONNECTOR, 0)
+            .field(PORT_CONNECTOR, 0, "internal_ref", "USB0")
+            .field(PORT_CONNECTOR, 0, "connector_type", "15")
+            .record(PORT_CONNECTOR, 1)
+            .field(PORT_CONNECTOR, 1, "internal_ref", "USB1")
+            .field(PORT_CONNECTOR, 1, "connector_type", "15");
+
+        let inventory = build_inventory(&fixture.snapshot(), 1_000);
+        assert_eq!(inventory.batteries.status, CollectionStatus::Reported);
+        let battery = &inventory.batteries.records[0];
+        assert_eq!(battery.present.value, Some(true));
+        assert!((battery.health_ratio.value.expect("health") - 0.8).abs() < f64::EPSILON);
+        assert_eq!(inventory.sensors.records[0].present.value, Some(true));
+        assert!(
+            inventory.ports.records.iter().any(
+                |record| record.category == PortCategory::UsbA && record.count.value == Some(2)
+            )
+        );
+        assert!(
+            !inventory
+                .ports
+                .records
+                .iter()
+                .any(|record| record.category == PortCategory::Hdmi)
+        );
+
+        let customer = crate::hardware_validation::customer_hardware_fields(&inventory);
+        assert!(
+            customer
+                .iter()
+                .any(|(label, value)| { label == "Battery health %" && value.starts_with("80%") })
+        );
+        assert!(
+            customer.iter().any(|(label, value)| {
+                label == "Cameras" && value.contains("Integrated Camera")
+            })
+        );
+        assert!(customer.iter().any(|(label, _value)| label == "USB ports"));
+        assert!(!customer.iter().any(|(label, _)| label == "HDMI ports"));
+    }
+
+    #[test]
+    fn zero_full_charge_does_not_become_zero_percent_health() {
+        let mut fixture = branded_laptop_fixture();
+        fixture
+            .query(BATTERY)
+            .record(BATTERY, 0)
+            .field(BATTERY, 0, "present", "True")
+            .field(BATTERY, 0, "designed_capacity_mwh", "50000")
+            .field(BATTERY, 0, "full_charge_capacity_mwh", "0");
+        let inventory = build_inventory(&fixture.snapshot(), 1_000);
+        assert_eq!(inventory.batteries.records[0].health_ratio.value, None);
+        let customer = crate::hardware_validation::customer_hardware_fields(&inventory);
+        assert!(
+            !customer
+                .iter()
+                .any(|(label, value)| { label == "Battery health %" && value.contains("0%") })
         );
     }
 }

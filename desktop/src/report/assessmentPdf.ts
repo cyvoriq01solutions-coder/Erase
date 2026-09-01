@@ -91,7 +91,7 @@ export function peripheralHealthRows(verification: VerificationRecord): NamedVal
   };
 
   return [
-    row("Battery health %", ["battery health", "battery wear", "design capacity"], NOT_COLLECTED),
+    row("Battery health %", ["battery health"], NOT_COLLECTED),
     row("Battery present", ["battery present", "battery status"], NOT_COLLECTED),
     row("Cameras", ["camera"], NOT_COLLECTED),
     row("Microphones", ["microphone", "audio endpoint"], NOT_COLLECTED),
@@ -311,7 +311,7 @@ export function buildAssessmentDocument(verification: VerificationRecord, genera
   items.push({
     kind: "text",
     style: "body",
-    text: "Method: read-only Windows firmware and CIM inventory plus document-location metadata (names and sizes). Battery health, cameras, microphones and connector counts are omitted until the hardware-collector update queries them, or a technician records them at physical intake. All-zero disk serials from Windows are treated as not reported.",
+    text: "Method: read-only Windows firmware, CIM and PnP inventory plus document-location metadata (names and sizes). Battery health is remaining full-charge capacity versus design capacity when both values are reported and greater than zero. Camera and microphone counts are Windows PnP enumerations. USB, HDMI, DisplayPort and jack counts are printed only from the firmware connector table, never guessed as zero. All-zero disk serials from Windows are treated as not reported.",
   });
   items.push({
     kind: "text",
