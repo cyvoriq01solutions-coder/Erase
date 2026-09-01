@@ -407,17 +407,19 @@ fn append_battery_rows(rows: &mut Vec<(String, String)>, inventory: &HardwareInv
         return;
     };
     push_row(rows, "Battery present", yes_no_field(&battery.present));
-    if let Some(ratio) = battery.health_ratio.value {
-        if (0.01..=1.5).contains(&ratio) {
-            push_row(
-                rows,
-                "Battery health %",
-                Some(format!(
-                    "{:.0}% full-charge vs design",
-                    (ratio * 100.0).round()
-                )),
-            );
-        }
+    if let Some(ratio) = battery
+        .health_ratio
+        .value
+        .filter(|ratio| (0.01..=1.5).contains(ratio))
+    {
+        push_row(
+            rows,
+            "Battery health %",
+            Some(format!(
+                "{:.0}% full-charge vs design",
+                (ratio * 100.0).round()
+            )),
+        );
     }
 }
 
