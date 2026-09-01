@@ -61,7 +61,8 @@ test("frontend bridge is narrow and has no network or persistence client", () =>
   const combined = sources.map(({ source }) => source).join("\n");
 
   assert.equal(occurrences(combined, /invoke<[^>]+>\("get_shell_bootstrap"\)/g), 1);
-  assert.equal(occurrences(combined, /invoke<|invoke\(/g), 1);
+  assert.match(combined, /"activate_license"/);
+  assert.equal(occurrences(combined, /invoke<|invoke\(/g), 2);
 
   for (const forbidden of [
     /\bfetch\s*\(/,
@@ -79,19 +80,19 @@ test("Rust command boundary links the reusable core and fails closed", () => {
   const rust = read("src-tauri/src/lib.rs");
 
   assert.match(cargo, /cyvra-core\s*=\s*\{\s*package\s*=\s*"cyvoriq-erase-agent",\s*path\s*=\s*"\.\.\/\.\.\/agent-windows"\s*\}/);
-  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 1);
-  assert.match(rust, /generate_handler!\[get_shell_bootstrap\]/);
+  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 2);
+  assert.match(rust, /activate_license/);
   assert.match(rust, /TypeId::of::<cyvra_core::CollectorError>/);
 
   for (const flag of [
     "destructive_operations_enabled",
-    "live_activation_enabled",
     "live_collection_enabled",
     "grading_issuance_enabled",
     "report_authentication_enabled",
   ]) {
     assert.match(rust, new RegExp(`${flag}: false`));
   }
+  assert.match(rust, /live_activation_enabled: true/);
 
   assert.doesNotMatch(rust, /std::process|std::fs|Command::new|remove_file|remove_dir/);
 });

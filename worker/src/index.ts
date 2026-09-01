@@ -38,6 +38,10 @@ import {
   type CustomerAccessApiEnv,
 } from "./routes/customerAccess";
 import {
+  handleActivateLicense,
+  type ActivateApiEnv,
+} from "./routes/activate";
+import {
   handleDownloadPackage,
   handleDownloadStatus,
   type DownloadPackageEnv,
@@ -52,6 +56,7 @@ export interface Env
     AdminApiEnv,
     CustomerAccessApiEnv,
     DownloadPackageEnv,
+    ActivateApiEnv,
     CorsEnv {}
 
 async function route(request: Request, env: Env): Promise<Response> {
@@ -100,6 +105,10 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "POST" && url.pathname === "/api/v1/auth/logout") {
     return handleLogout(request, env);
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/auth/activate") {
+    return handleActivateLicense(request, env);
   }
 
   // Dedicated Admin authentication realm.

@@ -60,7 +60,14 @@ export function assertSafeShellBootstrap(value: unknown): ShellBootstrap {
     }
   }
 
-  if (booleanKeys.some((key) => value[key] !== false)) {
+  const lockedOff = [
+    "destructiveOperationsEnabled",
+    "liveCollectionEnabled",
+    "gradingIssuanceEnabled",
+    "reportAuthenticationEnabled",
+  ] as const;
+
+  if (lockedOff.some((key) => value[key] !== false)) {
     throw new Error("Unsafe capability enabled in W2.1B shell foundation");
   }
 

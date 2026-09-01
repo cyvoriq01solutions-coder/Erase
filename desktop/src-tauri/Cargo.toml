@@ -18,3 +18,8 @@ tauri-build = { version = "=2.6.3", features = [] }
 cyvra-core = { package = "cyvoriq-erase-agent", path = "../../agent-windows" }
 serde = { version = "=1.0.229", features = ["derive"] }
 tauri = { version = "=2.11.5", features = [] }
+serde_json = { version = "=1.0.145" }
+
+[target.'cfg(windows)'.dependencies]
+ureq = { version = "=2.12.1", features = ["json", "native-tls"] }
+winreg = "=0.52.0"

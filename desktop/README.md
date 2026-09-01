@@ -14,16 +14,16 @@ It implements the frozen application frame and five primary destinations:
 
 W2.1B is an internal engineering foundation, not a customer release. It deliberately keeps the following capabilities disabled:
 
-- live activation and device binding;
+- hardware or privacy collection (live activation is enabled in C6);
 - hardware or privacy collection;
 - CYVRA QC grade issuance;
 - authenticated report generation;
 - destructive erasure; and
 - installer bundling for a **customer** publication.
 
-Installer packaging is now configured (NSIS, per-machine, WebView2 bootstrapper, downgrades blocked). The resulting `.exe` is still an **unsigned engineering artifact**. It must not be placed on Pages, GitHub Releases, or a public object URL. Customer download remains https://www.cyvra.co.in/download after Authenticode signing and a private Backblaze B2 object. Live activation stays disabled (`live_activation_enabled: false`) until the device-bind slice.
+Installer packaging is now configured (NSIS, per-machine, WebView2 bootstrapper, downgrades blocked). The resulting `.exe` is still an **unsigned engineering artifact**. It must not be placed on Pages, GitHub Releases, or a public object URL. Customer download remains https://www.cyvra.co.in/download after Authenticode signing and a private Backblaze B2 object. Live activation is enabled (`live_activation_enabled: true`). Collection, grading and destructive flags stay false.
 
-The frontend has one read-only Tauri command, `get_shell_bootstrap`. The Rust crate links the reusable `cyvra_core` library directly; it does not invoke the engineering CLI as a subprocess. The only Tauri capability granted to the main window is `core:default`.
+The frontend uses `get_shell_bootstrap` and `activate_license`. Binding HTTP stays in Rust. The Rust crate links the reusable `cyvra_core` library directly; it does not invoke the engineering CLI as a subprocess. The only Tauri capability granted to the main window is `core:default`.
 
 The browser adapter exists only for safe visual review. It returns a fixed fail-closed foundation state and never represents native integration as active.
 

@@ -31,8 +31,27 @@ export default function App() {
     };
   }, []);
 
+  if (bridge.status === "loading") {
+    return (
+      <main className="setup-shell">
+        <div className="setup-card">
+          <span className="eyebrow">CYVRA ERASE</span>
+          <h1>Starting CYVRA Erase</h1>
+          <p>Checking the application safety boundary.</p>
+        </div>
+      </main>
+    );
+  }
+
   if (!setupComplete) {
-    return <InstallerSetup onFinished={() => setSetupComplete(true)} />;
+    return (
+      <InstallerSetup
+        liveActivationEnabled={
+          bridge.status === "ready" && bridge.bootstrap.liveActivationEnabled
+        }
+        onFinished={() => setSetupComplete(true)}
+      />
+    );
   }
 
   return (
