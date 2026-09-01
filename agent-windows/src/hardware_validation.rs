@@ -265,6 +265,153 @@ pub fn not_windows_text() -> String {
     .join("\n")
 }
 
+pub fn customer_hardware_fields(inventory: &HardwareInventoryV1) -> Vec<(String, String)> {
+    let mut rows = Vec::new();
+
+    if let Some(device) = inventory.device_and_chassis.records.first() {
+        push_row(
+            &mut rows,
+            "Manufacturer",
+            plain_field(&device.system_manufacturer),
+        );
+        push_row(&mut rows, "Model", plain_field(&device.system_model));
+        push_row(
+            &mut rows,
+            "Device type",
+            mapped_field(&device.classification, classification_name),
+        );
+        push_row(
+            &mut rows,
+            "Form factor",
+            mapped_field(&device.form_factor, form_factor_name),
+        );
+    }
+
+    if let Some(firmware) = inventory.firmware.records.first() {
+        push_row(&mut rows, "Firmware vendor", plain_field(&firmware.vendor));
+        push_row(
+            &mut rows,
+            "Firmware mode",
+            mapped_field(&firmware.mode, firmware_mode_name),
+        );
+        push_row(
+            &mut rows,
+            "Secure Boot present",
+            yes_no_field(&firmware.secure_boot_present),
+        );
+        push_row(
+            &mut rows,
+            "Secure Boot enabled",
+            yes_no_field(&firmware.secure_boot_enabled),
+        );
+        push_row(
+            &mut rows,
+            "TPM present",
+            yes_no_field(&firmware.tpm_present),
+        );
+        push_row(
+            &mut rows,
+            "TPM specification",
+            plain_field(&firmware.tpm_specification_version),
+        );
+    }
+
+    if let Some(processor) = inventory.processors.records.first() {
+        push_row(&mut rows, "Processor", plain_field(&processor.model));
+        push_row(
+            &mut rows,
+            "Processor manufacturer",
+            plain_field(&processor.manufacturer),
+        );
+        push_row(
+            &mut rows,
+            "Physical cores",
+            plain_field(&processor.physical_core_count),
+        );
+        push_row(
+            &mut rows,
+            "Logical processors",
+            plain_field(&processor.logical_processor_count),
+        );
+    }
+
+    if let Some(summary) = inventory.memory.summary.records.first() {
+        push_row(
+            &mut rows,
+            "Installed memory",
+            bytes_field(&summary.installed_physical_bytes),
+        );
+        push_row(
+            &mut rows,
+            "Visible memory",
+            bytes_field(&summary.visible_physical_bytes),
+        );
+        push_row(
+            &mut rows,
+            "Memory slots used",
+            slot_field(&summary.populated_slot_count, &summary.physical_slot_count),
+        );
+    }
+
+    rows
+}
+
+fn push_row(rows: &mut Vec<(String, String)>, label: &str, value: Option<String>) {
+    if let Some(value) = value {
+        if !value.is_empty() && value != "unknown" {
+            rows.push((label.to_string(), value));
+        }
+    }
+}
+
+fn plain_field<T>(field: &InventoryField<T>) -> Option<String>
+where
+    T: Display,
+{
+    field
+        .value
+        .as_ref()
+        .map(|value| flatten_text(&value.to_string()))
+        .filter(|value| !value.is_empty())
+}
+
+fn mapped_field<T>(field: &InventoryField<T>, mapper: fn(T) -> &'static str) -> Option<String>
+where
+    T: Copy,
+{
+    field.value.map(mapper).map(|value| value.replace('_', " "))
+}
+
+fn yes_no_field(field: &InventoryField<bool>) -> Option<String> {
+    field
+        .value
+        .map(|value| if value { "Yes" } else { "No" }.to_string())
+}
+
+fn bytes_field(field: &InventoryField<u64>) -> Option<String> {
+    field.value.map(format_bytes)
+}
+
+fn slot_field(populated: &InventoryField<u32>, physical: &InventoryField<u32>) -> Option<String> {
+    match (populated.value, physical.value) {
+        (Some(used), Some(total)) => Some(format!("{used} of {total}")),
+        (Some(used), None) => Some(used.to_string()),
+        _ => None,
+    }
+}
+
+fn format_bytes(bytes: u64) -> String {
+    const GB: f64 = 1_073_741_824.0;
+    const MB: f64 = 1_048_576.0;
+    if bytes as f64 >= GB {
+        format!("{:.1} GB", bytes as f64 / GB)
+    } else if bytes as f64 >= MB {
+        format!("{:.0} MB", bytes as f64 / MB)
+    } else {
+        format!("{bytes} bytes")
+    }
+}
+
 fn requested_sections_are_consistent(inventory: &HardwareInventoryV1) -> bool {
     inventory.device_and_chassis.is_consistent()
         && inventory.firmware.is_consistent()

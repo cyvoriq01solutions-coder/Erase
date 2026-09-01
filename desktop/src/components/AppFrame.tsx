@@ -1,23 +1,49 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import logoUrl from "../assets/cyvoriq-logo.webp";
-import { NAVIGATION_ITEMS, type BridgeState, type NavigationId, type VerificationPhase } from "../types/shell";
+import {
+  NAVIGATION_ITEMS,
+  type BridgeState,
+  type NavigationId,
+  type VerificationPhase,
+  type VerificationProgress,
+} from "../types/shell";
 
 interface AppFrameProps {
   bridge: BridgeState;
   current: NavigationId;
   onNavigate: (target: NavigationId) => void;
   verificationPhase: VerificationPhase;
+  progress: VerificationProgress | null;
+  onExit: () => void;
   children: ReactNode;
 }
 
 function bridgeLabel(bridge: BridgeState): string {
-  if (bridge.status === "loading") return "Checking trusted boundary";
-  if (bridge.status === "error") return "Safe boundary unavailable";
-  if (bridge.bootstrap.runtimeMode === "browser_design_adapter") return "Browser preview adapter";
-  return "Typed Rust boundary ready";
+  if (bridge.status === "loading") return "Checking application safety";
+  if (bridge.status === "error") return "Safety boundary unavailable";
+  if (bridge.bootstrap.runtimeMode === "browser_design_adapter") return "Browser preview";
+  return "Ready for this PC";
 }
 
-export function AppFrame({ bridge, current, onNavigate, verificationPhase, children }: AppFrameProps) {
+function footerState(phase: VerificationPhase, progress: VerificationProgress | null): string {
+  if (phase === "complete") return "assessment complete";
+  if (phase === "running") {
+    const detail = progress?.detail ?? "verification running";
+    return `${progress?.percent ?? 0}% · ${detail}`;
+  }
+  if (phase === "error") return "verification stopped";
+  return "no verification started";
+}
+
+export function AppFrame({
+  bridge,
+  current,
+  onNavigate,
+  verificationPhase,
+  progress,
+  onExit,
+  children,
+}: AppFrameProps) {
   const workspaceRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -25,6 +51,7 @@ export function AppFrame({ bridge, current, onNavigate, verificationPhase, child
   }, [current]);
 
   const version = bridge.status === "ready" ? bridge.bootstrap.appVersion : "checking";
+  const running = verificationPhase === "running";
 
   return (
     <div className="application-shell">
@@ -34,7 +61,9 @@ export function AppFrame({ bridge, current, onNavigate, verificationPhase, child
 
       <div className="foundation-banner" role="note">
         <strong>CYVRA ERASE · LOCAL ASSESSMENT</strong>
-        <span>Hardware and document map on this PC. Purge, grading issuance and cloud report authentication stay off</span>
+        <span>
+          Hardware and document map on this PC. Purge, grading issuance and cloud report authentication stay off.
+        </span>
       </div>
 
       <header className="titlebar">
@@ -50,6 +79,9 @@ export function AppFrame({ bridge, current, onNavigate, verificationPhase, child
         <div className="titlebar-status" aria-label="Application foundation status">
           <span className="foundation-chip">ASSESSMENT ONLY</span>
           <span>Version {version}</span>
+          <button className="button button-quiet" type="button" onClick={onExit}>
+            Exit
+          </button>
         </div>
       </header>
 
@@ -62,6 +94,7 @@ export function AppFrame({ bridge, current, onNavigate, verificationPhase, child
                 type="button"
                 className={current === item.id ? "nav-item nav-item-active" : "nav-item"}
                 aria-current={current === item.id ? "page" : undefined}
+                disabled={running && item.id !== "verification" && item.id !== "help"}
                 onClick={() => onNavigate(item.id)}
               >
                 <span className="nav-mark" aria-hidden="true">
@@ -83,6 +116,9 @@ export function AppFrame({ bridge, current, onNavigate, verificationPhase, child
           <button className="privacy-link" type="button" onClick={() => onNavigate("help")}>
             Settings &amp; privacy
           </button>
+          <button className="privacy-link" type="button" onClick={onExit}>
+            Exit CYVRA Erase
+          </button>
         </aside>
 
         <main id="workspace" className="workspace" ref={workspaceRef} tabIndex={-1}>
@@ -91,14 +127,7 @@ export function AppFrame({ bridge, current, onNavigate, verificationPhase, child
       </div>
 
       <footer className="safety-footer">
-        <span>
-          Shell state:{" "}
-          {verificationPhase === "complete"
-            ? "assessment complete"
-            : verificationPhase === "running"
-              ? "verification running"
-              : "no verification started"}
-        </span>
+        <span>Status: {footerState(verificationPhase, progress)}</span>
         <span>{bridgeLabel(bridge)}</span>
         <strong>
           <span className="safe-dot" aria-hidden="true" /> Non-destructive foundation

@@ -63,7 +63,9 @@ test("frontend bridge is narrow and has no network or persistence client", () =>
   assert.equal(occurrences(combined, /invoke<[^>]+>\("get_shell_bootstrap"\)/g), 1);
   assert.match(combined, /"activate_license"/);
   assert.match(combined, /"run_device_verification"/);
-  assert.equal(occurrences(combined, /invoke<|invoke\(/g), 3);
+  assert.match(combined, /"list_scan_targets"/);
+  assert.match(combined, /"close_window"/);
+  assert.equal(occurrences(combined, /invoke<|invoke\(/g), 5);
 
   for (const forbidden of [
     /\bfetch\s*\(/,
@@ -81,9 +83,11 @@ test("Rust command boundary links the reusable core and fails closed", () => {
   const rust = read("src-tauri/src/lib.rs");
 
   assert.match(cargo, /cyvra-core\s*=\s*\{\s*package\s*=\s*"cyvoriq-erase-agent",\s*path\s*=\s*"\.\.\/\.\.\/agent-windows"\s*\}/);
-  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 3);
+  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 5);
   assert.match(rust, /activate_license/);
   assert.match(rust, /run_device_verification/);
+  assert.match(rust, /list_scan_targets/);
+  assert.match(rust, /close_window/);
   assert.match(rust, /TypeId::of::<cyvra_core::CollectorError>/);
 
   for (const flag of [
@@ -124,8 +128,12 @@ test("foundation does not ship destructive or obsolete customer wording", () => 
 
   assert.doesNotMatch(combined, /XCQC/);
   assert.doesNotMatch(combined, />\s*(Erase now|Wipe device|Delete data|Bypass password)\s*</i);
+  assert.doesNotMatch(combined, /Assessment JSON/);
+  assert.doesNotMatch(combined, /Typed Rust/);
   assert.match(combined, /No data was erased/);
+  assert.match(combined, /Generate report/);
   assert.match(combined, /Purge stays off|PURGE/);
+  assert.match(combined, /Exit CYVRA Erase/);
 });
 
 test("NSIS installer licence exists and is assessment-only", () => {

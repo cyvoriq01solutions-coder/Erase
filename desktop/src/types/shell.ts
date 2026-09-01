@@ -27,11 +27,30 @@ export interface ShellBootstrap {
 
 export type VerificationPhase = "idle" | "running" | "complete" | "error";
 
+export interface NamedValue {
+  label: string;
+  value: string;
+}
+
+export interface ScanTarget {
+  letter: string;
+  label: string;
+  kind: string;
+  sizeLabel: string;
+  defaultSelected: boolean;
+  hint: string;
+}
+
+export interface VerificationProgress {
+  percent: number;
+  stageIndex: number;
+  stage: string;
+  detail: string;
+}
+
 export interface VerificationRecord {
   hardwareResult: string;
   hardwarePassed: boolean;
-  hardwareValidation: string;
-  reportJson: string;
   manufacturer: string;
   model: string;
   hostname: string;
@@ -42,8 +61,12 @@ export interface VerificationRecord {
   destructiveOperationsEnabled: boolean;
   assessmentStatus: string;
   assessmentSummary: string;
+  scannedDrives: string;
+  hardwareFields: NamedValue[];
+  locationGroups: NamedValue[];
   message: string;
 }
+
 export type BridgeState =
   | { status: "loading" }
   | { status: "ready"; bootstrap: ShellBootstrap }

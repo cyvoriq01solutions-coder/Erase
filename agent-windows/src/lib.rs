@@ -87,22 +87,102 @@ pub fn run_scan_with<A>(adapter: &A) -> ScanResult
 where
     A: PlatformAdapter + ?Sized,
 {
+    run_scan_selected(adapter, None, &mut |_, _, _, _| {})
+}
+
+fn run_scan_selected<A, F>(
+    adapter: &A,
+    drive_letters: Option<&[String]>,
+    progress: &mut F,
+) -> ScanResult
+where
+    A: PlatformAdapter + ?Sized,
+    F: FnMut(u8, u8, &str, &str),
+{
+    progress(
+        6,
+        0,
+        "Preparing verification",
+        "Getting this PC ready for a local assessment.",
+    );
+
+    progress(
+        14,
+        1,
+        "Confirming device identity",
+        "Reading the Windows computer name and model.",
+    );
     let device = adapter.collect_device();
     let operating_system = adapter.collect_os();
+
+    progress(
+        28,
+        2,
+        "Collecting hardware information",
+        "Recording processor, memory and firmware details.",
+    );
     let cpu = adapter.collect_cpu();
     let storage = adapter.collect_storage();
-    let volumes = adapter.collect_volumes();
+    let volumes_all = adapter.collect_volumes();
+    let volumes = filter_volumes(&volumes_all, drive_letters);
     let encryption = adapter.collect_encryption();
     let user_profiles = adapter.collect_user_profiles();
     let hardware_inventory = adapter.collect_hardware_inventory();
 
-    let profile_paths = profile_paths(&user_profiles);
+    let mut profile_paths = profile_paths(&user_profiles);
+    if let Some(letters) = drive_letters {
+        profile_paths.retain(|path| path_matches_letters(path, letters));
+    }
+
     let volume_roots = volume_roots(&volumes);
+    let scanned = scanned_drive_label(&volumes);
+
+    progress(
+        48,
+        3,
+        "Assessing personal-data locations",
+        &format!("Looking for documents and known file types on {scanned}."),
+    );
     let personal_data = adapter.collect_personal_data(&profile_paths, &volume_roots);
+
+    progress(
+        62,
+        3,
+        "Assessing personal-data locations",
+        "Checking application data folders without opening messages.",
+    );
     let application_data = adapter.collect_application_data(&profile_paths);
+
+    progress(
+        76,
+        4,
+        "Building the Privacy Exposure Map",
+        "Summarising where personal files appear to live.",
+    );
     let pdem = pdem::build(&personal_data, &application_data);
+
+    progress(
+        86,
+        5,
+        "Preparing evidence",
+        "Recording what was assessed on this PC.",
+    );
     let evidence = evidence::collect();
+
+    progress(
+        93,
+        6,
+        "Checking consistency",
+        "Confirming the assessment stayed read-only.",
+    );
     let assessment = assessment::assess();
+
+    progress(
+        100,
+        7,
+        "Preparing results",
+        "The local assessment is ready to review.",
+    );
 
     ScanResult {
         device,
@@ -146,6 +226,128 @@ fn volume_roots(volumes: &[volume::VolumeProfile]) -> Vec<String> {
         .collect()
 }
 
+fn letter_key(value: &str) -> String {
+    value
+        .chars()
+        .find(|character| character.is_ascii_alphabetic())
+        .map(|character| character.to_ascii_uppercase().to_string())
+        .unwrap_or_default()
+}
+
+fn path_matches_letters(path: &str, letters: &[String]) -> bool {
+    let key = letter_key(path);
+    !key.is_empty() && letters.iter().any(|letter| letter_key(letter) == key)
+}
+
+fn filter_volumes(
+    volumes: &[volume::VolumeProfile],
+    drive_letters: Option<&[String]>,
+) -> Vec<volume::VolumeProfile> {
+    let Some(letters) = drive_letters else {
+        return volumes.to_vec();
+    };
+
+    let selected: Vec<String> = letters.iter().map(|letter| letter_key(letter)).collect();
+    volumes
+        .iter()
+        .filter(|volume| selected.contains(&letter_key(&volume.drive_letter)))
+        .cloned()
+        .collect()
+}
+
+fn scanned_drive_label(volumes: &[volume::VolumeProfile]) -> String {
+    let letters: Vec<String> = volumes
+        .iter()
+        .filter(|volume| volume.drive_letter != "unknown")
+        .map(|volume| format!("{}:", volume.drive_letter))
+        .collect();
+    if letters.is_empty() {
+        "the selected drive".to_string()
+    } else {
+        letters.join(", ")
+    }
+}
+
+fn system_drive_letter() -> String {
+    std::env::var("SystemDrive")
+        .ok()
+        .or_else(|| std::env::var("SYSTEMDRIVE").ok())
+        .map(|value| letter_key(&value))
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "C".to_string())
+}
+
+#[derive(Debug, Clone)]
+pub struct ScanTarget {
+    pub letter: String,
+    pub label: String,
+    pub kind: String,
+    pub size_label: String,
+    pub default_selected: bool,
+    pub hint: String,
+}
+
+pub fn list_scan_targets() -> Vec<ScanTarget> {
+    let system = system_drive_letter();
+    volume::collect()
+        .into_iter()
+        .filter(|volume| {
+            let letter = letter_key(&volume.drive_letter);
+            !letter.is_empty() && volume.drive_letter != "unknown"
+        })
+        .map(|volume| {
+            let letter = letter_key(&volume.drive_letter);
+            let is_system = letter == system;
+            let kind = match volume.drive_kind.as_str() {
+                "removable" => "Removable or USB",
+                "network" => "Network location",
+                "optical" => "Optical drive",
+                "internal" => "Internal disk",
+                _ => "Other",
+            };
+            let default_selected = is_system && volume.drive_kind != "removable";
+            let hint = if volume.drive_kind == "removable" || volume.drive_kind == "optical" {
+                "Left off by default. Select this only if you want it included."
+                    .to_string()
+            } else if is_system {
+                "This is the Windows system drive. Recommended for every assessment.".to_string()
+            } else {
+                "May be an extra internal disk or an attached USB drive. Leave it off unless you need it."
+                    .to_string()
+            };
+            let volume_name = if volume.label == "unknown" || volume.label.is_empty() {
+                if is_system {
+                    "Windows".to_string()
+                } else {
+                    "Local disk".to_string()
+                }
+            } else {
+                volume.label.clone()
+            };
+
+            ScanTarget {
+                letter,
+                label: volume_name,
+                kind: kind.to_string(),
+                size_label: format_drive_size(volume.size_bytes),
+                default_selected,
+                hint,
+            }
+        })
+        .collect()
+}
+
+fn format_drive_size(bytes: u64) -> String {
+    const GB: f64 = 1_073_741_824.0;
+    if bytes == 0 {
+        "Size not reported".to_string()
+    } else if bytes as f64 >= GB {
+        format!("{:.0} GB", bytes as f64 / GB)
+    } else {
+        format!("{:.0} MB", bytes as f64 / 1_048_576.0)
+    }
+}
+
 impl ScanResult {
     /// Preserve the 0.2.1 engineering JSON output while callers migrate to typed data.
     #[must_use]
@@ -179,6 +381,12 @@ impl ScanResult {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct NamedValue {
+    pub label: String,
+    pub value: String,
+}
+
 #[derive(Debug)]
 pub struct CustomerVerification {
     pub hardware_passed: bool,
@@ -195,22 +403,66 @@ pub struct CustomerVerification {
     pub destructive_operations_enabled: bool,
     pub assessment_status: String,
     pub assessment_summary: String,
+    pub scanned_drives: String,
+    pub hardware_fields: Vec<NamedValue>,
+    pub location_groups: Vec<NamedValue>,
 }
 
 pub fn run_customer_verification() -> CustomerVerification {
-    let scan = run_scan();
-    let (hardware_validation, hardware_passed, hardware_result) = match &scan.hardware_inventory {
-        Some(inventory) => {
-            let report = hardware_validation::build_report(inventory);
-            let result = if report.passed { "pass" } else { "fail" };
-            (report.lines.join("\n"), report.passed, result.to_string())
-        }
-        None => (
-            hardware_validation::not_windows_text(),
-            false,
-            "not_windows".to_string(),
-        ),
+    run_customer_verification_on_drives(&[], &mut |_, _, _, _| {})
+}
+
+pub fn run_customer_verification_on_drives<F>(
+    drive_letters: &[String],
+    progress: &mut F,
+) -> CustomerVerification
+where
+    F: FnMut(u8, u8, &str, &str),
+{
+    let selected: Vec<String> = if drive_letters.is_empty() {
+        vec![system_drive_letter()]
+    } else {
+        drive_letters
+            .iter()
+            .map(|letter| letter_key(letter))
+            .filter(|letter| !letter.is_empty())
+            .collect()
     };
+
+    let scan = run_scan_selected(&NativePlatformAdapter, Some(&selected), progress);
+    let (hardware_validation, hardware_passed, hardware_result, mut hardware_fields) =
+        match &scan.hardware_inventory {
+            Some(inventory) => {
+                let report = hardware_validation::build_report(inventory);
+                let result = if report.passed { "pass" } else { "fail" };
+                (
+                    report.lines.join("\n"),
+                    report.passed,
+                    result.to_string(),
+                    hardware_validation::customer_hardware_fields(inventory)
+                        .into_iter()
+                        .map(|(label, value)| NamedValue { label, value })
+                        .collect::<Vec<_>>(),
+                )
+            }
+            None => (
+                hardware_validation::not_windows_text(),
+                false,
+                "not_windows".to_string(),
+                Vec::new(),
+            ),
+        };
+
+    prepend_field(
+        &mut hardware_fields,
+        "Computer name",
+        scan.device.hostname.clone(),
+    );
+    prepend_field(
+        &mut hardware_fields,
+        "Operating system",
+        scan.operating_system.caption.clone(),
+    );
 
     CustomerVerification {
         hardware_passed,
@@ -228,6 +480,79 @@ pub fn run_customer_verification() -> CustomerVerification {
         destructive_operations_enabled: scan.storage.destructive_operations_enabled,
         assessment_status: scan.assessment.status.to_string(),
         assessment_summary: scan.assessment.summary.to_string(),
+        scanned_drives: scanned_drive_label(&scan.volumes),
+        hardware_fields,
+        location_groups: location_groups(&scan),
+    }
+}
+
+fn prepend_field(fields: &mut Vec<NamedValue>, label: &str, value: String) {
+    if value.is_empty() || value == "unknown" {
+        return;
+    }
+    if fields.iter().any(|field| field.label == label) {
+        return;
+    }
+    fields.insert(
+        0,
+        NamedValue {
+            label: label.to_string(),
+            value,
+        },
+    );
+}
+
+fn location_groups(scan: &ScanResult) -> Vec<NamedValue> {
+    use std::collections::BTreeMap;
+
+    let mut totals: BTreeMap<String, u64> = BTreeMap::new();
+    for location in &scan.personal_data.locations {
+        *totals
+            .entry(friendly_category(&location.category))
+            .or_insert(0) += location.file_count;
+    }
+
+    let mut groups: Vec<NamedValue> = totals
+        .into_iter()
+        .map(|(label, count)| NamedValue {
+            label,
+            value: if count == 1 {
+                "1 file".to_string()
+            } else {
+                format!("{count} files")
+            },
+        })
+        .collect();
+
+    let application_paths = scan.application_data.locations.len() as u64;
+    if application_paths > 0 {
+        groups.push(NamedValue {
+            label: "Application data paths".to_string(),
+            value: if application_paths == 1 {
+                "1 location".to_string()
+            } else {
+                format!("{application_paths} locations")
+            },
+        });
+    }
+
+    groups
+}
+
+fn friendly_category(category: &str) -> String {
+    match category {
+        "document" => "Documents".to_string(),
+        "pdf" => "PDF files".to_string(),
+        "spreadsheet" => "Spreadsheets".to_string(),
+        "presentation" => "Presentations".to_string(),
+        "image" => "Pictures".to_string(),
+        "video" => "Videos".to_string(),
+        "audio" => "Audio files".to_string(),
+        "archive" => "Archives".to_string(),
+        "email" => "Email stores".to_string(),
+        "database" => "Databases".to_string(),
+        "backup" => "Backup files".to_string(),
+        other => other.replace('_', " "),
     }
 }
 
