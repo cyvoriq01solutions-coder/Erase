@@ -1,10 +1,19 @@
 import { Notice } from "../components/Notice";
-import type { BridgeState, NavigationId } from "../types/shell";
+import type {
+  BridgeState,
+  NavigationId,
+  VerificationPhase,
+  VerificationRecord,
+} from "../types/shell";
 
 interface ShellScreenProps {
   current: NavigationId;
   bridge: BridgeState;
+  verificationPhase: VerificationPhase;
+  verification: VerificationRecord | null;
+  verificationError: string | null;
   onNavigate: (target: NavigationId) => void;
+  onRunVerification: () => void;
 }
 
 const verificationStages = [
@@ -38,39 +47,69 @@ function StatusCard({ label, value, copy }: { label: string; value: string; copy
   );
 }
 
-function OverviewScreen({ onNavigate }: Pick<ShellScreenProps, "onNavigate">) {
+function stageState(phase: VerificationPhase): string {
+  if (phase === "running") return "Running";
+  if (phase === "complete") return "Complete";
+  if (phase === "error") return "Stopped";
+  return "Pending";
+}
+
+function OverviewScreen({
+  onNavigate,
+  verification,
+  verificationPhase,
+}: Pick<ShellScreenProps, "onNavigate" | "verification" | "verificationPhase">) {
   return (
     <div className="screen-stack">
       <ScreenHeader
-        eyebrow="CUSTOMER APPLICATION FOUNDATION"
+        eyebrow="LOCAL ASSESSMENT"
         title="Overview"
-        copy="The trusted desktop frame is ready. Live customer services remain deliberately disconnected in W2.1B."
+        copy="CYVRA Erase inspects this Windows PC for hardware identity and document locations, then builds a local assessment report. It does not erase files."
       />
 
-      <Notice kind="information" title="Foundation state">
-        This build proves the Tauri shell, typed Rust boundary and frozen navigation. It does not activate an entitlement,
-        inspect a device, issue a grade or authenticate a report.
+      <Notice kind="information" title="What this application does">
+        Run Device Verification to collect hardware inventory and a map of documents and application data
+        (type and location only). Private file contents are not read. Purge stays off until a later approved phase.
       </Notice>
 
       <section className="primary-panel" aria-labelledby="current-state-title">
         <div>
           <span className="card-label">CURRENT STATE</span>
-          <h2 id="current-state-title">Ready for bounded integration work</h2>
+          <h2 id="current-state-title">
+            {verificationPhase === "complete" ? "Assessment complete on this PC" : "Ready to verify this device"}
+          </h2>
           <p>
-            No device has been confirmed and no verification has started. Customer data and hardware values are not
-            simulated as real evidence.
+            {verification
+              ? `${verification.manufacturer} ${verification.model} · ${verification.personalLocationCount} document locations · ${verification.pdemObjectCount} PDEM objects.`
+              : "No device has been verified in this session. Start from Verification."}
           </p>
         </div>
         <button className="button button-primary" type="button" onClick={() => onNavigate("verification")}>
-          Review verification scope
+          {verification ? "Review verification" : "Open verification"}
         </button>
       </section>
 
-      <section className="status-grid" aria-label="Foundation capability status">
-        <StatusCard label="ACTIVATION" value="Not connected" copy="Server-authoritative entitlement remains a later contract." />
-        <StatusCard label="DEVICE BINDING" value="Not started" copy="No fingerprint or raw hardware identifier was created." />
-        <StatusCard label="CYVRA QC" value="Grade pending" copy="No evidence exists and no grade can be issued." />
-        <StatusCard label="REPORT" value="Not generated" copy="No report or authenticity claim exists." />
+      <section className="status-grid" aria-label="Capability status">
+        <StatusCard
+          label="ACTIVATION"
+          value="Device bind live"
+          copy="Enter the emailed key on first run. One Windows PC per licence."
+        />
+        <StatusCard
+          label="HARDWARE ENGINE"
+          value={verification ? verification.hardwareResult : "Idle"}
+          copy="Same hardware_inventory_v1 engine as the CYVRA hardware validator, in-process."
+        />
+        <StatusCard
+          label="DOCUMENT MAP"
+          value={verification ? `${verification.pdemObjectCount} objects` : "Idle"}
+          copy="Same PDEM engine as the verification agent. Metadata only."
+        />
+        <StatusCard
+          label="PURGE"
+          value="Disabled"
+          copy="No erase, overwrite or wipe is available in this version."
+        />
       </section>
 
       <Notice kind="warning" title="Assessment boundary">
@@ -80,26 +119,37 @@ function OverviewScreen({ onNavigate }: Pick<ShellScreenProps, "onNavigate">) {
   );
 }
 
-function VerificationScreen({ bridge }: Pick<ShellScreenProps, "bridge">) {
+function VerificationScreen({
+  bridge,
+  verificationPhase,
+  verification,
+  verificationError,
+  onRunVerification,
+}: Pick<
+  ShellScreenProps,
+  "bridge" | "verificationPhase" | "verification" | "verificationError" | "onRunVerification"
+>) {
   const nativeReady = bridge.status === "ready" && bridge.bootstrap.coreBoundary === "direct_typed_cyvra_core";
+  const collectionOn = bridge.status === "ready" && bridge.bootstrap.liveCollectionEnabled;
+  const canRun = collectionOn && verificationPhase !== "running";
 
   return (
     <div className="screen-stack">
       <ScreenHeader
         eyebrow="PASSIVE ASSESSMENT"
         title="Verification"
-        copy="One coordinated journey will eventually combine passive device evidence and privacy-exposure metadata."
+        copy="One journey runs the hardware validator and the document/PDEM engine inside this application. Both stay non-destructive."
       />
 
       <div className="two-column-grid">
         <section className="content-panel" aria-labelledby="scope-title">
           <span className="card-label">FROZEN SCOPE</span>
-          <h2 id="scope-title">What the customer will review</h2>
+          <h2 id="scope-title">What this scan reviews</h2>
           <ul className="check-list">
-            <li>Detected device identity and architecture</li>
-            <li>Explicit privacy and evidence scope</li>
-            <li>Standard-user permission behavior</li>
-            <li>Safe cancellation before final results</li>
+            <li>Hardware identity, firmware, processor and memory</li>
+            <li>Document locations: Office, PDF, images and other known types</li>
+            <li>Application data paths without reading message bodies</li>
+            <li>Local assessment report — not a wipe certificate</li>
           </ul>
         </section>
 
@@ -109,27 +159,45 @@ function VerificationScreen({ bridge }: Pick<ShellScreenProps, "bridge">) {
           <dl className="definition-list">
             <div>
               <dt>Native boundary</dt>
-              <dd>{nativeReady ? "Linked" : "Available only in the Tauri runtime"}</dd>
+              <dd>{nativeReady ? "Linked" : "Available only in the installed application"}</dd>
             </div>
             <div>
-              <dt>Frontend commands</dt>
-              <dd>One read-only bootstrap command</dd>
+              <dt>Hardware engine</dt>
+              <dd>In-process CYVRA hardware validation</dd>
             </div>
             <div>
-              <dt>Collector execution</dt>
-              <dd>Disabled</dd>
+              <dt>Document engine</dt>
+              <dd>{collectionOn ? "Enabled for this PC" : "Unavailable in browser preview"}</dd>
             </div>
           </dl>
         </section>
       </div>
 
+      {verificationError ? (
+        <Notice kind="error" title="Verification did not finish">
+          {verificationError}
+        </Notice>
+      ) : null}
+
       <section className="content-panel" aria-labelledby="stages-title">
         <div className="panel-heading">
           <div>
             <span className="card-label">EIGHT TRUTHFUL STAGES</span>
-            <h2 id="stages-title">Verification has not started</h2>
+            <h2 id="stages-title">
+              {verificationPhase === "idle"
+                ? "Verification has not started"
+                : verificationPhase === "running"
+                  ? "Verification is running on this PC"
+                  : verificationPhase === "complete"
+                    ? "Verification finished"
+                    : "Verification stopped"}
+            </h2>
           </div>
-          <span className="status-pill status-neutral">Not started</span>
+          <span
+            className={`status-pill ${verificationPhase === "complete" ? "status-positive" : "status-neutral"}`}
+          >
+            {stageState(verificationPhase)}
+          </span>
         </div>
         <ol className="stage-list">
           {verificationStages.map((stage, index) => (
@@ -138,108 +206,168 @@ function VerificationScreen({ bridge }: Pick<ShellScreenProps, "bridge">) {
                 {index + 1}
               </span>
               <span>{stage}</span>
-              <strong>Pending</strong>
+              <strong>{stageState(verificationPhase)}</strong>
             </li>
           ))}
         </ol>
       </section>
 
       <div className="action-row">
-        <button className="button button-primary" type="button" disabled>
-          Run Device Verification
+        <button className="button button-primary" type="button" disabled={!canRun} onClick={onRunVerification}>
+          {verificationPhase === "running" ? "Running Device Verification" : "Run Device Verification"}
         </button>
-        <p>Unavailable until consent, orchestration and typed progress contracts are implemented.</p>
+        <p>
+          {collectionOn
+            ? "This can take several minutes. CYVRA will not erase files."
+            : "Open the installed Windows application to run verification. Browser preview cannot scan a device."}
+        </p>
       </div>
+
+      {verification ? (
+        <Notice kind="success" title="Local engines finished">
+          Hardware result {verification.hardwareResult}. Document map {verification.personalLocationCount} locations,{" "}
+          {verification.pdemObjectCount} PDEM objects. Content inspected: no. Data erased: no.
+        </Notice>
+      ) : null}
     </div>
   );
 }
 
-function ResultsScreen({ onNavigate }: Pick<ShellScreenProps, "onNavigate">) {
+function ResultsScreen({
+  onNavigate,
+  verification,
+}: Pick<ShellScreenProps, "onNavigate" | "verification">) {
   return (
     <div className="screen-stack">
       <ScreenHeader
         eyebrow="EVIDENCE-LED OUTCOMES"
         title="Results"
-        copy="CYVRA QC condition and CYVRA Erase privacy exposure remain separate inside one verification record."
+        copy="Hardware condition and privacy exposure stay separate. This is an assessment, not a sanitization certificate."
       />
 
-      <Notice kind="warning" title="No results available">
-        No verification has completed. The shell does not create sample results that could be mistaken for device
-        evidence.
-      </Notice>
+      {verification ? (
+        <Notice kind="success" title="Assessment recorded for this session">
+          {verification.assessmentSummary}
+        </Notice>
+      ) : (
+        <Notice kind="warning" title="No results available">
+          No verification has completed. The shell does not create sample results that could be mistaken for device
+          evidence.
+        </Notice>
+      )}
 
       <section className="domain-grid" aria-label="Result domains">
         <article className="domain-card">
-          <span className="domain-name">CYVRA QC</span>
-          <span className="status-pill status-neutral">Grade pending</span>
-          <h2>Device condition</h2>
-          <p>An A–E grade requires the approved evidence threshold, deterministic rules and server-authoritative issuance.</p>
+          <span className="domain-name">HARDWARE</span>
+          <span className={`status-pill ${verification?.hardwarePassed ? "status-positive" : "status-neutral"}`}>
+            {verification ? verification.hardwareResult : "Pending"}
+          </span>
+          <h2>{verification ? `${verification.manufacturer} ${verification.model}` : "Device condition"}</h2>
+          <p>
+            {verification
+              ? `${verification.osCaption} on ${verification.hostname}. Identifiers in the hardware text stay redacted.`
+              : "Run Device Verification to collect the hardware inventory."}
+          </p>
           <ul className="detail-list">
-            <li>Evidence coverage: unavailable</li>
-            <li>Dimensions assessed: none</li>
-            <li>Applied caps: none</li>
+            <li>Hardware engine: {verification ? verification.hardwareResult : "unavailable"}</li>
+            <li>Private content collected: no</li>
+            <li>Data erased: no</li>
           </ul>
         </article>
 
         <article className="domain-card">
           <span className="domain-name">CYVRA ERASE</span>
-          <span className="status-pill status-neutral">Not assessed</span>
+          <span className={`status-pill ${verification ? "status-positive" : "status-neutral"}`}>
+            {verification ? "Mapped" : "Not assessed"}
+          </span>
           <h2>Privacy exposure</h2>
-          <p>The future Privacy Exposure Map will use approved metadata without presenting private customer content.</p>
+          <p>Document and application locations only. File contents are not opened.</p>
           <ul className="detail-list">
-            <li>Data-location coverage: unavailable</li>
+            <li>Data-location coverage: {verification ? `${verification.personalLocationCount} locations` : "unavailable"}</li>
+            <li>PDEM objects: {verification ? String(verification.pdemObjectCount) : "none"}</li>
             <li>Private content collected: no</li>
-            <li>Data erased: no</li>
           </ul>
         </article>
       </section>
 
       <div className="action-row">
+        <button className="button button-secondary" type="button" onClick={() => onNavigate("report")}>
+          Open assessment report
+        </button>
         <button className="button button-secondary" type="button" onClick={() => onNavigate("verification")}>
-          Review verification scope
+          Review verification
         </button>
       </div>
     </div>
   );
 }
 
-function ReportScreen({ onNavigate }: Pick<ShellScreenProps, "onNavigate">) {
+function ReportScreen({ onNavigate, verification }: Pick<ShellScreenProps, "onNavigate" | "verification">) {
   return (
     <div className="screen-stack">
       <ScreenHeader
-        eyebrow="COMBINED EVIDENCE PACKAGE"
+        eyebrow="PRE-SANITIZATION ASSESSMENT"
         title="Report"
-        copy="The customer report will preserve specification, condition, privacy exposure and erasure status as separate sections."
+        copy="This is Report A: hardware plus document map. The signed sanitization certificate is a later phase after an approved purge."
       />
 
-      <section className="report-empty" aria-labelledby="report-state-title">
-        <span className="empty-mark" aria-hidden="true">
-          P
-        </span>
-        <span className="card-label">REPORT STATE</span>
-        <h2 id="report-state-title">No report has been generated</h2>
-        <p>
-          Report generation and authenticity verification are not connected in this foundation. The application will
-          never label a report authenticated before verification succeeds.
-        </p>
-        <div className="report-state-grid">
-          <div>
-            <span>Evidence manifest</span>
-            <strong>Not created</strong>
+      {verification ? (
+        <section className="content-panel" aria-labelledby="report-state-title">
+          <span className="card-label">REPORT STATE</span>
+          <h2 id="report-state-title">Local assessment report</h2>
+          <p>
+            {verification.manufacturer} {verification.model} · hardware {verification.hardwareResult} ·{" "}
+            {verification.pdemObjectCount} PDEM objects. Authenticity is local-only until a later cloud report slice.
+          </p>
+          <div className="report-state-grid">
+            <div>
+              <span>Evidence manifest</span>
+              <strong>Created locally</strong>
+            </div>
+            <div>
+              <span>Authenticity</span>
+              <strong>Not authenticated by CYVRA cloud</strong>
+            </div>
+            <div>
+              <span>Erasure status</span>
+              <strong>No data was erased</strong>
+            </div>
           </div>
-          <div>
-            <span>Authenticity</span>
-            <strong>Not requested</strong>
+          <h3 className="report-subhead">Hardware validation</h3>
+          <pre className="report-json">{verification.hardwareValidation}</pre>
+          <h3 className="report-subhead">Assessment JSON</h3>
+          <pre className="report-json">{verification.reportJson}</pre>
+          <button className="button button-secondary" type="button" onClick={() => onNavigate("results")}>
+            Back to results
+          </button>
+        </section>
+      ) : (
+        <section className="report-empty" aria-labelledby="report-state-title">
+          <span className="empty-mark" aria-hidden="true">
+            P
+          </span>
+          <span className="card-label">REPORT STATE</span>
+          <h2 id="report-state-title">No report has been generated</h2>
+          <p>Run Device Verification first. The application will never label a report authenticated before verification succeeds.</p>
+          <div className="report-state-grid">
+            <div>
+              <span>Evidence manifest</span>
+              <strong>Not created</strong>
+            </div>
+            <div>
+              <span>Authenticity</span>
+              <strong>Not requested</strong>
+            </div>
+            <div>
+              <span>Erasure status</span>
+              <strong>No data was erased</strong>
+            </div>
           </div>
-          <div>
-            <span>Erasure status</span>
-            <strong>No data was erased</strong>
-          </div>
-        </div>
-        <button className="button button-secondary" type="button" onClick={() => onNavigate("results")}>
-          Review result states
-        </button>
-      </section>
+          <button className="button button-secondary" type="button" onClick={() => onNavigate("verification")}>
+            Open verification
+          </button>
+        </section>
+      )}
     </div>
   );
 }
@@ -255,15 +383,15 @@ function HelpScreen({ bridge }: Pick<ShellScreenProps, "bridge">) {
 
       {bridge.status === "error" ? (
         <Notice kind="error" title="Trusted boundary unavailable">
-          {bridge.safeMessage} No customer operation was started. Restart the internal shell before continuing.
+          {bridge.safeMessage} No customer operation was started. Restart the application before continuing.
         </Notice>
       ) : bridge.status === "loading" ? (
         <Notice kind="information" title="Checking trusted boundary">
           No customer operation can start while the internal application boundary is being checked.
         </Notice>
       ) : (
-        <Notice kind="success" title="Foundation loaded safely">
-          The shell exposes no live customer operation and retains no customer data.
+        <Notice kind="success" title="Application loaded safely">
+          Verification is local and non-destructive. CYVRA does not erase files in this version.
         </Notice>
       )}
 
@@ -271,17 +399,17 @@ function HelpScreen({ bridge }: Pick<ShellScreenProps, "bridge">) {
         <article className="support-card">
           <span className="support-number">01</span>
           <h2>Activation and binding</h2>
-          <p>Future recovery will use server-authoritative, audited support decisions.</p>
+          <p>Use the emailed licence on this Windows PC. One device per key.</p>
         </article>
         <article className="support-card">
           <span className="support-number">02</span>
           <h2>Evidence limitations</h2>
-          <p>Permission denied, unsupported and collection error states remain distinct.</p>
+          <p>Permission denied, unsupported and collection error states remain distinct. Contents are not inspected.</p>
         </article>
         <article className="support-card">
           <span className="support-number">03</span>
           <h2>Report authenticity</h2>
-          <p>Local results remain visibly unverified until authentication succeeds.</p>
+          <p>Local results remain visibly unverified until cloud authentication is a later approved slice.</p>
         </article>
         <article className="support-card">
           <span className="support-number">04</span>
@@ -293,16 +421,38 @@ function HelpScreen({ bridge }: Pick<ShellScreenProps, "bridge">) {
   );
 }
 
-export function ShellScreen({ current, bridge, onNavigate }: ShellScreenProps) {
+export function ShellScreen({
+  current,
+  bridge,
+  verificationPhase,
+  verification,
+  verificationError,
+  onNavigate,
+  onRunVerification,
+}: ShellScreenProps) {
   switch (current) {
     case "overview":
-      return <OverviewScreen onNavigate={onNavigate} />;
+      return (
+        <OverviewScreen
+          onNavigate={onNavigate}
+          verification={verification}
+          verificationPhase={verificationPhase}
+        />
+      );
     case "verification":
-      return <VerificationScreen bridge={bridge} />;
+      return (
+        <VerificationScreen
+          bridge={bridge}
+          verificationPhase={verificationPhase}
+          verification={verification}
+          verificationError={verificationError}
+          onRunVerification={onRunVerification}
+        />
+      );
     case "results":
-      return <ResultsScreen onNavigate={onNavigate} />;
+      return <ResultsScreen onNavigate={onNavigate} verification={verification} />;
     case "report":
-      return <ReportScreen onNavigate={onNavigate} />;
+      return <ReportScreen onNavigate={onNavigate} verification={verification} />;
     case "help":
       return <HelpScreen bridge={bridge} />;
   }

@@ -14,6 +14,6 @@ pub fn collect() -> EvidenceRecord {
 
     EvidenceRecord {
         collected_at_unix,
-        source: "cyvoriq-local-agent",
+        source: "cyvra-local-agent",
     }
 }

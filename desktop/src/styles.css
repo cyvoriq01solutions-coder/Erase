@@ -640,10 +640,30 @@ a:focus-visible,
   font-weight: 750;
 }
 
-.status-neutral {
-  color: #52667d;
-  background: #f0f4f8;
-  border-color: #d5dee8;
+.status-positive {
+  color: var(--success);
+  background: var(--success-surface);
+  border-color: #abefc6;
+}
+
+.report-subhead {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  color: var(--navy);
+}
+
+.report-json {
+  max-height: 280px;
+  overflow: auto;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  font: 11px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .stage-list {

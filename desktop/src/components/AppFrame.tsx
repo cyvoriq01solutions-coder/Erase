@@ -1,11 +1,12 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import logoUrl from "../assets/cyvoriq-logo.webp";
-import { NAVIGATION_ITEMS, type BridgeState, type NavigationId } from "../types/shell";
+import { NAVIGATION_ITEMS, type BridgeState, type NavigationId, type VerificationPhase } from "../types/shell";
 
 interface AppFrameProps {
   bridge: BridgeState;
   current: NavigationId;
   onNavigate: (target: NavigationId) => void;
+  verificationPhase: VerificationPhase;
   children: ReactNode;
 }
 
@@ -16,7 +17,7 @@ function bridgeLabel(bridge: BridgeState): string {
   return "Typed Rust boundary ready";
 }
 
-export function AppFrame({ bridge, current, onNavigate, children }: AppFrameProps) {
+export function AppFrame({ bridge, current, onNavigate, verificationPhase, children }: AppFrameProps) {
   const workspaceRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -32,8 +33,8 @@ export function AppFrame({ bridge, current, onNavigate, children }: AppFrameProp
       </a>
 
       <div className="foundation-banner" role="note">
-        <strong>W2.1B INTERNAL SHELL FOUNDATION</strong>
-        <span>Live activation, collection, grading issuance and report authentication are disabled</span>
+        <strong>CYVRA ERASE · LOCAL ASSESSMENT</strong>
+        <span>Hardware and document map on this PC. Purge, grading issuance and cloud report authentication stay off</span>
       </div>
 
       <header className="titlebar">
@@ -47,7 +48,7 @@ export function AppFrame({ bridge, current, onNavigate, children }: AppFrameProp
         </div>
 
         <div className="titlebar-status" aria-label="Application foundation status">
-          <span className="foundation-chip">FOUNDATION ONLY</span>
+          <span className="foundation-chip">ASSESSMENT ONLY</span>
           <span>Version {version}</span>
         </div>
       </header>
@@ -90,7 +91,14 @@ export function AppFrame({ bridge, current, onNavigate, children }: AppFrameProp
       </div>
 
       <footer className="safety-footer">
-        <span>Shell state: no verification started</span>
+        <span>
+          Shell state:{" "}
+          {verificationPhase === "complete"
+            ? "assessment complete"
+            : verificationPhase === "running"
+              ? "verification running"
+              : "no verification started"}
+        </span>
         <span>{bridgeLabel(bridge)}</span>
         <strong>
           <span className="safe-dot" aria-hidden="true" /> Non-destructive foundation
