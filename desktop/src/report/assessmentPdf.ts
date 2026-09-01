@@ -405,7 +405,9 @@ export function saveAssessmentPdf(verification: VerificationRecord): { filename:
   const reportId = makeReportId(verification, generatedAt);
   const filename = `CYVRA-Erase-assessment-${reportId}.pdf`;
   const bytes = buildAssessmentPdf(verification, generatedAt);
-  const blob = new Blob([bytes], { type: "application/pdf" });
+  const copy = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(copy).set(bytes);
+  const blob = new Blob([copy], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
