@@ -1354,6 +1354,10 @@ a:focus-visible,
   gap: 10px;
 }
 
+.email-actions-follow {
+  margin-top: 10px;
+}
+
 .email-actions input {
   flex: 1 1 220px;
   min-height: 44px;
@@ -1361,6 +1365,92 @@ a:focus-visible,
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
+}
+
+.report-letterhead {
+  margin: 0 0 18px;
+  padding: 18px 20px 16px;
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--navy);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f7fbfe 0%, var(--white) 52%);
+}
+
+.report-org {
+  margin: 0 0 6px;
+  color: var(--navy);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.report-letterhead h2 {
+  margin: 6px 0 8px;
+}
+
+.report-meta {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.local-assessment-notice {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  color: #744500;
+  background: var(--warning-surface);
+  border: 1px solid #f2d38a;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media print {
+  .foundation-banner,
+  .titlebar,
+  .sidebar,
+  .safety-footer,
+  .no-print,
+  .purge-consent,
+  .email-row,
+  .action-row,
+  .skip-link {
+    display: none !important;
+  }
+
+  body {
+    overflow: visible;
+    background: #ffffff;
+  }
+
+  .application-shell {
+    display: block;
+    height: auto;
+    background: #ffffff;
+  }
+
+  .shell-layout,
+  .workspace,
+  .screen-stack,
+  .content-panel {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    box-shadow: none;
+    background: #ffffff;
+  }
+
+  .report-letterhead,
+  .report-table,
+  .report-state-grid {
+    break-inside: avoid;
+  }
 }
 
 @media (max-width: 720px) {

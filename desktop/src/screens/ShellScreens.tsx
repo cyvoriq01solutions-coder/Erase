@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Notice } from "../components/Notice";
+import { makeReportId, peripheralHealthRows, saveAssessmentPdf } from "../report/assessmentPdf";
 import type {
   BridgeState,
   NamedValue,
@@ -426,7 +427,11 @@ function ReportScreen({
   const [emailNote, setEmailNote] = useState<string | null>(null);
   const [consentChecked, setConsentChecked] = useState(false);
   const [reportEmailed, setReportEmailed] = useState(false);
+  const [pdfSaved, setPdfSaved] = useState(false);
+  const [savingPdf, setSavingPdf] = useState(false);
   const [purgeNote, setPurgeNote] = useState<string | null>(null);
+  const generatedAt = useMemo(() => new Date(), [verification]);
+  const reportExported = reportEmailed || pdfSaved;
 
   const summaryRows = useMemo<NamedValue[]>(() => {
     if (!verification) return [];
@@ -444,6 +449,12 @@ function ReportScreen({
     ];
   }, [verification]);
 
+  const healthRows = useMemo(
+    () => (verification ? peripheralHealthRows(verification) : []),
+    [verification],
+  );
+  const reportId = verification ? makeReportId(verification, generatedAt) : "";
+
   function handleEmail() {
     if (!verification) return;
     const address = email.trim();
@@ -453,7 +464,8 @@ function ReportScreen({
     }
 
     const body = [
-      "CYVRA Erase local assessment",
+      "CYVRA Erase — local pre-sanitization assessment (Report A)",
+      `Report identifier: ${reportId}`,
       "",
       `Computer: ${verification.hostname}`,
       `Device: ${verification.manufacturer} ${verification.model}`,
@@ -467,20 +479,51 @@ function ReportScreen({
       verification.assessmentSummary,
       "",
       "This is a local assessment, not a sanitization certificate.",
+      "Attach the PDF saved from this PC if the mail application did not include it.",
     ].join("\r\n");
 
     const href = `mailto:${encodeURIComponent(address)}?subject=${encodeURIComponent(
-      "CYVRA Erase local assessment report",
+      `CYVRA Erase assessment ${reportId}`,
     )}&body=${encodeURIComponent(body)}`;
     window.location.assign(href);
     setReportEmailed(true);
-    setEmailNote("Your email application should open with this report. Email it before any data purge.");
+    setEmailNote(
+      "Your email application should open with this report. If nothing opens, use Save as PDF — that copy is enough.",
+    );
+  }
+
+  function handleSavePdf() {
+    if (!verification) return;
+    setSavingPdf(true);
+    setEmailNote(null);
+    setPurgeNote(null);
+    try {
+      const saved = saveAssessmentPdf(verification);
+      setPdfSaved(true);
+      setEmailNote(
+        `Saved ${saved.filename} to this PC’s Downloads folder (or the folder the save dialog chose). Keep a copy off the disks you may later erase.`,
+      );
+    } catch (caught) {
+      setEmailNote(
+        caught instanceof Error
+          ? caught.message
+          : "Could not write a PDF here. Use Print and choose Microsoft Print to PDF.",
+      );
+    } finally {
+      setSavingPdf(false);
+    }
+  }
+
+  function handlePrint() {
+    window.print();
   }
 
   function handlePurgeIntent() {
     if (!verification) return;
-    if (!reportEmailed) {
-      setPurgeNote("Email the assessment report first. After a full-PC purge this application cannot send it.");
+    if (!reportExported) {
+      setPurgeNote(
+        "Save the assessment as a PDF (or email it) first. After a full-PC purge this application cannot create the report.",
+      );
       return;
     }
     if (!consentChecked) {
@@ -488,7 +531,7 @@ function ReportScreen({
       return;
     }
     setPurgeNote(
-      "The report has been handed to your email application. Data purge is not enabled in this installer. Nothing was erased. A CYVRA Purge licence and a later signed build are required.",
+      "No data was erased. Data purge is not enabled in this installer. Your saved PDF and this consent do not start a wipe. A CYVRA Purge licence and a later signed build are required.",
     );
   }
 
@@ -497,47 +540,81 @@ function ReportScreen({
       <ScreenHeader
         eyebrow="LOCAL ASSESSMENT REPORT"
         title="Report"
-        copy="A structured summary of this PC. This is not a wipe certificate and is not authenticated by CYVRA cloud."
+        copy="A professional operator copy of this PC’s assessment. Save it as a PDF. This is not a wipe certificate and is not authenticated by CYVRA cloud."
       />
 
       {verification ? (
         <section className="content-panel report-panel" aria-labelledby="report-state-title">
-          <span className="card-label">REPORT</span>
-          <h2 id="report-state-title">CYVRA Erase assessment</h2>
-          <p>
-            Prepared locally for {verification.hostname}. Hardware and document locations stay separate.
-            File contents were not opened.
-          </p>
-          <div className="report-state-grid">
-            <div>
-              <span>Created</span>
-              <strong>On this PC</strong>
+          <div id="assessment-print" className="assessment-print">
+            <header className="report-letterhead">
+              <p className="report-org">CYVORIQ Solutions · CYVRA Erase</p>
+              <span className="card-label">REPORT A</span>
+              <h2 id="report-state-title">Local pre-sanitization assessment</h2>
+              <p className="report-meta">
+                Report identifier <strong>{reportId}</strong>
+                <span aria-hidden="true"> · </span>
+                Generated on this PC <strong>{generatedAt.toLocaleString()}</strong>
+              </p>
+              <p className="local-assessment-notice">
+                This is a local hardware and document-location assessment. It is not a sanitization
+                certificate, not NIST SP 800-88 Purge proof, and not a DPDP compliance certificate. File
+                contents were not opened. No drive was erased. Battery health and connector counts are
+                listed only when this scan collected them — never guessed.
+              </p>
+            </header>
+            <div className="report-state-grid">
+              <div>
+                <span>Created</span>
+                <strong>On this PC</strong>
+              </div>
+              <div>
+                <span>Cloud authentication</span>
+                <strong>Not requested</strong>
+              </div>
+              <div>
+                <span>Erasure status</span>
+                <strong>No data was erased</strong>
+              </div>
             </div>
-            <div>
-              <span>Cloud authentication</span>
-              <strong>Not requested</strong>
-            </div>
-            <div>
-              <span>Erasure status</span>
-              <strong>No data was erased</strong>
-            </div>
+
+            <ReportTable title="Assessment summary" rows={summaryRows} empty="No summary available." />
+            <ReportTable
+              title="Hardware recorded in this scan"
+              rows={verification.hardwareFields}
+              empty="Hardware details were not available on this PC."
+            />
+            <ReportTable
+              title="Battery, cameras, microphones, and connectors"
+              rows={healthRows}
+              empty="Not collected in this scan."
+            />
+            <ReportTable
+              title="Privacy exposure"
+              rows={verification.locationGroups}
+              empty="No document categories were recorded on the selected drives."
+            />
           </div>
 
-          <ReportTable title="Assessment summary" rows={summaryRows} empty="No summary available." />
-          <ReportTable
-            title="Hardware validation"
-            rows={verification.hardwareFields}
-            empty="Hardware details were not available on this PC."
-          />
-          <ReportTable
-            title="Privacy exposure"
-            rows={verification.locationGroups}
-            empty="No document categories were recorded on the selected drives."
-          />
-
-          <div className="email-row">
-            <label htmlFor="report-email">Send this report by email</label>
+          <div className="email-row no-print">
+            <label htmlFor="report-email">Keep a copy off this PC</label>
+            <p className="panel-lead">
+              Email did not open on some Windows PCs. Save as PDF first. Print and choose Microsoft Print
+              to PDF if the download does not appear.
+            </p>
             <div className="email-actions">
+              <button
+                className="button button-primary"
+                type="button"
+                disabled={savingPdf}
+                onClick={handleSavePdf}
+              >
+                {savingPdf ? "Writing PDF…" : pdfSaved ? "Save as PDF again" : "Save as PDF"}
+              </button>
+              <button className="button button-secondary" type="button" onClick={handlePrint}>
+                Print…
+              </button>
+            </div>
+            <div className="email-actions email-actions-follow">
               <input
                 id="report-email"
                 type="email"
@@ -549,19 +626,22 @@ function ReportScreen({
                   setEmailNote(null);
                 }}
               />
-              <button className="button button-primary" type="button" onClick={handleEmail}>
+              <button className="button button-secondary" type="button" onClick={handleEmail}>
                 Email report
               </button>
             </div>
             {emailNote ? <p className="setup-note">{emailNote}</p> : null}
+            {pdfSaved ? (
+              <p className="setup-note">PDF saved on this PC. You may tick consent if you also accept the warning below.</p>
+            ) : null}
           </div>
 
-          <section className="purge-consent" aria-labelledby="purge-consent-title">
+          <section className="purge-consent no-print" aria-labelledby="purge-consent-title">
             <h3 id="purge-consent-title">Data purge (not enabled)</h3>
             <p>
               Data purge permanently destroys data on the drives you select. Treat it as formatting those
               drives. It cannot be undone. After a full-PC purge, Windows and CYVRA Erase will not run on
-              this computer, so the assessment report must go to email first.
+              this computer, so save the PDF (or email it) first.
             </p>
             <label className="purge-consent-check" htmlFor="purge-consent-box">
               <input
@@ -575,21 +655,27 @@ function ReportScreen({
               />
               <span>
                 I understand I am opting in willingly and knowingly. Data purge is as irreversible as
-                formatting the selected drives. I have emailed, or will email, this report first because
-                CYVRA Erase cannot send it after a full-PC purge.
+                formatting the selected drives. I have saved this report as a PDF or emailed it, because
+                CYVRA Erase cannot create it after a full-PC purge.
               </span>
             </label>
             <div className="action-row">
               <button
                 className="button button-danger"
                 type="button"
-                disabled={!consentChecked || !reportEmailed}
+                disabled={!consentChecked || !reportExported}
                 onClick={handlePurgeIntent}
               >
                 Data purge
               </button>
             </div>
             {purgeNote ? <p className="setup-note">{purgeNote}</p> : null}
+            {!reportExported ? (
+              <p className="setup-note">
+                Save as PDF (or email the report) before Data purge can be offered. The assessment must
+                exist off this PC first.
+              </p>
+            ) : null}
           </section>
 
           <div className="action-row">
@@ -676,7 +762,8 @@ function HelpScreen({
           <span className="support-number">03</span>
           <h2>What the report is</h2>
           <p>
-            The report is a local assessment of hardware and document locations. It is not a wipe certificate.
+            The report is a local pre-sanitization assessment. Save it as a PDF. It is not a wipe certificate.
+            Battery health and port counts appear only when this scan collected them.
           </p>
         </article>
         <article className="support-card">
