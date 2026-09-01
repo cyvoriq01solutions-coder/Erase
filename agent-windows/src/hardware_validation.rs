@@ -810,8 +810,7 @@ mod tests {
                 system_model: unknown_text(),
                 system_family: unknown_text(),
                 serial_number: InventoryField::reported(
-                    DeviceIdentifier::from_reported("LENOVO-SN-80XV")
-                        .expect("test identifier"),
+                    DeviceIdentifier::from_reported("SAMPLE-BIOS-01").expect("test identifier"),
                     Confidence::High,
                     PrivacyClass::DeviceIdentifier,
                     provenance.clone(),
@@ -824,8 +823,7 @@ mod tests {
                 baseboard_product: unknown_text(),
                 baseboard_version: unknown_text(),
                 baseboard_serial_number: InventoryField::reported(
-                    DeviceIdentifier::from_reported("BOARD-88")
-                        .expect("test identifier"),
+                    DeviceIdentifier::from_reported("BOARD-88").expect("test identifier"),
                     Confidence::High,
                     PrivacyClass::DeviceIdentifier,
                     provenance.clone(),
@@ -843,15 +841,21 @@ mod tests {
         };
 
         let customer = customer_hardware_fields(&inventory);
-        assert!(customer.iter().any(|(label, value)| {
-            label == "BIOS / OEM serial" && value == "LENOVO-SN-80XV"
-        }));
-        assert!(customer.iter().any(|(label, value)| {
-            label == "Motherboard serial" && value == "BOARD-88"
-        }));
-        assert!(customer.iter().any(|(label, value)| {
-            label == "Chassis serial" && value == FIRMWARE_NOT_REPORTED
-        }));
+        assert!(
+            customer.iter().any(|(label, value)| {
+                label == "BIOS / OEM serial" && value == "SAMPLE-BIOS-01"
+            })
+        );
+        assert!(
+            customer
+                .iter()
+                .any(|(label, value)| { label == "Motherboard serial" && value == "BOARD-88" })
+        );
+        assert!(
+            customer.iter().any(|(label, value)| {
+                label == "Chassis serial" && value == FIRMWARE_NOT_REPORTED
+            })
+        );
         assert!(!customer.iter().any(|(label, _)| label == "SMBIOS UUID"));
     }
 
