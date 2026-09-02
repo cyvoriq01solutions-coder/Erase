@@ -72,6 +72,45 @@ export type BridgeState =
   | { status: "ready"; bootstrap: ShellBootstrap }
   | { status: "error"; safeMessage: string };
 
+export type AdvanceScanPhase = "idle" | "running" | "complete" | "error";
+
+/** Both permissions default to off and are asked for before Advance scan runs. */
+export interface AdvanceScanConsent {
+  benchmarks: boolean;
+  writeBenchmark: boolean;
+}
+
+export interface TelemetryGroup {
+  title: string;
+  rows: NamedValue[];
+}
+
+export interface AdvanceScanRecord {
+  ok: boolean;
+  message: string;
+  schemaVersion: string;
+  elevationState: string;
+  elevationLabel: string;
+  benchmarksConsented: boolean;
+  writeBenchmarkConsented: boolean;
+  bytesWritten: number;
+  destructiveOperationsEnabled: boolean;
+  contentInspected: boolean;
+  boundaryNote: string;
+  telemetryGroups: TelemetryGroup[];
+  coverageRows: NamedValue[];
+  notAssessable: string[];
+  gradingEngine: string;
+  gradingRubric: string;
+  gradeLabel: string;
+  gradeCondition: string;
+  gradeWithheld: boolean;
+  gradeWithheldReason: string | null;
+  coveragePercent: number;
+  indexPercent: number | null;
+  provisional: boolean;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }

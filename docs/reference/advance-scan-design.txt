@@ -1,0 +1,381 @@
+ADVANCE SCAN — DESIGN AND UPGRADE PATH
+======================================
+Date: 2 Sep 2026
+Companion to ADVANCE_SCAN_FEASIBILITY_2026-09-02.txt
+Status: DESIGN ONLY. No branch, no code, no PR yet.
+RESUME CYVRA is on hold. Wipe and B2 stay later.
+
+Design rule for the whole upgrade:
+  Basic scan and Report A must behave exactly as they do on main
+  today. Advance scan is a second, additive path that fails
+  closed. If any Advance probe fails, Basic scan is unaffected.
+
+
+1. PRODUCT SHAPE
+----------------
+Two scans, one installer, one brand.
+
+  BASIC SCAN      (today, unchanged)
+    Read-only. Nothing written to the customer's disks.
+    Firmware and CIM inventory + document-location map.
+    Output: Report A — local pre-sanitization assessment.
+    Runs as standard user.
+
+  ADVANCE SCAN    (new, opt-in button)
+    Deep passive telemetry + optional active tests +
+    optional interactive technician checks.
+    May request administrator elevation.
+    May, only with a separate tick, write one temporary
+    benchmark file.
+    Output: Report D — in-depth diagnostic evaluation with a
+    provisional grade.
+
+Navigation stays the five frozen destinations
+(overview, verification, results, report, help). Advance scan is
+a BUTTON on the Verification screen, not a sixth nav item. This
+is deliberate: desktop/tests/shell-contract.test.mjs asserts the
+five ids, and we keep that freeze.
+
+Verification screen becomes:
+
+  [ Start verification ]        primary, unchanged behaviour
+  [ Advance scan (deep) ]       secondary, new
+
+  Advance scan opens a pre-flight panel:
+    - what it collects
+    - that it may ask for administrator approval
+    - checkbox: allow benchmarks (CPU / memory / storage)
+    - checkbox: allow one temporary write benchmark file
+    - both default OFF
+    - Cancel / Run advance scan
+
+
+2. LAYERS (mapped to our repo, not the blueprint's C# stack)
+------------------------------------------------------------
+  UI                desktop/src (React + TS, existing webview)
+  Bridge            desktop/src-tauri/src/lib.rs (#[tauri::command])
+  Engine + HAL      agent-windows/src (Rust, cyvra_core)
+  OS access         windows-sys IOCTL / SetupAPI / WMI via the
+                    existing bounded runtime
+  Elevated probe    agent-windows/src/bin/cyvra-advance-probe.rs
+
+Hard boundary preserved: the contract test asserts that
+desktop/src-tauri/src/lib.rs contains no std::process, std::fs,
+or Command::new. All process spawning and all file touching stays
+in the agent crate, exactly where run_fixed_powershell already
+lives. The Tauri layer only calls typed core functions.
+
+
+3. NEW TYPED CONTRACT — hardware_diagnostics_v1
+-----------------------------------------------
+Do NOT mutate hardware_inventory_v1. It is validated by
+hardware_validation.rs and by the frozen agent tests. Add a
+sibling module:
+
+  agent-windows/src/hardware_diagnostics_v1.rs
+
+Reuse from v1: CollectionStatus, Confidence, PermissionState,
+PrivacyClass, Provenance, InventoryField, InventorySection,
+DeviceIdentifier. Those primitives are already correct.
+
+New records (all fields InventoryField so "unknown" stays
+representable):
+
+  BatteryDetail
+    designed_capacity_mwh, full_charge_capacity_mwh,
+    remaining_capacity_mwh, voltage_mv, cycle_count,
+    chemistry, manufacture_date, serial_number,
+    charge_rate_mw, discharge_rate_mw,
+    wear_percent (derived), health_band (Good/Degraded/Critical)
+  ProcessorDetail
+    brand_string, base_mhz, max_mhz, current_mhz_per_core,
+    l1_bytes, l2_bytes, l3_bytes, instruction_sets,
+    package_temperature_c  <- stays Unknown on Windows (Ring 0)
+  MemoryRuntime
+    total_bytes, available_bytes, commit_limit_bytes,
+    channel_mode (derived, low confidence)
+  StorageHealth
+    bus_type, model, serial_number, firmware_revision,
+    rotational, capacity_bytes,
+    nvme: critical_warning, composite_temp_c,
+          available_spare_percent, percentage_used,
+          data_units_read, data_units_written,
+          power_cycles, power_on_hours, unsafe_shutdowns,
+          media_errors
+    ata:  reallocated_sectors, pending_sectors,
+          power_on_hours, power_cycles, temperature_c
+    predict_failure (bool from MSStorageDriver)
+    remaining_life_percent (derived: 100 - percentage_used)
+  UsbTopology
+    controller_id, hub_id, port_index,
+    port_connected (bool), negotiated_speed,
+    supported_speed, is_internal_hint
+  DisplayPanel
+    edid_manufacturer, edid_product_code, panel_serial,
+    native_width, native_height, current_refresh_hz,
+    bit_depth, hdr_capable, manufacture_week, manufacture_year
+  RadioDetail
+    wifi: interface_state, signal_quality_percent, rssi_dbm,
+          rx_mbps, tx_mbps, phy_types
+    bluetooth: radio_present, radio_name
+    ethernet: link_speed_mbps, media_state
+  CaptureDevice
+    kind (Camera | Microphone), friendly_name, container_id,
+    enumerated_by (MediaFoundation | SetupApi | AudioEndpoint)
+  BenchmarkResult (only present when consented)
+    kind, duration_ms, samples,
+    cpu: sustained_clock_ratio, threads_used
+    memory: bytes_tested, patterns, integrity_ok
+    storage: seq_read_mbps, seq_write_mbps (opt),
+             rand_read_iops, rand_write_iops (opt),
+             wrote_to_disk (bool), bytes_written
+  InteractiveResult (technician-attested)
+    subject (Keyboard | Display | Trackpad | Speaker |
+             Microphone | Camera | UsbPort),
+    outcome (Pass | Fail | Skipped | NotAttempted),
+    detail, attested_by_operator (bool)
+
+Top level:
+
+  HardwareDiagnosticsV1
+    schema_version = "hardware_diagnostics_v1"
+    collected_at_unix
+    elevation_state (NotRequested | Granted | Denied)
+    batteries, processors, memory, storage, usb, displays,
+    radios, capture_devices, benchmarks, interactive
+    each an InventorySection<T>, each defaulting to not_reported
+
+Same discipline as v1: a not_collected() constructor that is
+honest and empty, plus a failed() constructor that stamps
+permission_denied / unsupported / collection_error on the
+sections we actually asked for and leaves the rest not_reported.
+
+
+4. COLLECTION MECHANICS
+-----------------------
+4.1 Standard-user probes (in-process, no elevation)
+  New modules under agent-windows/src/diagnostics/:
+    battery_ioctl.rs   SetupAPI + IOCTL_BATTERY_QUERY_*
+    cpu_detail.rs      __cpuid, GetLogicalProcessorInformationEx,
+                       CallNtPowerInformation
+    memory_runtime.rs  GlobalMemoryStatusEx
+    usb_topology.rs    GUID_DEVINTERFACE_USB_HUB +
+                       IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX
+    display_edid.rs    QueryDisplayConfig + EDID registry read +
+                       DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO
+    radio.rs           wlanapi, bluetoothapis, iphlpapi
+    capture_devices.rs KSCATEGORY_VIDEO_CAMERA / MFEnumDeviceSources
+                       + IMMDeviceEnumerator(eCapture)
+    storage_identify.rs IOCTL_STORAGE_QUERY_PROPERTY (no SMART)
+
+4.2 Elevated probe (separate bounded binary)
+  agent-windows/src/bin/cyvra-advance-probe.rs
+  New [[bin]] in agent-windows/Cargo.toml.
+
+  Launched by the agent (never by src-tauri) with
+  ShellExecuteEx "runas" only when the operator pressed Advance
+  scan. Contract:
+    - argv is a fixed verb list only: `--smart`, `--thermal`.
+      No path, no device string, no caller-controlled argument.
+      Same principle as TrustedPowerShellScript.
+    - stdout uses the SAME strict hex protocol the CIM snapshot
+      already uses (section\tindex\tname\thexvalue), so
+      parse_snapshot-style validation and the per-section
+      query_status vocabulary are reused, not reinvented.
+    - bounded: 45 s timeout, 256 KiB stdout, cancellation.
+    - read-only allow-list of IOCTLs. It must be impossible for
+      this binary to issue a write, erase, format, TRIM, secure
+      erase or firmware command. Assert that in a unit test by
+      allow-listing the control codes it may name.
+    - if the UAC prompt is declined: elevation_state = Denied,
+      storage health = permission_denied, Advance scan still
+      completes and still produces Report D. Fail closed, never
+      fail loud.
+
+4.3 Active tests (only with the pre-flight ticks)
+  agent-windows/src/diagnostics/bench/{cpu,memory,storage}.rs
+  Guards, all mandatory:
+    - global consent flag must be true
+    - hard duration ceiling per test; cooperative cancel
+    - CPU: refuse when on battery and charge is critical
+    - memory: min(50% available, 2 GiB), commit-limit check
+    - storage read benchmark is the default
+    - storage WRITE benchmark needs the second tick, at least
+      3x free space, one temp file, flush, measure, delete,
+      and the byte count is printed on the report
+    - refuse any benchmark on a drive whose SMART predicts
+      failure
+    - never touch a drive the operator did not select
+
+4.4 Interactive checks
+  Webview-driven, results recorded as operator attestations.
+  Phase one: display colour wash, keyboard highlight (documented
+  webview key limits), trackpad canvas, speaker tone, USB port
+  insertion detection.
+  Phase two (own slice, needs capability + CSP change and a
+  consent screen): microphone record/playback and live camera
+  preview, in memory only, nothing written, nothing uploaded.
+
+
+5. SLICE SEQUENCE (one named slice at a time, branch -> PR -> main)
+-------------------------------------------------------------------
+Every slice: branch from main, `cursor/`-free product naming as
+usual (a-scan/...-aec3), desktop tests + tsc + cargo test +
+cargo clippy -D warnings + cargo fmt --check, PR, wait for
+Frontend + Windows native shell + Build Windows x64 Agent, merge.
+
+  A1  a-scan/skeleton
+      hardware_diagnostics_v1 contract, all sections
+      not_reported. Advance scan button + pre-flight panel.
+      One new Tauri command run_advance_scan. Report D shell
+      that honestly prints "not collected in this scan" for
+      every row. No windows-sys yet. Proves the plumbing and
+      the report layout with zero risk.
+      Test updates: invoke count 5 -> 6, #[tauri::command]
+      count 5 -> 6, keep the std::process/std::fs guard, keep
+      the five nav ids.
+
+  A2  a-scan/battery
+      windows-sys enters the agent crate, pinned exactly.
+      battery_ioctl.rs + powercfg XML fallback.
+      Fixes tonight's Lenovo gap: design vs full-charge
+      capacity, wear %, chemistry, cycle count when reported.
+      Still no 0% invention; unknown stays unknown.
+
+  A3  a-scan/media-usb
+      capture_devices.rs (fixes "None enumerated by Windows")
+      and usb_topology.rs (replaces the SMBIOS connector guess
+      with real controller port topology and negotiated speed).
+      Report D distinguishes "controller ports" from
+      "physically verified ports".
+
+  A4  a-scan/storage-health
+      cyvra-advance-probe.rs + NVMe log page 0x02 + ATA SMART
+      + predict-failure bit. Highest ITAD value: power-on
+      hours, TBW, available spare, percentage used.
+      Elevation denial path must be tested.
+
+  A5  a-scan/display-radio
+      display_edid.rs + radio.rs. Panel identity and true
+      native resolution; Wi-Fi RSSI and link speed; BT radio;
+      NIC link state. MAC stays unprinted by default.
+
+  A6  a-scan/bench
+      Consent-gated CPU / memory / storage benchmarks with
+      every guard from 4.3. Read-only by default.
+
+  A7  a-scan/interactive
+      Phase-one interactive suite and operator attestations.
+      Camera/mic live capture explicitly out of scope here.
+
+  A8  a-scan/grading
+      Grading engine CG-1.0 (separate rubric document),
+      Report D grading card. grading_issuance_enabled stays
+      false, so the grade prints as PROVISIONAL and the report
+      says it is not an issued certificate.
+
+  Later, separate approvals:
+  A9  a-scan/report-signing  canonical JSON + local signature +
+      QR digest + verify page. This is what earns the word
+      "authenticated".
+  A10 a-scan/media-capture   mic and camera live checks with
+      capability/CSP change and consent.
+  P-BOOT                     pre-boot environment for real
+      full-coverage memory and surface testing. Already parked.
+
+A1 through A5 are pure additions to collection and reporting.
+A6 and A7 introduce load and interaction. A8 introduces
+judgement. Keeping that order means we never grade on data we
+have not yet learned to collect honestly.
+
+
+6. WHAT EACH SLICE MUST NOT DO
+------------------------------
+  Must not modify Report A's layout, wording or boundary claims.
+  Must not add a sixth navigation destination.
+  Must not put std::process, std::fs or Command::new into
+    desktop/src-tauri/src/lib.rs.
+  Must not ship or load a Ring 0 driver (WinRing0 class).
+  Must not issue any storage write/erase/TRIM/firmware IOCTL.
+  Must not persist keystrokes, audio or video.
+  Must not upload anything; there is still no report cloud path.
+  Must not print an invented number. Absent stays absent.
+  Must not claim NIST / CERT-In / ADISA / DPDP certification.
+
+
+7. REPORT D — STRUCTURE
+-----------------------
+Separate from Report A, same letterhead family.
+
+  Letterhead   CYVORIQ Solutions Pvt. Ltd.
+               CYVRA ERASE · REPORT D
+               In-depth hardware diagnostic evaluation
+  Document no. ERD-YYYYMMDD-HOSTNAME
+  Boundary     computer-generated on this PC; scope of this scan;
+               elevation granted or denied; benchmarks run or
+               declined; bytes written (0 unless the write
+               benchmark was accepted); no data was erased
+  1. Device identity and firmware (from Report A data)
+  2. Battery and power
+  3. Processor, clocks and cache
+  4. Memory modules and runtime
+  5. Storage health and SMART
+  6. USB, display and connectivity
+  7. Capture devices
+  8. Benchmarks (or "declined by operator")
+  9. Interactive technician checks
+  10. Coverage statement  <- how much was assessable
+  11. Provisional grade  <- rubric CG-1.0
+  12. Issuing organisation and signature block
+
+Section 10 is the section that keeps us honest. It states, per
+domain, whether data was reported, permission-denied,
+unsupported or simply not collected, and it precedes the grade.
+
+
+8. EFFORT AND RISK CHARACTERISATION (no calendar estimates)
+-----------------------------------------------------------
+  A1  small. TS + one Rust command + contract module. No new
+      dependency. Touches the frozen contract test counts.
+  A2  medium. First windows-sys use; SetupAPI enumeration and
+      one IOCTL family; needs fixture tests for the parser.
+  A3  medium. Two enumeration surfaces; USB hub walking is the
+      fiddliest part (variable-length node connection buffers).
+  A4  large. New elevated binary, UAC flow, two SMART transports,
+      denial path, and the strictest security review of the set.
+  A5  medium. EDID parsing is well-trodden but needs careful
+      bounds checking; wlanapi is straightforward.
+  A6  medium, highest behavioural risk. Guards and cancellation
+      matter more than the benchmark maths.
+  A7  medium. Mostly frontend; keyboard limits must be disclosed.
+  A8  small in code, largest in policy. The rubric is the work.
+
+Dependency risk: windows-sys only, pinned, feature-gated per
+module. No LibreHardwareMonitor, no .NET, no WinRing0, no
+second runtime in the installer.
+
+Signing risk: several probes look like tooling to antivirus.
+Finishing Authenticode materially de-risks A4 and A7.
+
+
+9. OPEN DECISIONS FOR YOU
+-------------------------
+  D1  Grading label. "CYVRA Grading Engine v1" (recommended) or
+      "CYVRA Grade AI" with the mandatory no-ML disclosure line.
+      See section 7 of the feasibility document.
+  D2  Authentication wording. Keep "Issued by" until A9 ships,
+      then move to "Authenticated by". Confirm you accept that
+      "certified" stays off the document until there is an
+      accreditation to name.
+  D3  Elevation posture. Do we prompt for administrator on
+      Advance scan by default, or offer a "basic advance scan"
+      that skips SMART when the operator declines? Recommended:
+      always offer, always degrade gracefully.
+  D4  Write benchmark. Ship it opt-in (recommended) or leave
+      storage benchmarks read-only only in v1?
+  D5  Start point. Recommended A1 first, because it lets you see
+      the Advance scan button and the Report D layout on the
+      Lenovo before we add a single IOCTL.
+
+Nothing starts until you name a slice. RESUME CYVRA stays on
+hold. Wipe and B2 stay later.

@@ -7,6 +7,9 @@ import {
   saveAssessmentPdf,
 } from "../report/assessmentPdf";
 import type {
+  AdvanceScanConsent,
+  AdvanceScanPhase,
+  AdvanceScanRecord,
   BridgeState,
   NamedValue,
   NavigationId,
@@ -28,6 +31,12 @@ interface ShellScreenProps {
   onToggleDrive: (letter: string) => void;
   onNavigate: (target: NavigationId) => void;
   onRunVerification: () => void;
+  advanceScan: AdvanceScanRecord | null;
+  advanceScanPhase: AdvanceScanPhase;
+  advanceScanError: string | null;
+  advanceConsent: AdvanceScanConsent;
+  onToggleAdvanceConsent: (field: keyof AdvanceScanConsent) => void;
+  onRunAdvanceScan: () => void;
   onExit: () => void;
 }
 
@@ -151,6 +160,141 @@ function OverviewScreen({
   );
 }
 
+function AdvanceScanPanel({
+  collectionOn,
+  verificationPhase,
+  advanceScan,
+  advanceScanPhase,
+  advanceScanError,
+  advanceConsent,
+  onToggleAdvanceConsent,
+  onRunAdvanceScan,
+  onNavigate,
+}: {
+  collectionOn: boolean;
+} & Pick<
+  ShellScreenProps,
+  | "verificationPhase"
+  | "advanceScan"
+  | "advanceScanPhase"
+  | "advanceScanError"
+  | "advanceConsent"
+  | "onToggleAdvanceConsent"
+  | "onRunAdvanceScan"
+  | "onNavigate"
+>) {
+  const busy = advanceScanPhase === "running" || verificationPhase === "running";
+  const canRun = collectionOn && !busy;
+
+  return (
+    <section className="content-panel" aria-labelledby="advance-title">
+      <div className="panel-heading">
+        <div>
+          <span className="card-label">DEEPER, OPTIONAL</span>
+          <h2 id="advance-title">Advance scan</h2>
+        </div>
+        <span
+          className={`status-pill ${advanceScanPhase === "complete" ? "status-positive" : "status-neutral"}`}
+        >
+          {advanceScanPhase === "running"
+            ? "Running"
+            : advanceScanPhase === "complete"
+              ? "Complete"
+              : advanceScanPhase === "error"
+                ? "Stopped"
+                : "Optional"}
+        </span>
+      </div>
+      <p className="panel-lead">
+        Advance scan reads deeper hardware detail than the standard assessment: battery capacity and
+        wear, storage SMART health, port topology, panel identity and radios. It then prepares Report D
+        with a provisional grade. It still does not erase anything and it does not open file contents.
+      </p>
+
+      <ul className="advance-scope">
+        <li>Deep collection is read-only.</li>
+        <li>Windows may ask for administrator approval. Declining still produces Report D.</li>
+        <li>Anything this build cannot read is printed as not collected in this scan.</li>
+      </ul>
+
+      <fieldset className="advance-consent">
+        <legend>Permissions for this run</legend>
+        <label>
+          <input
+            type="checkbox"
+            checked={advanceConsent.benchmarks}
+            disabled={busy}
+            onChange={() => onToggleAdvanceConsent("benchmarks")}
+          />
+          <span>
+            <strong>Allow benchmarks</strong>
+            <small>
+              Short processor, memory and storage measurements. Off by default. Without them the
+              related grading points stay not assessable.
+            </small>
+          </span>
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={advanceConsent.writeBenchmark}
+            disabled={busy || !advanceConsent.benchmarks}
+            onChange={() => onToggleAdvanceConsent("writeBenchmark")}
+          />
+          <span>
+            <strong>Allow one temporary write test</strong>
+            <small>
+              Writes a temporary benchmark file, measures write speed, then removes it. Leave this off
+              to keep the scan strictly read-only. Report D always records how many bytes were written.
+            </small>
+          </span>
+        </label>
+      </fieldset>
+
+      {advanceScanError ? (
+        <Notice kind="error" title="Advance scan did not finish">
+          {advanceScanError}
+        </Notice>
+      ) : null}
+
+      <div className="action-row">
+        <button
+          className="button button-secondary"
+          type="button"
+          disabled={!canRun}
+          onClick={onRunAdvanceScan}
+        >
+          {advanceScanPhase === "running" ? "Advance scan running…" : "Run advance scan"}
+        </button>
+        <p>
+          {collectionOn
+            ? "Deeper collection arrives one subsystem at a time. This build reports honestly what it cannot read yet."
+            : "Open the installed Windows application to run Advance scan."}
+        </p>
+      </div>
+
+      {advanceScan ? (
+        <Notice
+          kind={advanceScan.gradeWithheld ? "information" : "success"}
+          title={
+            advanceScan.gradeWithheld
+              ? "Advance scan finished without a grade"
+              : `Advance scan finished · provisional grade ${advanceScan.gradeLabel}`
+          }
+        >
+          {advanceScan.gradeWithheld
+            ? advanceScan.gradeWithheldReason ??
+              "Too little of this device could be assessed to support a grade."
+            : `Coverage ${advanceScan.coveragePercent}%. Report D is ready to review.`}{" "}
+          <button className="link-button" type="button" onClick={() => onNavigate("report")}>
+            Open Report D
+          </button>
+        </Notice>
+      ) : null}
+    </section>
+  );
+}
+
 function VerificationScreen({
   bridge,
   verificationPhase,
@@ -161,6 +305,13 @@ function VerificationScreen({
   selectedDrives,
   onToggleDrive,
   onRunVerification,
+  advanceScan,
+  advanceScanPhase,
+  advanceScanError,
+  advanceConsent,
+  onToggleAdvanceConsent,
+  onRunAdvanceScan,
+  onNavigate,
 }: Pick<
   ShellScreenProps,
   | "bridge"
@@ -172,6 +323,13 @@ function VerificationScreen({
   | "selectedDrives"
   | "onToggleDrive"
   | "onRunVerification"
+  | "advanceScan"
+  | "advanceScanPhase"
+  | "advanceScanError"
+  | "advanceConsent"
+  | "onToggleAdvanceConsent"
+  | "onRunAdvanceScan"
+  | "onNavigate"
 >) {
   const collectionOn = bridge.status === "ready" && bridge.bootstrap.liveCollectionEnabled;
   const canRun =
@@ -322,6 +480,18 @@ function VerificationScreen({
           were not opened. No data was erased.
         </Notice>
       ) : null}
+
+      <AdvanceScanPanel
+        collectionOn={collectionOn}
+        verificationPhase={verificationPhase}
+        advanceScan={advanceScan}
+        advanceScanPhase={advanceScanPhase}
+        advanceScanError={advanceScanError}
+        advanceConsent={advanceConsent}
+        onToggleAdvanceConsent={onToggleAdvanceConsent}
+        onRunAdvanceScan={onRunAdvanceScan}
+        onNavigate={onNavigate}
+      />
     </div>
   );
 }
@@ -424,10 +594,155 @@ function ReportTable({ title, rows, empty }: { title: string; rows: NamedValue[]
   );
 }
 
+const GRADING_ENGINE_LABEL = "Graded by CYVRA Grading Engine";
+
+function AdvanceReportBlock({
+  advanceScan,
+  onNavigate,
+}: { advanceScan: AdvanceScanRecord | null } & Pick<ShellScreenProps, "onNavigate">) {
+  if (!advanceScan) {
+    return (
+      <section className="report-shell" aria-labelledby="advance-report-title">
+        <header className="report-letterhead">
+          <p className="report-org">CYVORIQ Solutions Pvt. Ltd.</p>
+          <p className="report-issuer">
+            Issued by the publisher of CYVRA Erase · computer-generated on this PC
+          </p>
+          <span className="card-label">REPORT D</span>
+          <h2 id="advance-report-title">In-depth hardware diagnostic evaluation</h2>
+          <p className="local-assessment-notice">
+            Report D has not been prepared on this PC. Run Advance scan from the Verification screen.
+            CYVRA will not estimate a grade from diagnostics it did not perform.
+          </p>
+        </header>
+        <div className="action-row">
+          <button
+            className="button button-secondary"
+            type="button"
+            onClick={() => onNavigate("verification")}
+          >
+            Open Advance scan
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  const notAssessablePoints = advanceScan.coverageRows.find(
+    (row) => row.label === "Points not assessable",
+  )?.value;
+
+  return (
+    <section className="report-shell" aria-labelledby="advance-report-title">
+      <header className="report-letterhead">
+        <p className="report-org">CYVORIQ Solutions Pvt. Ltd.</p>
+        <p className="report-issuer">
+          Issued by the publisher of CYVRA Erase · computer-generated on this PC
+        </p>
+        <span className="card-label">REPORT D</span>
+        <h2 id="advance-report-title">In-depth hardware diagnostic evaluation</h2>
+        <p className="local-assessment-notice">
+          This is a computer-generated diagnostic evaluation of this Windows PC. It is not a
+          sanitization certificate, not NIST SP 800-88 Purge proof, and not a DPDP compliance
+          certificate. Any grade shown here is provisional and physical verification is required
+          before a device is finally graded. Cloud authentication is not enabled in this version.
+        </p>
+      </header>
+
+      <div className="report-state-grid">
+        <div>
+          <span>Scan scope</span>
+          <strong>Advance scan</strong>
+        </div>
+        <div>
+          <span>Administrator approval</span>
+          <strong>{advanceScan.elevationLabel}</strong>
+        </div>
+        <div>
+          <span>Bytes written to disk</span>
+          <strong>{advanceScan.bytesWritten}</strong>
+        </div>
+      </div>
+
+      <section className="grade-card" aria-labelledby="grade-title">
+        <div className={advanceScan.gradeWithheld ? "grade-mark grade-mark-withheld" : "grade-mark"}>
+          <span className="card-label">
+            {advanceScan.provisional ? "PROVISIONAL GRADE" : "GRADE"}
+          </span>
+          <strong>{advanceScan.gradeLabel}</strong>
+          <span>{advanceScan.gradeCondition}</span>
+        </div>
+        <div className="grade-body">
+          <h3 id="grade-title">
+            {advanceScan.indexPercent === null
+              ? "Assessed Health Index not assessable in this scan"
+              : `Assessed Health Index ${advanceScan.indexPercent} / 100`}
+          </h3>
+          <p>
+            Coverage {advanceScan.coveragePercent}%
+            {notAssessablePoints ? ` — ${notAssessablePoints} points were not assessable` : ""}.
+          </p>
+          <p className="grade-engine">
+            {GRADING_ENGINE_LABEL} · rubric {advanceScan.gradingRubric}
+          </p>
+          {advanceScan.gradeWithheldReason ? (
+            <p className="grade-withheld-reason">{advanceScan.gradeWithheldReason}</p>
+          ) : null}
+          <p className="setup-note">
+            A grade is never awarded for an area that could not be measured, and never deducted for
+            one either. Physical verification by a technician is required for a final grade.
+          </p>
+        </div>
+      </section>
+
+      <ReportTable
+        title="Coverage statement"
+        rows={advanceScan.coverageRows}
+        empty="No coverage statement was produced."
+      />
+
+      {advanceScan.telemetryGroups.map((group) => (
+        <ReportTable
+          key={group.title}
+          title={group.title}
+          rows={group.rows}
+          empty="Not collected in this scan."
+        />
+      ))}
+
+      <section className="report-table-block" aria-labelledby="not-assessable-heading">
+        <h3 id="not-assessable-heading">Not assessable in this scan</h3>
+        {advanceScan.notAssessable.length === 0 ? (
+          <p className="report-empty-copy">Every diagnostic area was assessed.</p>
+        ) : (
+          <ul className="not-assessable-list">
+            {advanceScan.notAssessable.map((entry) => (
+              <li key={entry}>{entry}</li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="report-table-block" aria-labelledby="advance-boundary-heading">
+        <h3 id="advance-boundary-heading">Method and boundary</h3>
+        <p className="report-empty-copy">{advanceScan.boundaryNote}</p>
+        <p className="report-empty-copy">
+          Issued by CYVORIQ Solutions Pvt. Ltd. as publisher of CYVRA Erase. This document is
+          computer-generated on the assessed PC and is not cloud-authenticated in this version.
+        </p>
+        <p className="report-empty-copy">
+          Operator / technician (physical verification): ________________________ Date: __________
+        </p>
+      </section>
+    </section>
+  );
+}
+
 function ReportScreen({
   verification,
+  advanceScan,
   onNavigate,
-}: Pick<ShellScreenProps, "verification" | "onNavigate">) {
+}: Pick<ShellScreenProps, "verification" | "advanceScan" | "onNavigate">) {
   const [email, setEmail] = useState("");
   const [emailNote, setEmailNote] = useState<string | null>(null);
   const [consentChecked, setConsentChecked] = useState(false);
@@ -742,6 +1057,8 @@ function ReportScreen({
           </button>
         </section>
       )}
+
+      <AdvanceReportBlock advanceScan={advanceScan} onNavigate={onNavigate} />
     </div>
   );
 }
@@ -825,6 +1142,12 @@ export function ShellScreen({
   onToggleDrive,
   onNavigate,
   onRunVerification,
+  advanceScan,
+  advanceScanPhase,
+  advanceScanError,
+  advanceConsent,
+  onToggleAdvanceConsent,
+  onRunAdvanceScan,
   onExit,
 }: ShellScreenProps) {
   switch (current) {
@@ -848,12 +1171,25 @@ export function ShellScreen({
           selectedDrives={selectedDrives}
           onToggleDrive={onToggleDrive}
           onRunVerification={onRunVerification}
+          advanceScan={advanceScan}
+          advanceScanPhase={advanceScanPhase}
+          advanceScanError={advanceScanError}
+          advanceConsent={advanceConsent}
+          onToggleAdvanceConsent={onToggleAdvanceConsent}
+          onRunAdvanceScan={onRunAdvanceScan}
+          onNavigate={onNavigate}
         />
       );
     case "results":
       return <ResultsScreen onNavigate={onNavigate} verification={verification} />;
     case "report":
-      return <ReportScreen onNavigate={onNavigate} verification={verification} />;
+      return (
+        <ReportScreen
+          onNavigate={onNavigate}
+          verification={verification}
+          advanceScan={advanceScan}
+        />
+      );
     case "help":
       return <HelpScreen bridge={bridge} onExit={onExit} />;
   }
