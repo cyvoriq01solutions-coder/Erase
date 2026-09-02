@@ -6,14 +6,18 @@
 //! verdict. Nothing here infers a value it did not read.
 
 use crate::NamedValue;
+use crate::advance_bench::{self, BenchResult};
 use crate::battery_probe::{self, BatteryProbe, BatterySource, SourceOutcome};
 use crate::capture_probe::{self, CaptureProbe};
 use crate::collector_runtime::CancellationToken;
+use crate::cpu_memory::{self, CpuMemoryProbe};
 use crate::display_radio::{self, DisplayRadioProbe, DisplayRadioSource};
 use crate::hardware_diagnostics_v1::{
     CoverageSummary, DeviceForm, DiagnosticDomain, DomainApplicability, DomainEvidence,
     ElevationState, HardwareDiagnosticsV1, battery_points, bluetooth_radio_points,
-    ethernet_radio_points, evaluate, usb_topology_points, wifi_radio_points,
+    ethernet_radio_points, evaluate, memory_bandwidth_points, memory_inventory_points,
+    memory_pattern_points, processor_clock_points, processor_identity_points, usb_topology_points,
+    wifi_radio_points,
 };
 use crate::hardware_inventory_v1::Confidence;
 use crate::storage_health::{self, StorageProbe, StorageSource};
@@ -26,8 +30,6 @@ const NOT_COLLECTED: &str = "Not collected in this scan. Advance scan collection
 
 /// Used where the gap is architectural rather than merely unwritten.
 const NEEDS_KERNEL_SENSOR: &str = "Not collected in this scan. This value requires a kernel-mode sensor driver, which CYVRA deliberately does not ship.";
-
-const DECLINED: &str = "Declined by the operator. No benchmark was run and nothing was written.";
 
 const NOT_ATTEMPTED: &str =
     "Not attempted in this scan. A technician records this at physical verification.";
@@ -149,8 +151,12 @@ pub fn run_advance_scan_with(
     let battery = battery_probe::collect(cancellation);
     report(1, &battery_progress_detail(&battery));
 
-    report(2, NOT_COLLECTED);
-    report(3, NOT_COLLECTED);
+    report(2, "Reading processor identity and cache.");
+    let identity = cpu_memory::collect(cancellation);
+    report(2, &processor_progress_detail(&identity));
+
+    report(3, "Reading memory modules and installed capacity.");
+    report(3, &memory_progress_detail(&identity));
 
     report(
         4,
@@ -190,10 +196,23 @@ pub fn run_advance_scan_with(
     report(
         8,
         if request.benchmarks_consented {
-            "Benchmarks were permitted, but none are implemented in this collector version."
+            "Running consented CPU, memory and storage workloads. Package temperature is not collected."
         } else {
             "Benchmarks were not permitted, so none were run."
         },
+    );
+    let benches = advance_bench::run(
+        request.benchmarks_consented,
+        request.write_benchmark_consented,
+        &battery,
+        &storage,
+        &identity,
+        cancellation,
+    );
+    diagnostics.bytes_written = benches.bytes_written;
+    report(
+        8,
+        &bench_progress_detail(&benches, request.benchmarks_consented),
     );
 
     report(9, "Scoring only the areas that were actually assessed.");
@@ -204,6 +223,8 @@ pub fn run_advance_scan_with(
         &usb,
         &radios,
         &capture,
+        &identity,
+        &benches,
         request.device_form,
     );
 
@@ -315,6 +336,49 @@ fn display_progress_detail(radios: &DisplayRadioProbe) -> String {
     }
 }
 
+fn processor_progress_detail(identity: &CpuMemoryProbe) -> String {
+    if let Some(error) = identity.probe_error {
+        return error.to_string();
+    }
+    match &identity.processor {
+        Some(cpu) if cpu.identity_complete() => format!(
+            "Processor {} · {} core(s). Cache {}.",
+            cpu.name.as_deref().unwrap_or("named"),
+            cpu.cores.unwrap_or(0),
+            cpu.cache_summary().as_deref().unwrap_or("not reported")
+        ),
+        Some(cpu) => format!(
+            "Processor {} answered without a complete identity (model, cores and cache).",
+            cpu.name.as_deref().unwrap_or("unnamed")
+        ),
+        None => "Windows did not name a processor in this scan.".to_string(),
+    }
+}
+
+fn memory_progress_detail(identity: &CpuMemoryProbe) -> String {
+    if let Some(error) = identity.probe_error {
+        return error.to_string();
+    }
+    if identity.inventory_complete() {
+        let modules = identity.modules.len();
+        return format!("Memory inventory: {modules} module(s). Channel mode is not inferred.");
+    }
+    "Memory modules were not fully reported in this scan.".to_string()
+}
+
+fn bench_progress_detail(benches: &BenchResult, consented: bool) -> String {
+    if !consented {
+        return "Benchmarks were not permitted, so none were run.".to_string();
+    }
+    if benches.bytes_written > 0 {
+        return format!(
+            "Consented workloads finished. {} bytes were written to the Windows temporary folder.",
+            benches.bytes_written
+        );
+    }
+    "Consented CPU, memory and storage read workloads finished. Nothing was written to an assessed drive.".to_string()
+}
+
 fn capture_progress_detail(capture: &CaptureProbe) -> String {
     if let Some(error) = capture.probe_error {
         return error.to_string();
@@ -324,6 +388,7 @@ fn capture_progress_detail(capture: &CaptureProbe) -> String {
     format!("Found {cameras} camera(s) and {mics} microphone(s). No image or audio was captured.")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_report(
     diagnostics: &HardwareDiagnosticsV1,
     battery: &BatteryProbe,
@@ -331,12 +396,26 @@ fn build_report(
     usb: &UsbProbe,
     radios: &DisplayRadioProbe,
     capture: &CaptureProbe,
+    identity: &CpuMemoryProbe,
+    benches: &BenchResult,
     device_form: DeviceForm,
 ) -> CustomerAdvanceScan {
     let wrote_without_consent =
         diagnostics.bytes_written > 0 && !diagnostics.write_benchmark_consented;
-    let evidence = domain_evidence(diagnostics, battery, storage, usb, radios, device_form);
-    let criticals = storage.critical_faults();
+    let evidence = domain_evidence(
+        diagnostics,
+        battery,
+        storage,
+        usb,
+        radios,
+        identity,
+        benches,
+        device_form,
+    );
+    let mut criticals = storage.critical_faults();
+    if let Some(fault) = benches.memory_critical() {
+        criticals.push(fault);
+    }
     let summary = evaluate(&evidence, device_form, &criticals);
 
     CustomerAdvanceScan {
@@ -348,11 +427,20 @@ fn build_report(
         benchmarks_consented: diagnostics.benchmarks_consented,
         write_benchmark_consented: diagnostics.write_benchmark_consented,
         bytes_written: diagnostics.bytes_written,
-        temporary_files_note: temporary_files_note(battery),
+        temporary_files_note: temporary_files_note(battery, benches),
         destructive_operations_enabled: false,
         content_inspected: false,
         boundary_note: boundary_note(diagnostics),
-        telemetry_groups: telemetry_groups(diagnostics, battery, storage, usb, radios, capture),
+        telemetry_groups: telemetry_groups(
+            diagnostics,
+            battery,
+            storage,
+            usb,
+            radios,
+            capture,
+            identity,
+            benches,
+        ),
         coverage_rows: coverage_rows(&summary),
         coverage_domains: coverage_domains(&evidence),
         method_rows: method_rows(),
@@ -404,30 +492,45 @@ fn boundary_note(diagnostics: &HardwareDiagnosticsV1) -> String {
     )
 }
 
-fn temporary_files_note(battery: &BatteryProbe) -> String {
-    if !battery.temporary_file_written {
+fn temporary_files_note(battery: &BatteryProbe, benches: &BenchResult) -> String {
+    let mut parts = Vec::new();
+    if battery.temporary_file_written {
+        if battery.temporary_file_removed {
+            parts.push("One temporary battery report was written to the Windows temporary folder by powercfg and then deleted. It was not written to an assessed drive.");
+        } else {
+            parts.push("One temporary battery report was written to the Windows temporary folder by powercfg and could not be confirmed as deleted.");
+        }
+    }
+    if benches.bytes_written > 0 {
+        if benches.temporary_file_removed {
+            parts.push("One temporary benchmark file was written to the Windows temporary folder and then deleted. It was not written as a wipe.");
+        } else {
+            parts.push("One temporary benchmark file was written to the Windows temporary folder and could not be confirmed as deleted.");
+        }
+    }
+    if parts.is_empty() {
         return "No temporary file was created by this scan.".to_string();
     }
-    if battery.temporary_file_removed {
-        return "One temporary battery report was written to the Windows temporary folder by powercfg and then deleted. It was not written to an assessed drive."
-            .to_string();
-    }
-    "One temporary battery report was written to the Windows temporary folder by powercfg and could not be confirmed as deleted."
-        .to_string()
+    parts.join(" ")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn domain_evidence(
     diagnostics: &HardwareDiagnosticsV1,
     battery: &BatteryProbe,
     storage: &StorageProbe,
     usb: &UsbProbe,
     radios: &DisplayRadioProbe,
+    identity: &CpuMemoryProbe,
+    benches: &BenchResult,
     device_form: DeviceForm,
 ) -> Vec<DomainEvidence> {
     DiagnosticDomain::ALL
         .iter()
         .map(|domain| match domain {
             DiagnosticDomain::BatteryAndPower => battery_evidence(battery, device_form),
+            DiagnosticDomain::ProcessorAndThermal => processor_evidence(identity, benches),
+            DiagnosticDomain::MemoryIntegrity => memory_evidence(identity, benches),
             DiagnosticDomain::StorageHealth => storage_evidence(storage),
             DiagnosticDomain::PortsAndConnectivity => ports_evidence(usb, radios),
             other => DomainEvidence::not_assessable(*other, domain_gap(*other, diagnostics)),
@@ -479,6 +582,78 @@ fn storage_evidence(storage: &StorageProbe) -> DomainEvidence {
         return evidence;
     }
     DomainEvidence::not_assessable(domain, storage_gap(storage))
+}
+
+fn processor_evidence(identity: &CpuMemoryProbe, benches: &BenchResult) -> DomainEvidence {
+    let domain = DiagnosticDomain::ProcessorAndThermal;
+    let identity_pts = processor_identity_points(
+        identity
+            .processor
+            .as_ref()
+            .is_some_and(crate::cpu_memory::ProcessorIdentity::identity_complete),
+    );
+    let clock_measured = benches.cpu.ratio.is_some();
+    let clock_pts = benches
+        .cpu
+        .ratio
+        .map(|percent| processor_clock_points(f64::from(percent) / 100.0))
+        .unwrap_or(0);
+    let assessed = identity_pts + if clock_measured { 16 } else { 0 };
+    if assessed == 0 {
+        return DomainEvidence::not_assessable(
+            domain,
+            if identity.probe_error.is_some() {
+                "The processor identity probe could not run on this PC"
+            } else {
+                "Processor identity was not collected in this scan"
+            },
+        );
+    }
+    let mut evidence =
+        DomainEvidence::measured(domain, identity_pts + clock_pts, assessed, Confidence::High);
+    evidence.note = Some(
+        "Package temperature is not collected. Clock points are awarded only after a consented workload.".to_string(),
+    );
+    evidence
+}
+
+fn memory_evidence(identity: &CpuMemoryProbe, benches: &BenchResult) -> DomainEvidence {
+    let domain = DiagnosticDomain::MemoryIntegrity;
+    if benches.memory.pattern_passed == Some(false) {
+        let mut evidence = DomainEvidence::measured(domain, 0, domain.weight(), Confidence::High);
+        evidence.note = Some(
+            "Memory pattern spot check failed. The domain is scored 0 because that is evidence held."
+                .to_string(),
+        );
+        return evidence;
+    }
+    let inventory_pts = memory_inventory_points(identity.inventory_complete());
+    let pattern_run = benches.memory.pattern_passed.is_some();
+    let pattern_pts = memory_pattern_points(benches.memory.pattern_passed);
+    let bandwidth_run = benches.memory.bandwidth_mib_s.is_some();
+    let bandwidth_pts = memory_bandwidth_points(benches.memory.bandwidth_mib_s);
+    let assessed =
+        inventory_pts + if pattern_run { 7 } else { 0 } + if bandwidth_run { 3 } else { 0 };
+    if assessed == 0 {
+        return DomainEvidence::not_assessable(
+            domain,
+            if identity.probe_error.is_some() {
+                "The memory inventory probe could not run on this PC"
+            } else {
+                "Memory inventory was not collected in this scan"
+            },
+        );
+    }
+    let mut evidence = DomainEvidence::measured(
+        domain,
+        inventory_pts + pattern_pts + bandwidth_pts,
+        assessed,
+        Confidence::High,
+    );
+    evidence.note = Some(
+        "This is a user-mode pattern spot check, not full-coverage memory testing.".to_string(),
+    );
+    evidence
 }
 
 fn storage_gap(storage: &StorageProbe) -> &'static str {
@@ -675,7 +850,15 @@ fn method_rows() -> Vec<NamedValue> {
         ),
         row(
             "Memory testing",
-            "A user-mode pattern check can never cover memory the kernel occupies, so full-coverage memory testing belongs to a pre-boot environment.".to_string(),
+            "A user-mode pattern check can never cover memory the kernel occupies, so full-coverage memory testing belongs to a pre-boot environment. Advance scan never prints 'memory verified'.".to_string(),
+        ),
+        row(
+            "Processor clock",
+            "Identity is collected without a workload. The 16 sustained-clock points are awarded only after a consented CPU loop, from Windows current/max megahertz. Package temperature is not collected.".to_string(),
+        ),
+        row(
+            "Benchmarks",
+            "CPU, memory and storage-read workloads run only when the operator allows benchmarks. The write test needs a second permission, writes one temporary file, then deletes it. Predicted-failure disks are not exercised.".to_string(),
         ),
         row(
             "Storage SMART",
@@ -752,42 +935,23 @@ fn not_assessable(evidence: &[DomainEvidence]) -> Vec<String> {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn telemetry_groups(
-    diagnostics: &HardwareDiagnosticsV1,
+    _diagnostics: &HardwareDiagnosticsV1,
     battery: &BatteryProbe,
     storage: &StorageProbe,
     usb: &UsbProbe,
     radios: &DisplayRadioProbe,
     capture: &CaptureProbe,
+    identity: &CpuMemoryProbe,
+    benches: &BenchResult,
 ) -> Vec<TelemetryGroup> {
-    let benchmark_value = if diagnostics.benchmarks_consented {
-        NOT_COLLECTED
-    } else {
-        DECLINED
-    };
-
     let mut groups = vec![battery_group(battery), battery_source_group(battery)];
 
     groups.extend([
-        group(
-            "Processor and thermal",
-            &[
-                ("Base clock", NOT_COLLECTED),
-                ("Maximum clock", NOT_COLLECTED),
-                ("Cache hierarchy", NOT_COLLECTED),
-                ("Instruction sets", NOT_COLLECTED),
-                ("Package temperature", NEEDS_KERNEL_SENSOR),
-                ("Fan speed", NEEDS_KERNEL_SENSOR),
-            ],
-        ),
-        group(
-            "Memory",
-            &[
-                ("Installed total", NOT_COLLECTED),
-                ("Available", NOT_COLLECTED),
-                ("Channel mode", NOT_COLLECTED),
-            ],
-        ),
+        processor_group(identity),
+        memory_group(identity),
+        identity_source_group(identity),
         storage_group(storage),
         storage_source_group(storage),
         usb_group(usb, radios),
@@ -797,23 +961,7 @@ fn telemetry_groups(
         display_source_group(radios),
         capture_group(capture),
         capture_source_group(capture),
-        group(
-            "Benchmarks",
-            &[
-                ("Processor sustained clock", benchmark_value),
-                ("Memory pattern check", benchmark_value),
-                ("Sequential read", benchmark_value),
-                ("Random read", benchmark_value),
-                (
-                    "Write benchmark",
-                    if diagnostics.write_benchmark_consented {
-                        NOT_COLLECTED
-                    } else {
-                        DECLINED
-                    },
-                ),
-            ],
-        ),
+        bench_group(benches),
         group(
             "Technician checks",
             &[
@@ -940,6 +1088,160 @@ fn battery_source_group(battery: &BatteryProbe) -> TelemetryGroup {
                 )
             })
             .collect(),
+    }
+}
+
+fn processor_group(identity: &CpuMemoryProbe) -> TelemetryGroup {
+    let mut rows = Vec::new();
+    if let Some(error) = identity.probe_error {
+        rows.push(row("Processor probe", error.to_string()));
+        rows.push(row("Package temperature", NEEDS_KERNEL_SENSOR.to_string()));
+        rows.push(row("Fan speed", NEEDS_KERNEL_SENSOR.to_string()));
+        return TelemetryGroup {
+            title: "Processor and thermal".to_string(),
+            note: None,
+            rows,
+        };
+    }
+    let Some(cpu) = &identity.processor else {
+        rows.push(row(
+            "Processor",
+            "Not collected in this scan. Windows did not name a processor.".to_string(),
+        ));
+        rows.push(row("Package temperature", NEEDS_KERNEL_SENSOR.to_string()));
+        rows.push(row("Fan speed", NEEDS_KERNEL_SENSOR.to_string()));
+        return TelemetryGroup {
+            title: "Processor and thermal".to_string(),
+            note: None,
+            rows,
+        };
+    };
+    rows.push(optional_row("Processor", cpu.name.clone()));
+    rows.push(optional_row("Manufacturer", cpu.manufacturer.clone()));
+    rows.push(optional_row(
+        "Cores",
+        cpu.cores.map(|cores| cores.to_string()),
+    ));
+    rows.push(optional_row(
+        "Logical processors",
+        cpu.logical_processors.map(|count| count.to_string()),
+    ));
+    rows.push(optional_row(
+        "Maximum clock",
+        cpu.max_mhz.map(|mhz| format!("{mhz} MHz")),
+    ));
+    rows.push(optional_row(
+        "Current clock (idle sample)",
+        cpu.current_mhz.map(|mhz| format!("{mhz} MHz")),
+    ));
+    rows.push(optional_row("Cache hierarchy", cpu.cache_summary()));
+    rows.push(row("Instruction sets", NOT_COLLECTED.to_string()));
+    rows.push(row("Package temperature", NEEDS_KERNEL_SENSOR.to_string()));
+    rows.push(row("Fan speed", NEEDS_KERNEL_SENSOR.to_string()));
+    TelemetryGroup {
+        title: "Processor and thermal".to_string(),
+        note: Some(
+            "Idle clock is not a load measurement. Sustained-clock points wait for a consented workload."
+                .to_string(),
+        ),
+        rows,
+    }
+}
+
+fn memory_group(identity: &CpuMemoryProbe) -> TelemetryGroup {
+    let mut rows = Vec::new();
+    if let Some(error) = identity.probe_error {
+        rows.push(row("Memory probe", error.to_string()));
+        return TelemetryGroup {
+            title: "Memory".to_string(),
+            note: None,
+            rows,
+        };
+    }
+    rows.push(optional_row(
+        "Installed total",
+        identity
+            .installed_bytes
+            .map(|bytes| format!("{bytes} bytes")),
+    ));
+    rows.push(optional_row(
+        "Available",
+        identity
+            .available_bytes
+            .map(|bytes| format!("{bytes} bytes")),
+    ));
+    rows.push(row(
+        "Channel mode",
+        "Not inferred. Windows module list is not a proof of dual-channel interleave.".to_string(),
+    ));
+    if identity.modules.is_empty() {
+        rows.push(row("Modules", "None enumerated by Windows.".to_string()));
+    } else {
+        rows.push(row(
+            "Modules",
+            identity
+                .modules
+                .iter()
+                .map(|module| {
+                    let locator = module.locator.as_deref().unwrap_or("slot");
+                    let cap = module
+                        .capacity_bytes
+                        .map(|bytes| format!("{bytes} bytes"))
+                        .unwrap_or_else(|| "capacity not reported".to_string());
+                    let speed = module
+                        .speed_mhz
+                        .map(|mhz| format!("{mhz} MHz"))
+                        .unwrap_or_else(|| "speed not reported".to_string());
+                    format!("{locator} · {cap} · {speed}")
+                })
+                .collect::<Vec<_>>()
+                .join("; "),
+        ));
+    }
+    TelemetryGroup {
+        title: "Memory".to_string(),
+        note: Some(
+            "Inventory only until a consented pattern spot check runs. Never printed as memory verified."
+                .to_string(),
+        ),
+        rows,
+    }
+}
+
+fn identity_source_group(identity: &CpuMemoryProbe) -> TelemetryGroup {
+    TelemetryGroup {
+        title: "Processor and memory sources consulted".to_string(),
+        note: Some(
+            "Advance scan asks Windows for processor identity and physical memory modules before any workload."
+                .to_string(),
+        ),
+        rows: identity
+            .sources
+            .iter()
+            .map(|status| {
+                row(
+                    status.source.label(),
+                    status.outcome.customer_label().to_string(),
+                )
+            })
+            .collect(),
+    }
+}
+
+fn bench_group(benches: &BenchResult) -> TelemetryGroup {
+    TelemetryGroup {
+        title: "Benchmarks".to_string(),
+        note: Some(
+            "Workloads run only with consent. Package temperature is never inferred from a missing sensor."
+                .to_string(),
+        ),
+        rows: vec![
+            row("Processor sustained clock", benches.cpu.status.clone()),
+            row("Memory pattern check", benches.memory.status.clone()),
+            row("Sequential read", benches.storage.sequential_status.clone()),
+            row("Random read", benches.storage.random_status.clone()),
+            row("Write benchmark", benches.storage.write_status.clone()),
+        ],
     }
 }
 
@@ -1580,8 +1882,10 @@ fn current_unix_timestamp() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::advance_bench::BenchResult;
     use crate::battery_probe::parse_probe as parse_battery;
     use crate::capture_probe::parse_probe as parse_capture;
+    use crate::cpu_memory::parse_probe as parse_identity;
     use crate::display_radio::parse_probe as parse_radios;
     use crate::storage_health::parse_probe as parse_storage;
     use crate::usb_topology::parse_probe as parse_usb;
@@ -1617,6 +1921,12 @@ mod tests {
             ("battery", 0, "designed_capacity", "45000"),
             ("battery", 0, "full_charge_capacity", "39600"),
         ])
+    }
+
+    fn silent_identity() -> CpuMemoryProbe {
+        CpuMemoryProbe::unavailable(
+            "Processor and memory identity collection is only available on Windows.",
+        )
     }
 
     fn silent_radios() -> DisplayRadioProbe {
@@ -1701,6 +2011,8 @@ mod tests {
             &silent_usb(),
             &silent_radios(),
             &silent_capture(),
+            &silent_identity(),
+            &BenchResult::declined(),
             form,
         )
     }
@@ -1714,7 +2026,17 @@ mod tests {
         form: DeviceForm,
     ) -> CustomerAdvanceScan {
         let diagnostics = HardwareDiagnosticsV1::not_collected(1_000);
-        build_report(&diagnostics, battery, storage, usb, radios, capture, form)
+        build_report(
+            &diagnostics,
+            battery,
+            storage,
+            usb,
+            radios,
+            capture,
+            &silent_identity(),
+            &BenchResult::declined(),
+            form,
+        )
     }
 
     fn group_named<'a>(outcome: &'a CustomerAdvanceScan, title: &str) -> &'a TelemetryGroup {
@@ -1950,6 +2272,9 @@ mod tests {
                 || group.title.starts_with("Storage")
                 || group.title.starts_with("Display")
                 || group.title.starts_with("Radio")
+                || group.title.starts_with("Processor")
+                || group.title.starts_with("Memory")
+                || group.title.starts_with("Benchmark")
             {
                 continue;
             }
@@ -2002,6 +2327,8 @@ mod tests {
             &silent_usb(),
             &silent_radios(),
             &silent_capture(),
+            &silent_identity(),
+            &BenchResult::declined(),
             DeviceForm::Portable,
         );
 
@@ -2441,5 +2768,155 @@ mod tests {
             value_of(&outcome, "Ports and connectivity", "Wi-Fi state"),
             "Up"
         );
+    }
+
+    fn named_processor_and_ram() -> CpuMemoryProbe {
+        parse_identity(&protocol(&[
+            ("cpu", 0, "source_status", "reported"),
+            ("cpu", 0, "present", "True"),
+            ("cpu", 0, "name", "Intel Core i7-6500U"),
+            ("cpu", 0, "cores", "2"),
+            ("cpu", 0, "l3_kb", "4096"),
+            ("cpu", 0, "max_mhz", "2500"),
+            ("memory", 0, "source_status", "reported"),
+            ("memory", 0, "total_kb", "8388608"),
+            ("module", 0, "source_status", "reported"),
+            ("module", 0, "present", "True"),
+            ("module", 0, "locator", "ChannelA-DIMM0"),
+            ("module", 0, "capacity_bytes", "8589934592"),
+            ("module", 0, "speed_mhz", "2133"),
+        ]))
+    }
+
+    #[test]
+    fn processor_identity_awards_four_points_without_a_workload() {
+        let diagnostics = HardwareDiagnosticsV1::not_collected(1_000);
+        let outcome = build_report(
+            &diagnostics,
+            &healthy_probe(),
+            &healthy_nvme(),
+            &enumerated_usb(),
+            &panel_and_radios(),
+            &uvc_capture(),
+            &named_processor_and_ram(),
+            &BenchResult::declined(),
+            DeviceForm::Portable,
+        );
+        let cpu = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Processor and thermal stability")
+            .expect("cpu domain");
+        assert_eq!(cpu.awarded, 4);
+        assert_eq!(cpu.assessed, 4);
+        let memory = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Memory integrity and speed")
+            .expect("memory domain");
+        assert_eq!(memory.awarded, 5);
+        assert_eq!(memory.assessed, 5);
+        assert_eq!(outcome.coverage_percent, 55);
+        assert!(outcome.grade_withheld);
+        assert!(value_of(&outcome, "Processor and thermal", "Processor").contains("i7-6500U"));
+        assert!(value_of(&outcome, "Benchmarks", "Processor sustained clock").contains("Declined"));
+        assert!(
+            outcome
+                .method_rows
+                .iter()
+                .any(|row| row.value.contains("never prints 'memory verified'")
+                    || row.value.contains("never prints"))
+        );
+    }
+
+    #[test]
+    fn consented_workloads_can_reach_the_coverage_floor_provisionally() {
+        let mut benches = BenchResult::declined();
+        benches.cpu.ratio = Some(92);
+        benches.cpu.status =
+            "CPU workload finished. Windows reported 2300 MHz after the loop against a maximum of 2500 MHz (92% of maximum). Package temperature is not collected."
+                .to_string();
+        benches.memory.pattern_passed = Some(true);
+        benches.memory.bandwidth_mib_s = Some(420.0);
+        benches.memory.status =
+            "Memory pattern spot check passed on 32.0 MiB. This is not full-coverage memory testing; kernel-resident memory was not included."
+                .to_string();
+        benches.storage.sequential_status =
+            "Sequential read 800 MiB/s of an existing Windows system file. No file was created."
+                .to_string();
+        benches.storage.random_status =
+            "Random 4 KiB read 12000 IOPS of an existing Windows system file. No file was created."
+                .to_string();
+
+        let diagnostics = HardwareDiagnosticsV1::not_collected(1_000);
+        let outcome = build_report(
+            &diagnostics,
+            &healthy_probe(),
+            &healthy_nvme(),
+            &enumerated_usb(),
+            &panel_and_radios(),
+            &uvc_capture(),
+            &named_processor_and_ram(),
+            &benches,
+            DeviceForm::Portable,
+        );
+
+        let cpu = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Processor and thermal stability")
+            .expect("cpu domain");
+        assert_eq!(cpu.awarded, 20);
+        assert_eq!(cpu.assessed, 20);
+        let memory = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Memory integrity and speed")
+            .expect("memory domain");
+        assert_eq!(memory.awarded, 15);
+        assert_eq!(memory.assessed, 15);
+        assert_eq!(outcome.coverage_percent, 81);
+        assert!(!outcome.grade_withheld);
+        assert!(outcome.provisional);
+        assert_eq!(outcome.grade_label, "A+");
+        assert!(
+            value_of(&outcome, "Benchmarks", "Memory pattern check")
+                .contains("not full-coverage memory testing")
+        );
+        assert!(
+            !value_of(&outcome, "Benchmarks", "Memory pattern check")
+                .to_ascii_lowercase()
+                .contains("memory verified")
+        );
+    }
+
+    #[test]
+    fn a_failed_pattern_spot_check_forces_f() {
+        let mut benches = BenchResult::declined();
+        benches.memory.pattern_passed = Some(false);
+        benches.memory.status =
+            "Memory pattern spot check failed: the tested region did not match the pattern that was written."
+                .to_string();
+        let diagnostics = HardwareDiagnosticsV1::not_collected(1_000);
+        let outcome = build_report(
+            &diagnostics,
+            &healthy_probe(),
+            &healthy_nvme(),
+            &enumerated_usb(),
+            &panel_and_radios(),
+            &uvc_capture(),
+            &named_processor_and_ram(),
+            &benches,
+            DeviceForm::Portable,
+        );
+        assert_eq!(outcome.grade_label, "F");
+        assert!(!outcome.grade_withheld);
+        let memory = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Memory integrity and speed")
+            .expect("memory domain");
+        assert_eq!(memory.awarded, 0);
+        assert_eq!(memory.assessed, 15);
     }
 }

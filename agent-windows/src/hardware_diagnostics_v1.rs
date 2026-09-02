@@ -419,6 +419,53 @@ pub fn ethernet_radio_points(link_state_readable: bool) -> u32 {
     if link_state_readable { 1 } else { 0 }
 }
 
+/// Processor identity points, rubric CG-1.0 section 5.2. Model, cores and
+/// cache must all be present. Clock points are scored separately.
+#[must_use]
+pub fn processor_identity_points(complete: bool) -> u32 {
+    if complete { 4 } else { 0 }
+}
+
+/// Sustained-to-maximum clock ratio under the CPU workload.
+#[must_use]
+pub fn processor_clock_points(ratio: f64) -> u32 {
+    if ratio >= 0.90 {
+        16
+    } else if ratio >= 0.75 {
+        11
+    } else if ratio >= 0.60 {
+        6
+    } else {
+        0
+    }
+}
+
+/// Memory module inventory, rubric CG-1.0 section 5.3.
+#[must_use]
+pub fn memory_inventory_points(complete: bool) -> u32 {
+    if complete { 5 } else { 0 }
+}
+
+/// Pattern spot check. `None` means it was not run. A failure is scored 0 and
+/// the caller must raise `CriticalFault::MemoryIntegrityMismatch`.
+#[must_use]
+pub fn memory_pattern_points(passed: Option<bool>) -> u32 {
+    match passed {
+        Some(true) => 7,
+        Some(false) | None => 0,
+    }
+}
+
+/// User-mode copy bandwidth. The floor is deliberately low so a virtual
+/// machine is not failed for not matching a laptop datasheet.
+#[must_use]
+pub fn memory_bandwidth_points(mib_s: Option<f64>) -> u32 {
+    match mib_s {
+        Some(rate) if rate >= 100.0 => 3,
+        _ => 0,
+    }
+}
+
 /// NVMe / SSD wear path, rubric CG-1.0 section 5.4.
 /// Available spare is required for the top two bands. A missing spare is never
 /// assumed to be 100%, so a healthy wear figure without spare caps at 16.
@@ -946,6 +993,29 @@ mod tests {
                 + bluetooth_radio_points(true)
                 + ethernet_radio_points(true)
                 < DiagnosticDomain::PortsAndConnectivity.weight()
+        );
+    }
+
+    #[test]
+    fn processor_and_memory_points_follow_the_rubric() {
+        assert_eq!(processor_identity_points(true), 4);
+        assert_eq!(processor_clock_points(0.90), 16);
+        assert_eq!(processor_clock_points(0.80), 11);
+        assert_eq!(processor_clock_points(0.60), 6);
+        assert_eq!(processor_clock_points(0.59), 0);
+        assert_eq!(memory_inventory_points(true), 5);
+        assert_eq!(memory_pattern_points(Some(true)), 7);
+        assert_eq!(memory_pattern_points(Some(false)), 0);
+        assert_eq!(memory_bandwidth_points(Some(250.0)), 3);
+        assert_eq!(
+            processor_identity_points(true) + processor_clock_points(1.0),
+            DiagnosticDomain::ProcessorAndThermal.weight()
+        );
+        assert_eq!(
+            memory_inventory_points(true)
+                + memory_pattern_points(Some(true))
+                + memory_bandwidth_points(Some(200.0)),
+            DiagnosticDomain::MemoryIntegrity.weight()
         );
     }
 

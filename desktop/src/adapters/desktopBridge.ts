@@ -163,18 +163,26 @@ function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
         "Advance scan asks every source Windows offers and records the answer, so a missing value can be explained rather than guessed.",
       ),
       group("Processor and thermal", [
-        ["Base clock", notCollected],
-        ["Maximum clock", notCollected],
-        ["Cache hierarchy", notCollected],
-        ["Instruction sets", notCollected],
+        ["Processor probe", "Processor and memory identity collection is only available on Windows."],
         ["Package temperature", needsKernel],
         ["Fan speed", needsKernel],
       ]),
       group("Memory", [
-        ["Installed total", notCollected],
-        ["Available", notCollected],
-        ["Channel mode", notCollected],
+        ["Memory probe", "Processor and memory identity collection is only available on Windows."],
+        [
+          "Channel mode",
+          "Not inferred. Windows module list is not a proof of dual-channel interleave.",
+        ],
       ]),
+      group(
+        "Processor and memory sources consulted",
+        [
+          ["Processor class", "Not queried on this PC"],
+          ["Operating-system memory", "Not queried on this PC"],
+          ["Physical memory modules", "Not queried on this PC"],
+        ],
+        "Advance scan asks Windows for processor identity and physical memory modules before any workload.",
+      ),
       group("Storage health and SMART", [
         ["Bus type", notCollected],
         ["Power-on hours", notCollected],
@@ -366,7 +374,17 @@ function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
       {
         label: "Memory testing",
         value:
-          "A user-mode pattern check can never cover memory the kernel occupies, so full-coverage memory testing belongs to a pre-boot environment.",
+          "A user-mode pattern check can never cover memory the kernel occupies, so full-coverage memory testing belongs to a pre-boot environment. Advance scan never prints 'memory verified'.",
+      },
+      {
+        label: "Processor clock",
+        value:
+          "Identity is collected without a workload. The 16 sustained-clock points are awarded only after a consented CPU loop, from Windows current/max megahertz. Package temperature is not collected.",
+      },
+      {
+        label: "Benchmarks",
+        value:
+          "CPU, memory and storage-read workloads run only when the operator allows benchmarks. The write test needs a second permission, writes one temporary file, then deletes it. Predicted-failure disks are not exercised.",
       },
       {
         label: "Physical ports",
@@ -441,14 +459,14 @@ async function runAdvanceScanPreview(consent: AdvanceScanConsent): Promise<Advan
   const details = [
     "Checking the Advance scan boundary and permissions.",
     "Asking Windows and the battery firmware for capacity.",
-    "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
-    "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
+    "Reading processor identity and cache. Processor and memory identity collection is only available on Windows.",
+    "Reading memory modules and installed capacity. Processor and memory identity collection is only available on Windows.",
     "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
     "Walking USB controllers, hubs and attached devices. USB topology collection is only available on Windows.",
     "Reading panel identity from EDID. Display and radio collection is only available on Windows.",
     "Enumerating cameras and microphones. Camera and microphone collection is only available on Windows. No frame captured.",
     consent.benchmarks
-      ? "Benchmarks were permitted, but none are implemented in this collector version."
+      ? "Running consented CPU, memory and storage workloads. Package temperature is not collected. Benchmarks run only on the installed Windows application."
       : "Benchmarks were not permitted, so none were run.",
     "Scoring only the areas that were actually assessed.",
     "Report D is ready. No grade was issued.",

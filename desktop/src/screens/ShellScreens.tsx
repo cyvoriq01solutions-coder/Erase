@@ -325,16 +325,17 @@ function AdvanceScanPanel({
       </div>
       <p className="panel-lead">
         Advance scan reads deeper hardware detail than the standard assessment: battery capacity and
-        wear, USB controller topology, cameras and microphones with no frame captured, storage SMART
-        health from Windows reliability counters, panel identity from EDID, and Wi-Fi, Bluetooth and
-        Ethernet radios. MAC addresses are never printed. It then prepares Report D with a
+        wear, processor and memory identity, USB controller topology, cameras and microphones with no
+        frame captured, storage SMART health from Windows reliability counters, panel identity from
+        EDID, and Wi-Fi, Bluetooth and Ethernet radios. MAC addresses are never printed. CPU, memory
+        and storage workloads run only if you allow benchmarks. It then prepares Report D with a
         provisional grade. It still does not erase anything and it does not open file contents.
       </p>
 
       <ul className="advance-scope">
-        <li>Deep collection is read-only. Storage SMART is read, never erased. MAC addresses are never printed.</li>
+        <li>Deep collection is read-only unless you allow the optional write test. Storage SMART is read, never erased. MAC addresses are never printed.</li>
         <li>Windows may ask for administrator approval. Declining still produces Report D.</li>
-        <li>Anything this build cannot read is printed as not collected in this scan.</li>
+        <li>Anything this build cannot read is printed as not collected in this scan. Package temperature is never invented.</li>
       </ul>
 
       <AdvanceProgressRing
@@ -371,8 +372,9 @@ function AdvanceScanPanel({
           <span>
             <strong>Allow benchmarks</strong>
             <small>
-              Short processor, memory and storage measurements. Off by default. Without them the
-              related grading points stay not assessable.
+              Short in-process processor, memory and storage-read measurements. Off by default.
+              Without them, clock and memory-integrity points stay not assessable. Package
+              temperature is not collected. This is never printed as memory verified.
             </small>
           </span>
         </label>
@@ -386,8 +388,9 @@ function AdvanceScanPanel({
           <span>
             <strong>Allow one temporary write test</strong>
             <small>
-              Writes a temporary benchmark file, measures write speed, then removes it. Leave this off
-              to keep the scan strictly read-only. Report D always records how many bytes were written.
+              Writes one 8 MiB temporary file in the Windows temporary folder, measures write speed,
+              then deletes it. Leave this off to keep the scan strictly read-only. Predicted-failure
+              disks are not exercised. Report D always records how many bytes were written.
             </small>
           </span>
         </label>
@@ -410,9 +413,9 @@ function AdvanceScanPanel({
         </button>
         <p>
           {collectionOn
-            ? "The bright ring shows live percent and the exact subsystem being read. Battery, storage SMART, panel EDID and radios are collected in this version."
-            : previewMode
-              ? "Browser preview walks the same stages. Panel EDID, radios, battery firmware and SMART are only read on the installed Windows application."
+              ? "The bright ring shows live percent and the exact subsystem being read. Battery, processor identity, storage SMART, panel EDID and radios are collected in this version. Workloads run only with consent."
+              : previewMode
+                ? "Browser preview walks the same stages. Processor identity, panel EDID, radios, battery firmware, SMART and consented workloads are only read on the installed Windows application."
               : "Open the installed Windows application to run Advance scan."}
         </p>
       </div>
