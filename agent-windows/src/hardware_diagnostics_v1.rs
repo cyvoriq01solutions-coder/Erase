@@ -390,6 +390,23 @@ pub fn evaluate(
     }
 }
 
+/// Battery points from measured health, per rubric CG-1.0 section 5.1.
+/// Only ever called with a health figure derived from two real capacities.
+#[must_use]
+pub fn battery_points(health_percent: f64) -> u32 {
+    if health_percent >= 85.0 {
+        20
+    } else if health_percent >= 75.0 {
+        16
+    } else if health_percent >= 60.0 {
+        11
+    } else if health_percent >= 50.0 {
+        6
+    } else {
+        0
+    }
+}
+
 fn percent_of(part: u32, whole: u32) -> u32 {
     if whole == 0 {
         return 0;
@@ -813,6 +830,19 @@ mod tests {
                 "{shape:?} broke the points invariant"
             );
         }
+    }
+
+    #[test]
+    fn battery_points_follow_the_health_bands() {
+        assert_eq!(battery_points(100.0), 20);
+        assert_eq!(battery_points(85.0), 20);
+        assert_eq!(battery_points(84.9), 16);
+        assert_eq!(battery_points(75.0), 16);
+        assert_eq!(battery_points(74.9), 11);
+        assert_eq!(battery_points(60.0), 11);
+        assert_eq!(battery_points(59.9), 6);
+        assert_eq!(battery_points(50.0), 6);
+        assert_eq!(battery_points(49.9), 0);
     }
 
     #[test]

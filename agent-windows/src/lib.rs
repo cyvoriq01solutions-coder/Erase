@@ -1,5 +1,6 @@
 pub mod application_data;
 pub mod assessment;
+pub mod battery_probe;
 pub mod collector_runtime;
 pub mod cpu;
 pub mod device;

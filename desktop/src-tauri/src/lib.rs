@@ -77,7 +77,29 @@ struct VerificationOutcome {
 #[serde(rename_all = "camelCase")]
 struct TelemetryGroupDto {
     title: String,
+    note: Option<String>,
     rows: Vec<NamedValueDto>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DomainCoverageDto {
+    domain: String,
+    awarded: u32,
+    assessed: u32,
+    not_assessable: u32,
+    weight: u32,
+    state: String,
+    note: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdvanceScanProgress {
+    percent: u8,
+    stage_index: u8,
+    stage: String,
+    detail: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -94,8 +116,12 @@ struct AdvanceScanOutcome {
     destructive_operations_enabled: bool,
     content_inspected: bool,
     boundary_note: String,
+    temporary_files_note: String,
     telemetry_groups: Vec<TelemetryGroupDto>,
     coverage_rows: Vec<NamedValueDto>,
+    coverage_domains: Vec<DomainCoverageDto>,
+    method_rows: Vec<NamedValueDto>,
+    rubric_rows: Vec<NamedValueDto>,
     not_assessable: Vec<String>,
     grading_engine: String,
     grading_rubric: String,
@@ -193,15 +219,32 @@ fn advance_scan_outcome(scan: cyvra_core::diagnostics::CustomerAdvanceScan) -> A
         destructive_operations_enabled: scan.destructive_operations_enabled,
         content_inspected: scan.content_inspected,
         boundary_note: scan.boundary_note,
+        temporary_files_note: scan.temporary_files_note,
         telemetry_groups: scan
             .telemetry_groups
             .into_iter()
             .map(|group| TelemetryGroupDto {
                 title: group.title,
+                note: group.note,
                 rows: named_values(group.rows),
             })
             .collect(),
         coverage_rows: named_values(scan.coverage_rows),
+        coverage_domains: scan
+            .coverage_domains
+            .into_iter()
+            .map(|domain| DomainCoverageDto {
+                domain: domain.domain,
+                awarded: domain.awarded,
+                assessed: domain.assessed,
+                not_assessable: domain.not_assessable,
+                weight: domain.weight,
+                state: domain.state,
+                note: domain.note,
+            })
+            .collect(),
+        method_rows: named_values(scan.method_rows),
+        rubric_rows: named_values(scan.rubric_rows),
         not_assessable: scan.not_assessable,
         grading_engine: scan.grading_engine.to_string(),
         grading_rubric: scan.grading_rubric.to_string(),
@@ -215,8 +258,19 @@ fn advance_scan_outcome(scan: cyvra_core::diagnostics::CustomerAdvanceScan) -> A
     }
 }
 
+fn parse_device_form(value: Option<String>) -> cyvra_core::hardware_diagnostics_v1::DeviceForm {
+    use cyvra_core::hardware_diagnostics_v1::DeviceForm;
+
+    match value.unwrap_or_default().to_ascii_lowercase().as_str() {
+        "portable" | "laptop" | "tablet" | "notebook" => DeviceForm::Portable,
+        "fixed" | "desktop" | "server" => DeviceForm::Fixed,
+        _ => DeviceForm::Unknown,
+    }
+}
+
 fn run_advance_scan_inner(
     request: cyvra_core::diagnostics::AdvanceScanRequest,
+    mut progress: impl FnMut(u8, u8, &str, &str),
 ) -> Result<AdvanceScanOutcome, String> {
     let bootstrap = safe_bootstrap();
     if !bootstrap.live_collection_enabled {
@@ -226,7 +280,9 @@ fn run_advance_scan_inner(
         return Err("Destructive operations are not permitted.".to_string());
     }
 
-    let scan = cyvra_core::diagnostics::run_advance_scan(&request);
+    let cancellation = cyvra_core::collector_runtime::CancellationToken::new();
+    let scan =
+        cyvra_core::diagnostics::run_advance_scan_with(&request, &cancellation, &mut progress);
     if !scan.ok || scan.destructive_operations_enabled || scan.content_inspected {
         return Err(scan.message);
     }
@@ -293,16 +349,32 @@ async fn run_device_verification(
 
 #[tauri::command]
 async fn run_advance_scan(
+    app: tauri::AppHandle,
     benchmarks_consented: Option<bool>,
     write_benchmark_consented: Option<bool>,
+    device_form: Option<String>,
 ) -> Result<AdvanceScanOutcome, String> {
     let request = cyvra_core::diagnostics::AdvanceScanRequest {
         benchmarks_consented: benchmarks_consented.unwrap_or(false),
         write_benchmark_consented: write_benchmark_consented.unwrap_or(false),
+        device_form: parse_device_form(device_form),
     };
-    tauri::async_runtime::spawn_blocking(move || run_advance_scan_inner(request))
-        .await
-        .map_err(|_| "CYVRA could not finish Advance scan.".to_string())?
+    let progress_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        run_advance_scan_inner(request, |percent, stage_index, stage, detail| {
+            let _ = progress_app.emit(
+                "advance-scan-progress",
+                AdvanceScanProgress {
+                    percent,
+                    stage_index,
+                    stage: stage.to_string(),
+                    detail: detail.to_string(),
+                },
+            );
+        })
+    })
+    .await
+    .map_err(|_| "CYVRA could not finish Advance scan.".to_string())?
 }
 
 #[tauri::command]
@@ -420,9 +492,12 @@ mod tests {
 
     #[test]
     fn advance_scan_withholds_the_grade_and_writes_nothing() {
-        let outcome =
-            run_advance_scan_inner(cyvra_core::diagnostics::AdvanceScanRequest::default())
-                .expect("advance scan should complete");
+        let mut stages: Vec<u8> = Vec::new();
+        let outcome = run_advance_scan_inner(
+            cyvra_core::diagnostics::AdvanceScanRequest::default(),
+            |_, stage_index, _, _| stages.push(stage_index),
+        )
+        .expect("advance scan should complete");
 
         assert!(outcome.ok);
         assert!(!outcome.destructive_operations_enabled);
@@ -433,15 +508,23 @@ mod tests {
         assert_eq!(outcome.index_percent, None);
         assert_eq!(outcome.grading_engine, "CYVRA Grading Engine");
         assert!(!outcome.telemetry_groups.is_empty());
+        assert_eq!(outcome.coverage_domains.len(), 6);
+        assert!(!outcome.method_rows.is_empty());
+        assert!(!outcome.rubric_rows.is_empty());
+        assert!(!stages.is_empty(), "progress must be reported");
     }
 
     #[test]
     fn advance_scan_cannot_be_issued_while_grading_is_disabled() {
         let bootstrap = safe_bootstrap();
-        let outcome = run_advance_scan_inner(cyvra_core::diagnostics::AdvanceScanRequest {
-            benchmarks_consented: true,
-            write_benchmark_consented: true,
-        })
+        let outcome = run_advance_scan_inner(
+            cyvra_core::diagnostics::AdvanceScanRequest {
+                benchmarks_consented: true,
+                write_benchmark_consented: true,
+                ..Default::default()
+            },
+            |_, _, _, _| {},
+        )
         .expect("advance scan should complete");
 
         assert!(!bootstrap.grading_issuance_enabled);

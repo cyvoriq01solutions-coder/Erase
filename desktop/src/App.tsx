@@ -5,6 +5,7 @@ import {
   loadShellBootstrap,
   runAdvanceScan,
   runDeviceVerification,
+  subscribeAdvanceScanProgress,
   subscribeVerificationProgress,
 } from "./adapters/desktopBridge";
 import { AppFrame } from "./components/AppFrame";
@@ -13,6 +14,7 @@ import { ShellScreen } from "./screens/ShellScreens";
 import type {
   AdvanceScanConsent,
   AdvanceScanPhase,
+  AdvanceScanProgress,
   AdvanceScanRecord,
   BridgeState,
   NavigationId,
@@ -21,6 +23,7 @@ import type {
   VerificationProgress,
   VerificationRecord,
 } from "./types/shell";
+import { inferDeviceForm } from "./types/shell";
 
 export default function App() {
   const [setupComplete, setSetupComplete] = useState(false);
@@ -35,6 +38,7 @@ export default function App() {
   const [advanceScan, setAdvanceScan] = useState<AdvanceScanRecord | null>(null);
   const [advanceScanPhase, setAdvanceScanPhase] = useState<AdvanceScanPhase>("idle");
   const [advanceScanError, setAdvanceScanError] = useState<string | null>(null);
+  const [advanceScanProgress, setAdvanceScanProgress] = useState<AdvanceScanProgress | null>(null);
   const [advanceConsent, setAdvanceConsent] = useState<AdvanceScanConsent>({
     benchmarks: false,
     writeBenchmark: false,
@@ -97,6 +101,18 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void subscribeAdvanceScanProgress((next) => {
+      setAdvanceScanProgress(next);
+    }).then((stop) => {
+      unlisten = stop;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
   async function handleRunVerification() {
     setVerificationError(null);
     setProgress({
@@ -127,10 +143,25 @@ export default function App() {
 
   async function handleRunAdvanceScan() {
     setAdvanceScanError(null);
+    setAdvanceScan(null);
+    setAdvanceScanProgress({
+      percent: 0,
+      stageIndex: 0,
+      stage: "Preparing advance scan",
+      detail: "Checking the Advance scan boundary and permissions.",
+    });
     setAdvanceScanPhase("running");
     try {
-      const record = await runAdvanceScan(advanceConsent);
+      const record = await runAdvanceScan(advanceConsent, inferDeviceForm(verification));
       setAdvanceScan(record);
+      setAdvanceScanProgress({
+        percent: 100,
+        stageIndex: 10,
+        stage: "Preparing Report D",
+        detail: record.gradeWithheld
+          ? "Report D is ready. No grade was issued."
+          : "Report D is ready.",
+      });
       setAdvanceScanPhase("complete");
     } catch (error) {
       setAdvanceScanPhase("error");
@@ -212,6 +243,7 @@ export default function App() {
         advanceScan={advanceScan}
         advanceScanPhase={advanceScanPhase}
         advanceScanError={advanceScanError}
+        advanceScanProgress={advanceScanProgress}
         advanceConsent={advanceConsent}
         onToggleAdvanceConsent={handleToggleAdvanceConsent}
         onRunAdvanceScan={() => {
