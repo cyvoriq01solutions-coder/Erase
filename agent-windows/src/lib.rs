@@ -16,6 +16,7 @@ pub mod pdem;
 pub mod personal_data;
 pub mod report;
 pub mod storage;
+pub mod storage_health;
 pub mod usb_topology;
 pub mod user_profiles;
 pub mod volume;

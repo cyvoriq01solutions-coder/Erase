@@ -122,7 +122,8 @@ impl TrustedPowerShellScript {
         Self(script)
     }
 
-    const fn as_str(self) -> &'static str {
+    #[must_use]
+    pub(crate) const fn as_str(self) -> &'static str {
         self.0
     }
 }

@@ -503,12 +503,11 @@ mod tests {
         assert!(!outcome.destructive_operations_enabled);
         assert!(!outcome.content_inspected);
         assert_eq!(outcome.bytes_written, 0);
-        assert!(outcome.grade_withheld);
         assert!(outcome.provisional);
         // Index is None only when nothing was assessed. On Windows, A3 may
-        // enumerate USB controllers and award 2 of 10 Ports points, which
-        // yields Some(100) on those assessed points. Storage is still unread,
-        // so the grade stays withheld.
+        // enumerate USB and A4 may read SMART. Coverage can still sit below
+        // the CG-1.0 floor, so the grade stays withheld unless a measured
+        // storage critical forces F.
         match outcome.index_percent {
             None => assert_eq!(outcome.coverage_percent, 0),
             Some(index) => {
@@ -516,13 +515,17 @@ mod tests {
                 assert!(index <= 100);
             }
         }
-        assert!(
-            outcome
-                .grade_withheld_reason
-                .as_deref()
-                .unwrap_or_default()
-                .contains("Storage")
-        );
+        if outcome.grade_withheld {
+            let reason = outcome.grade_withheld_reason.unwrap_or_default();
+            assert!(
+                reason.contains("Storage")
+                    || reason.contains("could be assessed")
+                    || reason.contains("required area"),
+                "{reason}"
+            );
+        } else {
+            assert_eq!(outcome.grade_label, "F");
+        }
         assert_eq!(outcome.grading_engine, "CYVRA Grading Engine");
         assert!(!outcome.telemetry_groups.is_empty());
         assert_eq!(outcome.coverage_domains.len(), 6);

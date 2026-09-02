@@ -399,6 +399,53 @@ pub fn usb_topology_points(enumerated: bool) -> u32 {
     if enumerated { 2 } else { 0 }
 }
 
+/// NVMe / SSD wear path, rubric CG-1.0 section 5.4.
+/// Available spare is required for the top two bands. A missing spare is never
+/// assumed to be 100%, so a healthy wear figure without spare caps at 16.
+#[must_use]
+pub fn nvme_storage_points(
+    percentage_used: u32,
+    available_spare_percent: Option<u32>,
+    critical_warning: bool,
+    media_errors: u64,
+) -> u32 {
+    if critical_warning || media_errors > 0 {
+        return 0;
+    }
+    if available_spare_percent.is_some_and(|spare| spare < 50) {
+        return 0;
+    }
+    if percentage_used > 80 {
+        return 0;
+    }
+    if percentage_used <= 5 && available_spare_percent.is_some_and(|spare| spare >= 95) {
+        return 20;
+    }
+    if percentage_used <= 20
+        && available_spare_percent
+            .map(|spare| spare >= 90)
+            .unwrap_or(true)
+    {
+        return 16;
+    }
+    if percentage_used <= 50 {
+        return 11;
+    }
+    6
+}
+
+/// ATA / SATA SMART path, rubric CG-1.0 section 5.4.
+#[must_use]
+pub fn ata_storage_points(reallocated: u64, pending: u64) -> u32 {
+    if pending > 0 || reallocated > 10 {
+        0
+    } else if reallocated == 0 {
+        20
+    } else {
+        11
+    }
+}
+
 /// Battery points from measured health, per rubric CG-1.0 section 5.1.
 /// Only ever called with a health figure derived from two real capacities.
 #[must_use]
@@ -859,6 +906,28 @@ mod tests {
         assert_eq!(usb_topology_points(true), 2);
         assert_eq!(usb_topology_points(false), 0);
         assert!(usb_topology_points(true) < DiagnosticDomain::PortsAndConnectivity.weight());
+    }
+
+    #[test]
+    fn nvme_wear_bands_do_not_invent_a_spare() {
+        assert_eq!(nvme_storage_points(2, Some(100), false, 0), 20);
+        assert_eq!(nvme_storage_points(0, Some(95), false, 0), 20);
+        assert_eq!(nvme_storage_points(2, None, false, 0), 16);
+        assert_eq!(nvme_storage_points(18, Some(90), false, 0), 16);
+        assert_eq!(nvme_storage_points(40, None, false, 0), 11);
+        assert_eq!(nvme_storage_points(70, None, false, 0), 6);
+        assert_eq!(nvme_storage_points(81, None, false, 0), 0);
+        assert_eq!(nvme_storage_points(1, Some(40), false, 0), 0);
+        assert_eq!(nvme_storage_points(1, Some(100), true, 0), 0);
+        assert_eq!(nvme_storage_points(1, Some(100), false, 3), 0);
+    }
+
+    #[test]
+    fn ata_pending_sectors_zero_the_domain() {
+        assert_eq!(ata_storage_points(0, 0), 20);
+        assert_eq!(ata_storage_points(4, 0), 11);
+        assert_eq!(ata_storage_points(11, 0), 0);
+        assert_eq!(ata_storage_points(0, 1), 0);
     }
 
     #[test]

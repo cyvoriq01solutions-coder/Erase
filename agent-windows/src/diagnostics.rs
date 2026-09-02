@@ -11,9 +11,10 @@ use crate::capture_probe::{self, CaptureProbe};
 use crate::collector_runtime::CancellationToken;
 use crate::hardware_diagnostics_v1::{
     CoverageSummary, DeviceForm, DiagnosticDomain, DomainApplicability, DomainEvidence,
-    HardwareDiagnosticsV1, battery_points, evaluate, usb_topology_points,
+    ElevationState, HardwareDiagnosticsV1, battery_points, evaluate, usb_topology_points,
 };
 use crate::hardware_inventory_v1::Confidence;
+use crate::storage_health::{self, StorageProbe, StorageSource};
 use crate::usb_topology::{self, UsbProbe, UsbSource};
 use std::collections::BTreeSet;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -148,7 +149,18 @@ pub fn run_advance_scan_with(
 
     report(2, NOT_COLLECTED);
     report(3, NOT_COLLECTED);
-    report(4, NOT_COLLECTED);
+
+    report(
+        4,
+        "Asking Windows for disk identity and SMART. Nothing is written, erased or trimmed.",
+    );
+    let storage = storage_health::collect(cancellation);
+    report(4, &storage_progress_detail(&storage));
+    diagnostics.elevation_state = if storage.elevated == Some(true) {
+        ElevationState::Granted
+    } else {
+        ElevationState::NotRequested
+    };
 
     report(5, "Walking USB controllers, hubs and attached devices.");
     let usb = usb_topology::collect(cancellation);
@@ -172,7 +184,14 @@ pub fn run_advance_scan_with(
     );
 
     report(9, "Scoring only the areas that were actually assessed.");
-    let outcome = build_report(&diagnostics, &battery, &usb, &capture, request.device_form);
+    let outcome = build_report(
+        &diagnostics,
+        &battery,
+        &storage,
+        &usb,
+        &capture,
+        request.device_form,
+    );
 
     report(
         10,
@@ -202,6 +221,26 @@ fn battery_progress_detail(battery: &BatteryProbe) -> String {
     "The battery did not report a design capacity.".to_string()
 }
 
+fn storage_progress_detail(storage: &StorageProbe) -> String {
+    if let Some(error) = storage.probe_error {
+        return error.to_string();
+    }
+    if storage.reliability_refused() {
+        return "Windows refused storage SMART on this account. Report D will still be written."
+            .to_string();
+    }
+    let count = storage.drives.len();
+    if count == 0 {
+        return "Windows did not name a storage device.".to_string();
+    }
+    if storage.awarded_points().is_some() {
+        return format!(
+            "Read identity and SMART on {count} storage device(s). No data was erased."
+        );
+    }
+    format!("Identified {count} storage device(s). SMART health was not returned.")
+}
+
 fn usb_progress_detail(usb: &UsbProbe) -> String {
     if let Some(error) = usb.probe_error {
         return error.to_string();
@@ -229,14 +268,16 @@ fn capture_progress_detail(capture: &CaptureProbe) -> String {
 fn build_report(
     diagnostics: &HardwareDiagnosticsV1,
     battery: &BatteryProbe,
+    storage: &StorageProbe,
     usb: &UsbProbe,
     capture: &CaptureProbe,
     device_form: DeviceForm,
 ) -> CustomerAdvanceScan {
     let wrote_without_consent =
         diagnostics.bytes_written > 0 && !diagnostics.write_benchmark_consented;
-    let evidence = domain_evidence(diagnostics, battery, usb, device_form);
-    let summary = evaluate(&evidence, device_form, &[]);
+    let evidence = domain_evidence(diagnostics, battery, storage, usb, device_form);
+    let criticals = storage.critical_faults();
+    let summary = evaluate(&evidence, device_form, &criticals);
 
     CustomerAdvanceScan {
         ok: !wrote_without_consent,
@@ -251,7 +292,7 @@ fn build_report(
         destructive_operations_enabled: false,
         content_inspected: false,
         boundary_note: boundary_note(diagnostics),
-        telemetry_groups: telemetry_groups(diagnostics, battery, usb, capture),
+        telemetry_groups: telemetry_groups(diagnostics, battery, storage, usb, capture),
         coverage_rows: coverage_rows(&summary),
         coverage_domains: coverage_domains(&evidence),
         method_rows: method_rows(),
@@ -318,6 +359,7 @@ fn temporary_files_note(battery: &BatteryProbe) -> String {
 fn domain_evidence(
     diagnostics: &HardwareDiagnosticsV1,
     battery: &BatteryProbe,
+    storage: &StorageProbe,
     usb: &UsbProbe,
     device_form: DeviceForm,
 ) -> Vec<DomainEvidence> {
@@ -325,6 +367,7 @@ fn domain_evidence(
         .iter()
         .map(|domain| match domain {
             DiagnosticDomain::BatteryAndPower => battery_evidence(battery, device_form),
+            DiagnosticDomain::StorageHealth => storage_evidence(storage),
             DiagnosticDomain::PortsAndConnectivity => usb_evidence(usb),
             other => DomainEvidence::not_assessable(*other, domain_gap(*other, diagnostics)),
         })
@@ -361,6 +404,43 @@ fn battery_evidence(battery: &BatteryProbe, device_form: DeviceForm) -> DomainEv
     }
 
     DomainEvidence::not_assessable(domain, battery_gap(battery))
+}
+
+fn storage_evidence(storage: &StorageProbe) -> DomainEvidence {
+    let domain = DiagnosticDomain::StorageHealth;
+    if let Some(awarded) = storage.awarded_points() {
+        let mut evidence =
+            DomainEvidence::measured(domain, awarded, domain.weight(), Confidence::High);
+        evidence.note = Some(
+            "Storage SMART was read. Power-on hours and wear are printed; they are not scored in CG-1.0."
+                .to_string(),
+        );
+        return evidence;
+    }
+    DomainEvidence::not_assessable(domain, storage_gap(storage))
+}
+
+fn storage_gap(storage: &StorageProbe) -> &'static str {
+    if storage.probe_error.is_some() {
+        return "The storage health probe could not run on this PC";
+    }
+    if storage.reliability_refused() {
+        return "Windows refused the storage SMART query on this account";
+    }
+    match storage.outcome_for(StorageSource::ReliabilityCounter) {
+        storage_health::SourceOutcome::PermissionDenied => {
+            "Windows refused the storage SMART query on this account"
+        }
+        storage_health::SourceOutcome::Unsupported => {
+            "Windows does not expose storage reliability counters on this PC"
+        }
+        storage_health::SourceOutcome::CollectionError => {
+            "Windows returned an error for the storage SMART query"
+        }
+        storage_health::SourceOutcome::NotQueried | storage_health::SourceOutcome::Reported => {
+            "Storage SMART telemetry was not returned for the disks on this PC"
+        }
+    }
 }
 
 fn usb_evidence(usb: &UsbProbe) -> DomainEvidence {
@@ -495,7 +575,7 @@ fn method_rows() -> Vec<NamedValue> {
     vec![
         row(
             "Collection mode",
-            "Read-only. Windows management classes, firmware tables and Windows' own battery report.".to_string(),
+            "Read-only. Windows management classes, firmware tables, Windows' own battery report, and storage reliability counters.".to_string(),
         ),
         row(
             "Battery capacity",
@@ -508,6 +588,10 @@ fn method_rows() -> Vec<NamedValue> {
         row(
             "Memory testing",
             "A user-mode pattern check can never cover memory the kernel occupies, so full-coverage memory testing belongs to a pre-boot environment.".to_string(),
+        ),
+        row(
+            "Storage SMART",
+            "Advance scan reads disk identity, Windows storage reliability counters and the SMART predict-failure bit. It never issues a write, erase, TRIM, format, sanitize or firmware-update command. Available spare is printed only when Windows returns it.".to_string(),
         ),
         row(
             "Physical ports",
@@ -575,6 +659,7 @@ fn not_assessable(evidence: &[DomainEvidence]) -> Vec<String> {
 fn telemetry_groups(
     diagnostics: &HardwareDiagnosticsV1,
     battery: &BatteryProbe,
+    storage: &StorageProbe,
     usb: &UsbProbe,
     capture: &CaptureProbe,
 ) -> Vec<TelemetryGroup> {
@@ -606,20 +691,8 @@ fn telemetry_groups(
                 ("Channel mode", NOT_COLLECTED),
             ],
         ),
-        group(
-            "Storage health and SMART",
-            &[
-                ("Bus type", NOT_COLLECTED),
-                ("Power-on hours", NOT_COLLECTED),
-                ("Power cycles", NOT_COLLECTED),
-                ("Total bytes written", NOT_COLLECTED),
-                ("Percentage used", NOT_COLLECTED),
-                ("Available spare", NOT_COLLECTED),
-                ("Media errors", NOT_COLLECTED),
-                ("Sectors pending reallocation", NOT_COLLECTED),
-                ("Predicted failure", NOT_COLLECTED),
-            ],
-        ),
+        storage_group(storage),
+        storage_source_group(storage),
         usb_group(usb),
         usb_source_group(usb),
         group(
@@ -769,6 +842,177 @@ fn battery_source_group(battery: &BatteryProbe) -> TelemetryGroup {
                 .to_string(),
         ),
         rows: battery
+            .sources
+            .iter()
+            .map(|status| {
+                row(
+                    status.source.label(),
+                    status.outcome.customer_label().to_string(),
+                )
+            })
+            .collect(),
+    }
+}
+
+fn storage_group(storage: &StorageProbe) -> TelemetryGroup {
+    let mut rows = Vec::new();
+
+    if let Some(error) = storage.probe_error {
+        rows.push(row("Storage probe", error.to_string()));
+        rows.extend(unread_storage_rows());
+        return TelemetryGroup {
+            title: "Storage health and SMART".to_string(),
+            note: None,
+            rows,
+        };
+    }
+
+    if storage.drives.is_empty() {
+        rows.push(row(
+            "Storage devices",
+            format!("Not collected in this scan. {}.", storage_gap(storage)),
+        ));
+        rows.extend(unread_storage_rows());
+        return TelemetryGroup {
+            title: "Storage health and SMART".to_string(),
+            note: None,
+            rows,
+        };
+    }
+
+    rows.push(row(
+        "Storage devices",
+        storage
+            .drives
+            .iter()
+            .map(storage_health::DriveReading::display_name)
+            .collect::<Vec<_>>()
+            .join("; "),
+    ));
+
+    let scoring = storage.scoring_drives();
+    let primary = scoring
+        .first()
+        .copied()
+        .or_else(|| storage.drives.first())
+        .expect("drives is not empty");
+
+    rows.push(optional_row("Model", primary.model.clone()));
+    rows.push(optional_row("Serial number", primary.serial_number.clone()));
+    rows.push(optional_row(
+        "Firmware revision",
+        primary.firmware_revision.clone(),
+    ));
+    rows.push(optional_row("Bus type", primary.bus_type.clone()));
+    rows.push(optional_row("Media kind", primary.media_kind.clone()));
+    rows.push(optional_row(
+        "Capacity",
+        primary.capacity_bytes.map(|bytes| format!("{bytes} bytes")),
+    ));
+    rows.push(optional_row(
+        "Rotational",
+        primary.rotational.map(|rotational| {
+            if rotational {
+                "Yes (magnetic)".to_string()
+            } else {
+                "No (solid state)".to_string()
+            }
+        }),
+    ));
+    rows.push(optional_row(
+        "Power-on hours",
+        primary.power_on_hours.map(|hours| hours.to_string()),
+    ));
+    rows.push(optional_row(
+        "Power cycles",
+        primary.power_cycles.map(|cycles| cycles.to_string()),
+    ));
+    rows.push(optional_row(
+        "Percentage used",
+        primary.percentage_used.map(|used| {
+            format!("{used}% (firmware wear, not a remaining-life estimate we invented)")
+        }),
+    ));
+    rows.push(optional_row(
+        "Remaining life (derived)",
+        primary
+            .remaining_life_percent
+            .map(|life| format!("{life}% (100 minus percentage used)")),
+    ));
+    rows.push(optional_row(
+        "Available spare",
+        primary
+            .available_spare_percent
+            .map(|spare| format!("{spare}%")),
+    ));
+    rows.push(optional_row(
+        "Composite temperature",
+        primary.temperature_c.map(|temp| format!("{temp:.0} °C")),
+    ));
+    rows.push(optional_row(
+        "Uncorrected media errors",
+        primary.media_errors.map(|errors| errors.to_string()),
+    ));
+    rows.push(optional_row(
+        "Reallocated sectors",
+        primary
+            .reallocated_sectors
+            .map(|sectors| sectors.to_string()),
+    ));
+    rows.push(optional_row(
+        "Sectors pending reallocation",
+        primary.pending_sectors.map(|sectors| sectors.to_string()),
+    ));
+    rows.push(optional_row(
+        "Predicted failure",
+        primary.predicts_failure.map(|predicts| {
+            if predicts {
+                "Yes — firmware reports a predicted failure".to_string()
+            } else {
+                "No".to_string()
+            }
+        }),
+    ));
+    rows.push(row(
+        "Total bytes written",
+        "Not collected in this scan. Windows reliability counters on this build do not expose host TBW.".to_string(),
+    ));
+
+    TelemetryGroup {
+        title: "Storage health and SMART".to_string(),
+        note: Some(
+            "Power-on hours and wear are printed for the buyer. They are not scored in rubric CG-1.0."
+                .to_string(),
+        ),
+        rows,
+    }
+}
+
+fn unread_storage_rows() -> Vec<NamedValue> {
+    [
+        ("Bus type", NOT_COLLECTED),
+        ("Power-on hours", NOT_COLLECTED),
+        ("Power cycles", NOT_COLLECTED),
+        ("Total bytes written", NOT_COLLECTED),
+        ("Percentage used", NOT_COLLECTED),
+        ("Available spare", NOT_COLLECTED),
+        ("Media errors", NOT_COLLECTED),
+        ("Sectors pending reallocation", NOT_COLLECTED),
+        ("Predicted failure", NOT_COLLECTED),
+    ]
+    .into_iter()
+    .map(|(label, value)| row(label, value.to_string()))
+    .collect()
+}
+
+fn storage_source_group(storage: &StorageProbe) -> TelemetryGroup {
+    TelemetryGroup {
+        title: "Storage sources consulted".to_string(),
+        note: Some(
+            "Advance scan asks Windows for identity, reliability counters and the SMART predict-failure bit, then records which source answered."
+                .to_string(),
+        ),
+        rows: storage
             .sources
             .iter()
             .map(|status| {
@@ -1011,6 +1255,7 @@ mod tests {
     use super::*;
     use crate::battery_probe::parse_probe as parse_battery;
     use crate::capture_probe::parse_probe as parse_capture;
+    use crate::storage_health::parse_probe as parse_storage;
     use crate::usb_topology::parse_probe as parse_usb;
 
     fn hex(value: &str) -> String {
@@ -1048,6 +1293,10 @@ mod tests {
 
     fn silent_usb() -> UsbProbe {
         UsbProbe::unavailable("USB topology collection is only available on Windows.")
+    }
+
+    fn silent_storage() -> StorageProbe {
+        StorageProbe::unavailable("Storage SMART collection is only available on Windows.")
     }
 
     fn silent_capture() -> CaptureProbe {
@@ -1091,19 +1340,47 @@ mod tests {
         ]))
     }
 
+    fn healthy_nvme() -> StorageProbe {
+        parse_storage(&protocol(&[
+            ("physical", 0, "source_status", "reported"),
+            ("physical", 0, "present", "True"),
+            ("physical", 0, "model", "Samsung SSD 990 PRO 1TB"),
+            ("physical", 0, "serial_number", "S6Z1NS0W123456"),
+            ("physical", 0, "bus_type", "NVMe"),
+            ("physical", 0, "media_kind", "SSD"),
+            ("physical", 0, "rotational", "False"),
+            ("reliability", 0, "source_status", "reported"),
+            ("reliability", 0, "present", "True"),
+            ("reliability", 0, "percentage_used", "2"),
+            ("reliability", 0, "available_spare", "100"),
+            ("reliability", 0, "power_on_hours", "1840"),
+            ("predict", 0, "source_status", "reported"),
+            ("predict", 0, "present", "True"),
+            ("predict", 0, "predicts_failure", "False"),
+        ]))
+    }
+
     fn report_for(probe: &BatteryProbe, form: DeviceForm) -> CustomerAdvanceScan {
         let diagnostics = HardwareDiagnosticsV1::not_collected(1_000);
-        build_report(&diagnostics, probe, &silent_usb(), &silent_capture(), form)
+        build_report(
+            &diagnostics,
+            probe,
+            &silent_storage(),
+            &silent_usb(),
+            &silent_capture(),
+            form,
+        )
     }
 
     fn report_full(
         battery: &BatteryProbe,
+        storage: &StorageProbe,
         usb: &UsbProbe,
         capture: &CaptureProbe,
         form: DeviceForm,
     ) -> CustomerAdvanceScan {
         let diagnostics = HardwareDiagnosticsV1::not_collected(1_000);
-        build_report(&diagnostics, battery, usb, capture, form)
+        build_report(&diagnostics, battery, storage, usb, capture, form)
     }
 
     fn group_named<'a>(outcome: &'a CustomerAdvanceScan, title: &str) -> &'a TelemetryGroup {
@@ -1336,6 +1613,7 @@ mod tests {
                 || group.title.starts_with("Ports")
                 || group.title.starts_with("Cameras")
                 || group.title.starts_with("Capture")
+                || group.title.starts_with("Storage")
             {
                 continue;
             }
@@ -1384,6 +1662,7 @@ mod tests {
         let outcome = build_report(
             &diagnostics,
             &healthy_probe(),
+            &silent_storage(),
             &silent_usb(),
             &silent_capture(),
             DeviceForm::Portable,
@@ -1397,6 +1676,7 @@ mod tests {
     fn a_uvc_camera_is_printed_and_does_not_award_screen_points() {
         let outcome = report_full(
             &healthy_probe(),
+            &silent_storage(),
             &silent_usb(),
             &uvc_capture(),
             DeviceForm::Portable,
@@ -1442,6 +1722,7 @@ mod tests {
     fn enumerated_usb_awards_topology_points_and_leaves_physical_ports_unattempted() {
         let outcome = report_full(
             &healthy_probe(),
+            &silent_storage(),
             &enumerated_usb(),
             &uvc_capture(),
             DeviceForm::Portable,
@@ -1497,5 +1778,137 @@ mod tests {
                 .iter()
                 .any(|row| row.value.contains("USB video service"))
         );
+        assert!(
+            outcome
+                .method_rows
+                .iter()
+                .any(|row| row.value.contains("never issues a write"))
+        );
+    }
+
+    #[test]
+    fn a_healthy_nvme_awards_storage_points_and_still_withholds_for_coverage() {
+        let outcome = report_full(
+            &healthy_probe(),
+            &healthy_nvme(),
+            &enumerated_usb(),
+            &uvc_capture(),
+            DeviceForm::Portable,
+        );
+
+        assert_eq!(
+            value_of(&outcome, "Storage health and SMART", "Model"),
+            "Samsung SSD 990 PRO 1TB"
+        );
+        assert_eq!(
+            value_of(&outcome, "Storage health and SMART", "Serial number"),
+            "S6Z1NS0W123456"
+        );
+        assert!(
+            value_of(&outcome, "Storage health and SMART", "Percentage used").starts_with("2%")
+        );
+        assert_eq!(
+            value_of(&outcome, "Storage health and SMART", "Predicted failure"),
+            "No"
+        );
+        assert!(
+            value_of(&outcome, "Storage health and SMART", "Total bytes written")
+                .contains("Not collected in this scan")
+        );
+
+        let storage = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Storage health and SMART")
+            .expect("storage domain");
+        assert_eq!(storage.assessed, 20);
+        assert_eq!(storage.awarded, 20);
+        assert_eq!(storage.state, "Fully assessed");
+        assert_eq!(outcome.coverage_percent, 42);
+        assert!(outcome.grade_withheld);
+        assert!(
+            outcome
+                .grade_withheld_reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("could be assessed")
+        );
+        assert!(!outcome.destructive_operations_enabled);
+        assert_eq!(outcome.bytes_written, 0);
+    }
+
+    #[test]
+    fn a_refused_smart_query_explains_itself_and_keeps_storage_mandatory() {
+        let storage = parse_storage(&protocol(&[
+            ("disk", 0, "source_status", "reported"),
+            ("reliability", 0, "source_status", "permission_denied"),
+            ("predict", 0, "source_status", "permission_denied"),
+        ]));
+        let outcome = report_full(
+            &healthy_probe(),
+            &storage,
+            &silent_usb(),
+            &silent_capture(),
+            DeviceForm::Portable,
+        );
+
+        assert_eq!(
+            value_of(
+                &outcome,
+                "Storage sources consulted",
+                "Storage reliability counters"
+            ),
+            "Refused without administrator rights"
+        );
+        assert!(
+            outcome
+                .not_assessable
+                .iter()
+                .any(|entry| entry.contains("refused the storage SMART query"))
+        );
+        assert!(outcome.grade_withheld);
+        assert!(
+            outcome
+                .grade_withheld_reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("Storage health")
+        );
+    }
+
+    #[test]
+    fn a_predicted_failure_forces_f_instead_of_withholding() {
+        let storage = parse_storage(&protocol(&[
+            ("physical", 0, "source_status", "reported"),
+            ("physical", 0, "present", "True"),
+            ("physical", 0, "model", "Failing disk"),
+            ("predict", 0, "source_status", "reported"),
+            ("predict", 0, "present", "True"),
+            ("predict", 0, "predicts_failure", "True"),
+        ]));
+        let outcome = report_full(
+            &healthy_probe(),
+            &storage,
+            &silent_usb(),
+            &silent_capture(),
+            DeviceForm::Portable,
+        );
+
+        assert!(!outcome.grade_withheld);
+        assert_eq!(outcome.grade_label, "F");
+        assert!(
+            outcome
+                .grade_withheld_reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("predicted failure")
+        );
+        let storage_domain = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Storage health and SMART")
+            .expect("storage domain");
+        assert_eq!(storage_domain.awarded, 0);
+        assert_eq!(storage_domain.assessed, 20);
     }
 }
