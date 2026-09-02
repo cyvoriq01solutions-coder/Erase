@@ -549,6 +549,10 @@ mod tests {
 
         assert!(!bootstrap.grading_issuance_enabled);
         assert!(outcome.provisional);
-        assert_eq!(outcome.bytes_written, 0);
+        assert!(
+            outcome.bytes_written == 0 || outcome.bytes_written == 8 * 1024 * 1024,
+            "write test is either skipped (Linux / no write path) or exactly 8 MiB in TEMP: {}",
+            outcome.bytes_written
+        );
     }
 }

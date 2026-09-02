@@ -1,9 +1,11 @@
+pub mod advance_bench;
 pub mod application_data;
 pub mod assessment;
 pub mod battery_probe;
 pub mod capture_probe;
 pub mod collector_runtime;
 pub mod cpu;
+pub mod cpu_memory;
 pub mod device;
 pub mod diagnostics;
 pub mod display_radio;
