@@ -9,9 +9,11 @@ use crate::NamedValue;
 use crate::battery_probe::{self, BatteryProbe, BatterySource, SourceOutcome};
 use crate::capture_probe::{self, CaptureProbe};
 use crate::collector_runtime::CancellationToken;
+use crate::display_radio::{self, DisplayRadioProbe, DisplayRadioSource};
 use crate::hardware_diagnostics_v1::{
     CoverageSummary, DeviceForm, DiagnosticDomain, DomainApplicability, DomainEvidence,
-    ElevationState, HardwareDiagnosticsV1, battery_points, evaluate, usb_topology_points,
+    ElevationState, HardwareDiagnosticsV1, battery_points, bluetooth_radio_points,
+    ethernet_radio_points, evaluate, usb_topology_points, wifi_radio_points,
 };
 use crate::hardware_inventory_v1::Confidence;
 use crate::storage_health::{self, StorageProbe, StorageSource};
@@ -166,7 +168,18 @@ pub fn run_advance_scan_with(
     let usb = usb_topology::collect(cancellation);
     report(5, &usb_progress_detail(&usb));
 
-    report(6, NOT_COLLECTED);
+    report(
+        5,
+        "Reading Wi-Fi, Bluetooth and Ethernet. MAC addresses are not collected.",
+    );
+    let radios = display_radio::collect(cancellation);
+    report(5, &radio_progress_detail(&radios));
+
+    report(
+        6,
+        "Reading panel identity from EDID. Native resolution is the preferred timing, not the current desktop mode.",
+    );
+    report(6, &display_progress_detail(&radios));
 
     report(
         7,
@@ -189,6 +202,7 @@ pub fn run_advance_scan_with(
         &battery,
         &storage,
         &usb,
+        &radios,
         &capture,
         request.device_form,
     );
@@ -256,6 +270,51 @@ fn usb_progress_detail(usb: &UsbProbe) -> String {
     )
 }
 
+fn radio_progress_detail(radios: &DisplayRadioProbe) -> String {
+    if let Some(error) = radios.probe_error {
+        return error.to_string();
+    }
+    let mut parts = Vec::new();
+    if radios.wifi_reporting() {
+        parts.push("Wi-Fi adapter reporting");
+    }
+    if radios.bluetooth_present() {
+        parts.push("Bluetooth present");
+    }
+    if radios.ethernet_link_readable() {
+        parts.push("Ethernet link state readable");
+    }
+    if parts.is_empty() {
+        return "No Wi-Fi, Bluetooth or Ethernet adapter reported on this PC. MAC addresses were not collected.".to_string();
+    }
+    format!("{}. MAC addresses were not collected.", parts.join("; "))
+}
+
+fn display_progress_detail(radios: &DisplayRadioProbe) -> String {
+    if let Some(error) = radios.probe_error {
+        return error.to_string();
+    }
+    let Some(panel) = radios.panels.first() else {
+        return "Windows did not name a display panel in this scan.".to_string();
+    };
+    match (panel.native_width, panel.native_height) {
+        (Some(width), Some(height)) => format!(
+            "Panel native resolution {width}×{height} from EDID preferred timing, not the current desktop mode."
+        ),
+        _ => {
+            if panel.identified() {
+                format!(
+                    "Panel {} identified. Native resolution was not in the EDID block.",
+                    panel.display_name()
+                )
+            } else {
+                "Display identity was not returned. Native resolution stays not collected."
+                    .to_string()
+            }
+        }
+    }
+}
+
 fn capture_progress_detail(capture: &CaptureProbe) -> String {
     if let Some(error) = capture.probe_error {
         return error.to_string();
@@ -270,12 +329,13 @@ fn build_report(
     battery: &BatteryProbe,
     storage: &StorageProbe,
     usb: &UsbProbe,
+    radios: &DisplayRadioProbe,
     capture: &CaptureProbe,
     device_form: DeviceForm,
 ) -> CustomerAdvanceScan {
     let wrote_without_consent =
         diagnostics.bytes_written > 0 && !diagnostics.write_benchmark_consented;
-    let evidence = domain_evidence(diagnostics, battery, storage, usb, device_form);
+    let evidence = domain_evidence(diagnostics, battery, storage, usb, radios, device_form);
     let criticals = storage.critical_faults();
     let summary = evaluate(&evidence, device_form, &criticals);
 
@@ -292,7 +352,7 @@ fn build_report(
         destructive_operations_enabled: false,
         content_inspected: false,
         boundary_note: boundary_note(diagnostics),
-        telemetry_groups: telemetry_groups(diagnostics, battery, storage, usb, capture),
+        telemetry_groups: telemetry_groups(diagnostics, battery, storage, usb, radios, capture),
         coverage_rows: coverage_rows(&summary),
         coverage_domains: coverage_domains(&evidence),
         method_rows: method_rows(),
@@ -361,6 +421,7 @@ fn domain_evidence(
     battery: &BatteryProbe,
     storage: &StorageProbe,
     usb: &UsbProbe,
+    radios: &DisplayRadioProbe,
     device_form: DeviceForm,
 ) -> Vec<DomainEvidence> {
     DiagnosticDomain::ALL
@@ -368,7 +429,7 @@ fn domain_evidence(
         .map(|domain| match domain {
             DiagnosticDomain::BatteryAndPower => battery_evidence(battery, device_form),
             DiagnosticDomain::StorageHealth => storage_evidence(storage),
-            DiagnosticDomain::PortsAndConnectivity => usb_evidence(usb),
+            DiagnosticDomain::PortsAndConnectivity => ports_evidence(usb, radios),
             other => DomainEvidence::not_assessable(*other, domain_gap(*other, diagnostics)),
         })
         .collect()
@@ -443,22 +504,49 @@ fn storage_gap(storage: &StorageProbe) -> &'static str {
     }
 }
 
-fn usb_evidence(usb: &UsbProbe) -> DomainEvidence {
+fn ports_evidence(usb: &UsbProbe, radios: &DisplayRadioProbe) -> DomainEvidence {
     let domain = DiagnosticDomain::PortsAndConnectivity;
-    if usb.topology_enumerated() {
-        let mut evidence = DomainEvidence::measured(
-            domain,
-            usb_topology_points(true),
-            usb_topology_points(true),
-            Confidence::High,
-        );
-        evidence.note = Some(
-            "USB controller topology enumerated. Wi-Fi, Bluetooth, Ethernet and physical insertion were not assessed."
-                .to_string(),
-        );
-        return evidence;
+    let awarded = usb_topology_points(usb.topology_enumerated())
+        + wifi_radio_points(radios.wifi_reporting())
+        + bluetooth_radio_points(radios.bluetooth_present())
+        + ethernet_radio_points(radios.ethernet_link_readable());
+    if awarded == 0 {
+        return DomainEvidence::not_assessable(domain, ports_gap(usb, radios));
     }
-    DomainEvidence::not_assessable(domain, usb_gap(usb))
+    let mut evidence = DomainEvidence::measured(domain, awarded, awarded, Confidence::High);
+    evidence.note = Some(ports_note(usb, radios, awarded));
+    evidence
+}
+
+fn ports_note(usb: &UsbProbe, radios: &DisplayRadioProbe, awarded: u32) -> String {
+    let mut parts = Vec::new();
+    if usb.topology_enumerated() {
+        parts.push("USB controller topology enumerated");
+    }
+    if radios.wifi_reporting() {
+        parts.push("Wi-Fi adapter reporting");
+    }
+    if radios.bluetooth_present() {
+        parts.push("Bluetooth radio present");
+    }
+    if radios.ethernet_link_readable() {
+        parts.push("Ethernet link state readable");
+    }
+    format!(
+        "{}. Physical insertion stays unattempted ({} of 10 ports points awarded). MAC addresses were not collected.",
+        parts.join("; "),
+        awarded
+    )
+}
+
+fn ports_gap(usb: &UsbProbe, radios: &DisplayRadioProbe) -> &'static str {
+    if usb.probe_error.is_some() && radios.probe_error.is_some() {
+        return "Port topology and radio telemetry could not run on this PC";
+    }
+    if !usb.topology_enumerated() {
+        return usb_gap(usb);
+    }
+    "Wi-Fi, Bluetooth and Ethernet adapters were not returned in this scan"
 }
 
 fn usb_gap(usb: &UsbProbe) -> &'static str {
@@ -575,7 +663,7 @@ fn method_rows() -> Vec<NamedValue> {
     vec![
         row(
             "Collection mode",
-            "Read-only. Windows management classes, firmware tables, Windows' own battery report, and storage reliability counters.".to_string(),
+            "Read-only. Windows management classes, firmware tables, Windows' own battery report, storage reliability counters, EDID, and network adapters. MAC addresses are never collected.".to_string(),
         ),
         row(
             "Battery capacity",
@@ -596,6 +684,14 @@ fn method_rows() -> Vec<NamedValue> {
         row(
             "Physical ports",
             "Windows exposes USB controller topology and attached devices, not the plastic connectors. A port is only confirmed when a technician inserts a device.".to_string(),
+        ),
+        row(
+            "Display panel",
+            "Native width and height come from the EDID preferred timing, never from the current desktop mode. HDR is not guessed. Screen-domain points stay unawarded until a technician attests a colour wash.".to_string(),
+        ),
+        row(
+            "Radios",
+            "Wi-Fi, Bluetooth and Ethernet adapters are enumerated without printing a MAC address. Signal quality is printed only when Windows returns it.".to_string(),
         ),
         row(
             "Cameras and microphones",
@@ -661,6 +757,7 @@ fn telemetry_groups(
     battery: &BatteryProbe,
     storage: &StorageProbe,
     usb: &UsbProbe,
+    radios: &DisplayRadioProbe,
     capture: &CaptureProbe,
 ) -> Vec<TelemetryGroup> {
     let benchmark_value = if diagnostics.benchmarks_consented {
@@ -693,19 +790,11 @@ fn telemetry_groups(
         ),
         storage_group(storage),
         storage_source_group(storage),
-        usb_group(usb),
+        usb_group(usb, radios),
         usb_source_group(usb),
-        group(
-            "Display panel",
-            &[
-                ("Panel manufacturer", NOT_COLLECTED),
-                ("Panel model", NOT_COLLECTED),
-                ("Native resolution", NOT_COLLECTED),
-                ("Refresh rate", NOT_COLLECTED),
-                ("HDR capability", NOT_COLLECTED),
-                ("Panel manufacture year", NOT_COLLECTED),
-            ],
-        ),
+        radio_source_group(radios),
+        display_group(radios),
+        display_source_group(radios),
         capture_group(capture),
         capture_source_group(capture),
         group(
@@ -1025,15 +1114,12 @@ fn storage_source_group(storage: &StorageProbe) -> TelemetryGroup {
     }
 }
 
-fn usb_group(usb: &UsbProbe) -> TelemetryGroup {
+fn usb_group(usb: &UsbProbe, radios: &DisplayRadioProbe) -> TelemetryGroup {
     let mut rows = Vec::new();
     if let Some(error) = usb.probe_error {
         rows.push(row("USB probe", error.to_string()));
         rows.push(row("Physically verified ports", NOT_ATTEMPTED.to_string()));
-        rows.push(row("Wi-Fi signal quality", NOT_COLLECTED.to_string()));
-        rows.push(row("Wi-Fi link speed", NOT_COLLECTED.to_string()));
-        rows.push(row("Bluetooth radio", NOT_COLLECTED.to_string()));
-        rows.push(row("Ethernet link", NOT_COLLECTED.to_string()));
+        rows.extend(radio_rows(radios));
         return TelemetryGroup {
             title: "Ports and connectivity".to_string(),
             note: None,
@@ -1095,19 +1181,260 @@ fn usb_group(usb: &UsbProbe) -> TelemetryGroup {
     rows.push(row("USB controller ports", attached));
     rows.push(optional_row("Negotiated port speeds", usb.speed_summary()));
     rows.push(row("Physically verified ports", NOT_ATTEMPTED.to_string()));
-    rows.push(row("Wi-Fi signal quality", NOT_COLLECTED.to_string()));
-    rows.push(row("Wi-Fi link speed", NOT_COLLECTED.to_string()));
-    rows.push(row("Bluetooth radio", NOT_COLLECTED.to_string()));
-    rows.push(row("Ethernet link", NOT_COLLECTED.to_string()));
+    rows.extend(radio_rows(radios));
 
     TelemetryGroup {
         title: "Ports and connectivity".to_string(),
         note: Some(
-            "Controller topology is not a count of plastic connectors. A port is confirmed only when a technician inserts a device."
+            "Controller topology is not a count of plastic connectors. A port is confirmed only when a technician inserts a device. MAC addresses are never printed."
                 .to_string(),
         ),
         rows,
     }
+}
+
+fn radio_rows(radios: &DisplayRadioProbe) -> Vec<NamedValue> {
+    if let Some(error) = radios.probe_error {
+        return vec![
+            row("Wi-Fi signal quality", error.to_string()),
+            row("Wi-Fi link speed", error.to_string()),
+            row("Bluetooth radio", error.to_string()),
+            row("Ethernet link", error.to_string()),
+        ];
+    }
+
+    let none = "None enumerated by Windows".to_string();
+    let wifi = radios.wifi.as_ref();
+    let wifi_quality = wifi.and_then(|adapter| {
+        adapter
+            .signal_quality_percent
+            .map(|quality| format!("{quality}%"))
+    });
+    let wifi_speed = wifi.and_then(|adapter| {
+        adapter
+            .receive_mbps
+            .or(adapter.transmit_mbps)
+            .or(adapter.link_mbps)
+            .map(|mbps| format!("{mbps} Mbps"))
+    });
+
+    vec![
+        row(
+            "Wi-Fi adapter",
+            wifi.map(|adapter| {
+                adapter
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| "Present".to_string())
+            })
+            .unwrap_or_else(|| none.clone()),
+        ),
+        row(
+            "Wi-Fi state",
+            wifi.and_then(|adapter| adapter.state.clone())
+                .unwrap_or_else(|| none.clone()),
+        ),
+        row(
+            "Wi-Fi signal quality",
+            wifi_quality.unwrap_or_else(|| none.clone()),
+        ),
+        row(
+            "Wi-Fi link speed",
+            wifi_speed.unwrap_or_else(|| none.clone()),
+        ),
+        row(
+            "Wi-Fi radio standards",
+            wifi.and_then(|adapter| adapter.radio_standards.clone())
+                .unwrap_or_else(|| none.clone()),
+        ),
+        row(
+            "Bluetooth radio",
+            radios.bluetooth.as_ref().map_or_else(
+                || none.clone(),
+                |adapter| match (&adapter.name, &adapter.state) {
+                    (Some(name), Some(state)) => format!("{name} ({state})"),
+                    (Some(name), None) => name.clone(),
+                    (None, Some(state)) => format!("Present ({state})"),
+                    (None, None) => "Present".to_string(),
+                },
+            ),
+        ),
+        row(
+            "Ethernet link",
+            if radios.ethernet.is_empty() {
+                none
+            } else {
+                radios
+                    .ethernet
+                    .iter()
+                    .map(|adapter| {
+                        let label = adapter
+                            .name
+                            .clone()
+                            .or_else(|| adapter.description.clone())
+                            .unwrap_or_else(|| "Ethernet".to_string());
+                        match (&adapter.state, adapter.link_mbps) {
+                            (Some(state), Some(mbps)) => format!("{label} ({state}, {mbps} Mbps)"),
+                            (Some(state), None) => format!("{label} ({state})"),
+                            (None, Some(mbps)) => format!("{label} ({mbps} Mbps)"),
+                            (None, None) => label,
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            },
+        ),
+    ]
+}
+
+fn radio_source_group(radios: &DisplayRadioProbe) -> TelemetryGroup {
+    TelemetryGroup {
+        title: "Radio sources consulted".to_string(),
+        note: Some(
+            "Advance scan asks Windows for Wi-Fi, Bluetooth and Ethernet adapters. MAC addresses are dropped before they can be printed."
+                .to_string(),
+        ),
+        rows: radios
+            .sources
+            .iter()
+            .filter(|status| {
+                matches!(
+                    status.source,
+                    DisplayRadioSource::Wifi
+                        | DisplayRadioSource::Bluetooth
+                        | DisplayRadioSource::Ethernet
+                )
+            })
+            .map(|status| {
+                row(
+                    status.source.label(),
+                    status.outcome.customer_label().to_string(),
+                )
+            })
+            .collect(),
+    }
+}
+
+fn display_source_group(radios: &DisplayRadioProbe) -> TelemetryGroup {
+    TelemetryGroup {
+        title: "Display sources consulted".to_string(),
+        note: Some(
+            "Advance scan reads monitor identity and the first 128 bytes of EDID. Native resolution is the preferred timing, not the current desktop mode."
+                .to_string(),
+        ),
+        rows: radios
+            .sources
+            .iter()
+            .filter(|status| {
+                matches!(
+                    status.source,
+                    DisplayRadioSource::Panel
+                        | DisplayRadioSource::Edid
+                        | DisplayRadioSource::Video
+                )
+            })
+            .map(|status| {
+                row(
+                    status.source.label(),
+                    status.outcome.customer_label().to_string(),
+                )
+            })
+            .collect(),
+    }
+}
+
+fn display_group(radios: &DisplayRadioProbe) -> TelemetryGroup {
+    let mut rows = Vec::new();
+    if let Some(error) = radios.probe_error {
+        rows.push(row("Display probe", error.to_string()));
+        rows.extend(unread_display_rows());
+        return TelemetryGroup {
+            title: "Display panel".to_string(),
+            note: None,
+            rows,
+        };
+    }
+
+    if radios.panels.is_empty() {
+        rows.push(row(
+            "Display panel",
+            "Not collected in this scan. Windows did not name a panel in this scan.".to_string(),
+        ));
+        rows.extend(unread_display_rows());
+        return TelemetryGroup {
+            title: "Display panel".to_string(),
+            note: None,
+            rows,
+        };
+    }
+
+    let panel = &radios.panels[0];
+    rows.push(row("Display panel", panel.display_name()));
+    rows.push(optional_row(
+        "Panel manufacturer",
+        panel.manufacturer.clone(),
+    ));
+    rows.push(optional_row("Panel model", panel.name.clone()));
+    rows.push(optional_row(
+        "Native resolution",
+        match (panel.native_width, panel.native_height) {
+            (Some(width), Some(height)) => {
+                Some(format!("{width} × {height} (EDID preferred timing)"))
+            }
+            _ => None,
+        },
+    ));
+    rows.push(optional_row(
+        "Current desktop mode",
+        match (panel.current_width, panel.current_height) {
+            (Some(width), Some(height)) => {
+                Some(format!("{width} × {height} (current mode, not native)"))
+            }
+            _ => None,
+        },
+    ));
+    rows.push(optional_row(
+        "Refresh rate",
+        panel
+            .refresh_hz
+            .map(|hz| format!("{hz} Hz (current desktop mode)")),
+    ));
+    rows.push(row(
+        "HDR capability",
+        "Not collected in this scan. HDR is not inferred from the current desktop colour profile."
+            .to_string(),
+    ));
+    rows.push(optional_row(
+        "Panel manufacture year",
+        panel.manufacture_year.map(|year| year.to_string()),
+    ));
+    rows.push(optional_row(
+        "Panel serial number",
+        panel.serial_number.clone(),
+    ));
+
+    TelemetryGroup {
+        title: "Display panel".to_string(),
+        note: Some(
+            "Native resolution is the EDID preferred timing. Screen-domain points stay 0 until a technician attests a colour wash."
+                .to_string(),
+        ),
+        rows,
+    }
+}
+
+fn unread_display_rows() -> Vec<NamedValue> {
+    [
+        ("Panel manufacturer", NOT_COLLECTED),
+        ("Panel model", NOT_COLLECTED),
+        ("Native resolution", NOT_COLLECTED),
+        ("Refresh rate", NOT_COLLECTED),
+        ("HDR capability", NOT_COLLECTED),
+        ("Panel manufacture year", NOT_COLLECTED),
+    ]
+    .into_iter()
+    .map(|(label, value)| row(label, value.to_string()))
+    .collect()
 }
 
 fn usb_source_group(usb: &UsbProbe) -> TelemetryGroup {
@@ -1255,6 +1582,7 @@ mod tests {
     use super::*;
     use crate::battery_probe::parse_probe as parse_battery;
     use crate::capture_probe::parse_probe as parse_capture;
+    use crate::display_radio::parse_probe as parse_radios;
     use crate::storage_health::parse_probe as parse_storage;
     use crate::usb_topology::parse_probe as parse_usb;
 
@@ -1289,6 +1617,10 @@ mod tests {
             ("battery", 0, "designed_capacity", "45000"),
             ("battery", 0, "full_charge_capacity", "39600"),
         ])
+    }
+
+    fn silent_radios() -> DisplayRadioProbe {
+        DisplayRadioProbe::unavailable("Display and radio collection is only available on Windows.")
     }
 
     fn silent_usb() -> UsbProbe {
@@ -1367,6 +1699,7 @@ mod tests {
             probe,
             &silent_storage(),
             &silent_usb(),
+            &silent_radios(),
             &silent_capture(),
             form,
         )
@@ -1376,11 +1709,12 @@ mod tests {
         battery: &BatteryProbe,
         storage: &StorageProbe,
         usb: &UsbProbe,
+        radios: &DisplayRadioProbe,
         capture: &CaptureProbe,
         form: DeviceForm,
     ) -> CustomerAdvanceScan {
         let diagnostics = HardwareDiagnosticsV1::not_collected(1_000);
-        build_report(&diagnostics, battery, storage, usb, capture, form)
+        build_report(&diagnostics, battery, storage, usb, radios, capture, form)
     }
 
     fn group_named<'a>(outcome: &'a CustomerAdvanceScan, title: &str) -> &'a TelemetryGroup {
@@ -1614,6 +1948,8 @@ mod tests {
                 || group.title.starts_with("Cameras")
                 || group.title.starts_with("Capture")
                 || group.title.starts_with("Storage")
+                || group.title.starts_with("Display")
+                || group.title.starts_with("Radio")
             {
                 continue;
             }
@@ -1664,6 +2000,7 @@ mod tests {
             &healthy_probe(),
             &silent_storage(),
             &silent_usb(),
+            &silent_radios(),
             &silent_capture(),
             DeviceForm::Portable,
         );
@@ -1678,6 +2015,7 @@ mod tests {
             &healthy_probe(),
             &silent_storage(),
             &silent_usb(),
+            &silent_radios(),
             &uvc_capture(),
             DeviceForm::Portable,
         );
@@ -1724,6 +2062,7 @@ mod tests {
             &healthy_probe(),
             &silent_storage(),
             &enumerated_usb(),
+            &silent_radios(),
             &uvc_capture(),
             DeviceForm::Portable,
         );
@@ -1750,7 +2089,7 @@ mod tests {
         );
         assert!(
             value_of(&outcome, "Ports and connectivity", "Wi-Fi signal quality")
-                .contains("Not collected in this scan")
+                .contains("only available on Windows")
         );
 
         let ports = outcome
@@ -1792,6 +2131,7 @@ mod tests {
             &healthy_probe(),
             &healthy_nvme(),
             &enumerated_usb(),
+            &silent_radios(),
             &uvc_capture(),
             DeviceForm::Portable,
         );
@@ -1848,6 +2188,7 @@ mod tests {
             &healthy_probe(),
             &storage,
             &silent_usb(),
+            &silent_radios(),
             &silent_capture(),
             DeviceForm::Portable,
         );
@@ -1890,6 +2231,7 @@ mod tests {
             &healthy_probe(),
             &storage,
             &silent_usb(),
+            &silent_radios(),
             &silent_capture(),
             DeviceForm::Portable,
         );
@@ -1910,5 +2252,194 @@ mod tests {
             .expect("storage domain");
         assert_eq!(storage_domain.awarded, 0);
         assert_eq!(storage_domain.assessed, 20);
+    }
+
+    fn sample_edid_hex() -> String {
+        let mut bytes = [0_u8; 128];
+        bytes[0] = 0x00;
+        bytes[7] = 0x00;
+        let packed: u16 = (12 << 10) | (5 << 5) | 14;
+        bytes[8] = (packed >> 8) as u8;
+        bytes[9] = packed as u8;
+        bytes[16] = 12;
+        bytes[17] = 34;
+        bytes[54] = 0x02;
+        bytes[55] = 0x3A;
+        bytes[56] = 0x80;
+        bytes[58] = 0x70;
+        bytes[59] = 0x38;
+        bytes[61] = 0x40;
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    }
+
+    fn panel_and_radios() -> DisplayRadioProbe {
+        parse_radios(&protocol(&[
+            ("panel", 0, "source_status", "reported"),
+            ("panel", 0, "present", "True"),
+            ("panel", 0, "manufacturer", "LEN"),
+            ("panel", 0, "name", "LENovo LCD"),
+            ("panel", 0, "serial_number", "PF11ARPM"),
+            ("edid", 0, "source_status", "reported"),
+            ("edid", 0, "present", "True"),
+            ("edid", 0, "block_hex", &sample_edid_hex()),
+            ("video", 0, "source_status", "reported"),
+            ("video", 0, "present", "True"),
+            ("video", 0, "current_width", "1280"),
+            ("video", 0, "current_height", "720"),
+            ("video", 0, "refresh_hz", "60"),
+            ("wifi", 0, "source_status", "reported"),
+            ("wifi", 0, "present", "True"),
+            ("wifi", 0, "name", "Wi-Fi"),
+            ("wifi", 0, "state", "Up"),
+            ("wifi", 0, "signal_quality", "72"),
+            ("wifi", 0, "receive_mbps", "400"),
+            ("bluetooth", 0, "source_status", "reported"),
+            ("bluetooth", 0, "present", "True"),
+            ("bluetooth", 0, "name", "Intel Wireless Bluetooth"),
+            ("ethernet", 0, "source_status", "reported"),
+            ("ethernet", 0, "present", "True"),
+            ("ethernet", 0, "name", "Ethernet"),
+            ("ethernet", 0, "state", "Disconnected"),
+        ]))
+    }
+
+    fn radios_with_mac_in_the_wire() -> DisplayRadioProbe {
+        parse_radios(&protocol(&[
+            ("wifi", 0, "source_status", "reported"),
+            ("wifi", 0, "present", "True"),
+            ("wifi", 0, "name", "AA:BB:CC:DD:EE:FF"),
+            ("wifi", 0, "state", "Up"),
+            ("bluetooth", 0, "source_status", "reported"),
+            ("bluetooth", 0, "present", "True"),
+            ("ethernet", 0, "source_status", "reported"),
+            ("ethernet", 0, "present", "True"),
+            ("ethernet", 0, "name", "Ethernet"),
+            ("ethernet", 0, "state", "Up"),
+        ]))
+    }
+
+    #[test]
+    fn edid_native_resolution_is_printed_separately_from_current_mode() {
+        let outcome = report_full(
+            &healthy_probe(),
+            &silent_storage(),
+            &silent_usb(),
+            &panel_and_radios(),
+            &silent_capture(),
+            DeviceForm::Portable,
+        );
+
+        assert_eq!(
+            value_of(&outcome, "Display panel", "Native resolution"),
+            "1920 × 1080 (EDID preferred timing)"
+        );
+        assert_eq!(
+            value_of(&outcome, "Display panel", "Current desktop mode"),
+            "1280 × 720 (current mode, not native)"
+        );
+        assert!(value_of(&outcome, "Display panel", "HDR capability").contains("not inferred"));
+        let screen = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Screen, keyboard and peripherals")
+            .expect("screen domain");
+        assert_eq!(screen.awarded, 0);
+        assert_eq!(screen.assessed, 0);
+    }
+
+    #[test]
+    fn usb_plus_radios_award_six_port_points_and_still_withhold() {
+        let outcome = report_full(
+            &healthy_probe(),
+            &healthy_nvme(),
+            &enumerated_usb(),
+            &panel_and_radios(),
+            &uvc_capture(),
+            DeviceForm::Portable,
+        );
+
+        assert_eq!(
+            value_of(&outcome, "Ports and connectivity", "Wi-Fi signal quality"),
+            "72%"
+        );
+        assert!(
+            value_of(&outcome, "Ports and connectivity", "Bluetooth radio")
+                .contains("Intel Wireless Bluetooth")
+        );
+        assert!(
+            value_of(&outcome, "Ports and connectivity", "Ethernet link").contains("Disconnected")
+        );
+        assert_eq!(
+            value_of(
+                &outcome,
+                "Ports and connectivity",
+                "Physically verified ports"
+            ),
+            NOT_ATTEMPTED
+        );
+
+        let ports = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Ports and connectivity")
+            .expect("ports domain");
+        assert_eq!(ports.awarded, 6);
+        assert_eq!(ports.assessed, 6);
+        assert_eq!(ports.not_assessable, 4);
+        assert_eq!(ports.state, "Partly assessed");
+        assert_eq!(outcome.coverage_percent, 46);
+        assert!(outcome.grade_withheld);
+        assert_eq!(outcome.grade_label, "Grade withheld");
+        assert!(
+            outcome
+                .method_rows
+                .iter()
+                .any(|row| row.value.contains("EDID preferred timing"))
+        );
+        assert!(
+            outcome
+                .method_rows
+                .iter()
+                .any(|row| row.value.contains("MAC address"))
+        );
+    }
+
+    #[test]
+    fn a_mac_address_never_appears_on_report_d() {
+        let outcome = report_full(
+            &healthy_probe(),
+            &silent_storage(),
+            &silent_usb(),
+            &radios_with_mac_in_the_wire(),
+            &silent_capture(),
+            DeviceForm::Portable,
+        );
+
+        for group in &outcome.telemetry_groups {
+            for row in &group.rows {
+                assert!(
+                    !row.value.contains("AA:BB:CC:DD:EE:FF"),
+                    "{} / {} leaked a MAC address: {}",
+                    group.title,
+                    row.label,
+                    row.value
+                );
+                assert!(
+                    !row.label.eq_ignore_ascii_case("mac")
+                        && !row.label.to_ascii_lowercase().contains("mac address")
+                        && !row.label.to_ascii_lowercase().contains("macaddress"),
+                    "Report D must not have a MAC label: {}",
+                    row.label
+                );
+            }
+        }
+        assert_eq!(
+            value_of(&outcome, "Ports and connectivity", "Wi-Fi adapter"),
+            "Present"
+        );
+        assert_eq!(
+            value_of(&outcome, "Ports and connectivity", "Wi-Fi state"),
+            "Up"
+        );
     }
 }

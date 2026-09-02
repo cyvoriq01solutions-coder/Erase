@@ -194,12 +194,12 @@ function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
           ["USB controller ports", "USB topology collection is only available on Windows."],
           ["Negotiated port speeds", notCollected],
           ["Physically verified ports", notAttempted],
-          ["Wi-Fi signal quality", notCollected],
-          ["Wi-Fi link speed", notCollected],
-          ["Bluetooth radio", notCollected],
-          ["Ethernet link", notCollected],
+          ["Wi-Fi signal quality", "Display and radio collection is only available on Windows."],
+          ["Wi-Fi link speed", "Display and radio collection is only available on Windows."],
+          ["Bluetooth radio", "Display and radio collection is only available on Windows."],
+          ["Ethernet link", "Display and radio collection is only available on Windows."],
         ],
-        "Controller topology is not a count of plastic connectors. A port is confirmed only when a technician inserts a device.",
+        "Controller topology is not a count of plastic connectors. A port is confirmed only when a technician inserts a device. MAC addresses are never printed.",
       ),
       group(
         "USB sources consulted",
@@ -210,14 +210,36 @@ function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
         ],
         "Advance scan walks USB controllers, hubs and attached devices. It does not guess empty sockets from SMBIOS labels.",
       ),
-      group("Display panel", [
-        ["Panel manufacturer", notCollected],
-        ["Panel model", notCollected],
-        ["Native resolution", notCollected],
-        ["Refresh rate", notCollected],
-        ["HDR capability", notCollected],
-        ["Panel manufacture year", notCollected],
-      ]),
+      group(
+        "Radio sources consulted",
+        [
+          ["Wi-Fi adapter", "Not queried on this PC"],
+          ["Bluetooth radio", "Not queried on this PC"],
+          ["Ethernet adapter", "Not queried on this PC"],
+        ],
+        "Advance scan asks Windows for Wi-Fi, Bluetooth and Ethernet adapters. MAC addresses are dropped before they can be printed.",
+      ),
+      group(
+        "Display panel",
+        [
+          ["Display probe", "Display and radio collection is only available on Windows."],
+          ["Panel manufacturer", notCollected],
+          ["Panel model", notCollected],
+          ["Native resolution", notCollected],
+          ["Refresh rate", notCollected],
+          ["HDR capability", notCollected],
+          ["Panel manufacture year", notCollected],
+        ],
+      ),
+      group(
+        "Display sources consulted",
+        [
+          ["Monitor identity", "Not queried on this PC"],
+          ["EDID block", "Not queried on this PC"],
+          ["Video controller", "Not queried on this PC"],
+        ],
+        "Advance scan reads monitor identity and the first 128 bytes of EDID. Native resolution is the preferred timing, not the current desktop mode.",
+      ),
       group(
         "Cameras and microphones",
         [
@@ -329,7 +351,7 @@ function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
       {
         label: "Collection mode",
         value:
-          "Read-only. Windows management classes, firmware tables and Windows' own battery report.",
+          "Read-only. Windows management classes, firmware tables, Windows' own battery report, storage reliability counters, EDID, and network adapters. MAC addresses are never collected.",
       },
       {
         label: "Battery capacity",
@@ -350,6 +372,16 @@ function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
         label: "Physical ports",
         value:
           "Windows exposes USB controller topology and attached devices, not the plastic connectors. A port is only confirmed when a technician inserts a device.",
+      },
+      {
+        label: "Display panel",
+        value:
+          "Native width and height come from the EDID preferred timing, never from the current desktop mode. HDR is not guessed. Screen-domain points stay unawarded until a technician attests a colour wash.",
+      },
+      {
+        label: "Radios",
+        value:
+          "Wi-Fi, Bluetooth and Ethernet adapters are enumerated without printing a MAC address. Signal quality is printed only when Windows returns it.",
       },
       {
         label: "Cameras and microphones",
@@ -413,7 +445,7 @@ async function runAdvanceScanPreview(consent: AdvanceScanConsent): Promise<Advan
     "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
     "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
     "Walking USB controllers, hubs and attached devices. USB topology collection is only available on Windows.",
-    "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
+    "Reading panel identity from EDID. Display and radio collection is only available on Windows.",
     "Enumerating cameras and microphones. Camera and microphone collection is only available on Windows. No frame captured.",
     consent.benchmarks
       ? "Benchmarks were permitted, but none are implemented in this collector version."

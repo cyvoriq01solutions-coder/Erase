@@ -6,6 +6,7 @@ pub mod collector_runtime;
 pub mod cpu;
 pub mod device;
 pub mod diagnostics;
+pub mod display_radio;
 pub mod encryption;
 pub mod evidence;
 pub mod hardware_diagnostics_v1;

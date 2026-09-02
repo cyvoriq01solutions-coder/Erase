@@ -326,12 +326,13 @@ function AdvanceScanPanel({
       <p className="panel-lead">
         Advance scan reads deeper hardware detail than the standard assessment: battery capacity and
         wear, USB controller topology, cameras and microphones with no frame captured, storage SMART
-        health from Windows reliability counters, panel identity and radios. It then prepares Report D
-        with a provisional grade. It still does not erase anything and it does not open file contents.
+        health from Windows reliability counters, panel identity from EDID, and Wi-Fi, Bluetooth and
+        Ethernet radios. MAC addresses are never printed. It then prepares Report D with a
+        provisional grade. It still does not erase anything and it does not open file contents.
       </p>
 
       <ul className="advance-scope">
-        <li>Deep collection is read-only. Storage SMART is read, never erased.</li>
+        <li>Deep collection is read-only. Storage SMART is read, never erased. MAC addresses are never printed.</li>
         <li>Windows may ask for administrator approval. Declining still produces Report D.</li>
         <li>Anything this build cannot read is printed as not collected in this scan.</li>
       </ul>
@@ -409,9 +410,9 @@ function AdvanceScanPanel({
         </button>
         <p>
           {collectionOn
-            ? "The bright ring shows live percent and the exact subsystem being read. Battery capacity is collected in this version."
+            ? "The bright ring shows live percent and the exact subsystem being read. Battery, storage SMART, panel EDID and radios are collected in this version."
             : previewMode
-              ? "Browser preview walks the same stages. Battery firmware is only read on the installed Windows application."
+              ? "Browser preview walks the same stages. Panel EDID, radios, battery firmware and SMART are only read on the installed Windows application."
               : "Open the installed Windows application to run Advance scan."}
         </p>
       </div>
