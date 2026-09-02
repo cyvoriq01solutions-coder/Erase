@@ -399,6 +399,26 @@ pub fn usb_topology_points(enumerated: bool) -> u32 {
     if enumerated { 2 } else { 0 }
 }
 
+/// Wi-Fi radio points, rubric CG-1.0 section 5.5. Awarded only when an adapter
+/// is present and reporting state or signal. Absence is a gap, not a fault.
+#[must_use]
+pub fn wifi_radio_points(present_and_reporting: bool) -> u32 {
+    if present_and_reporting { 2 } else { 0 }
+}
+
+/// Bluetooth radio points, rubric CG-1.0 section 5.5.
+#[must_use]
+pub fn bluetooth_radio_points(present: bool) -> u32 {
+    if present { 1 } else { 0 }
+}
+
+/// Ethernet points, rubric CG-1.0 section 5.5. Link state readable is enough;
+/// a disconnected cable still counts as assessed.
+#[must_use]
+pub fn ethernet_radio_points(link_state_readable: bool) -> u32 {
+    if link_state_readable { 1 } else { 0 }
+}
+
 /// NVMe / SSD wear path, rubric CG-1.0 section 5.4.
 /// Available spare is required for the top two bands. A missing spare is never
 /// assumed to be 100%, so a healthy wear figure without spare caps at 16.
@@ -906,6 +926,27 @@ mod tests {
         assert_eq!(usb_topology_points(true), 2);
         assert_eq!(usb_topology_points(false), 0);
         assert!(usb_topology_points(true) < DiagnosticDomain::PortsAndConnectivity.weight());
+    }
+
+    #[test]
+    fn radio_points_sum_to_four_and_leave_physical_ports() {
+        assert_eq!(wifi_radio_points(true), 2);
+        assert_eq!(bluetooth_radio_points(true), 1);
+        assert_eq!(ethernet_radio_points(true), 1);
+        assert_eq!(
+            usb_topology_points(true)
+                + wifi_radio_points(true)
+                + bluetooth_radio_points(true)
+                + ethernet_radio_points(true),
+            6
+        );
+        assert!(
+            usb_topology_points(true)
+                + wifi_radio_points(true)
+                + bluetooth_radio_points(true)
+                + ethernet_radio_points(true)
+                < DiagnosticDomain::PortsAndConnectivity.weight()
+        );
     }
 
     #[test]

@@ -182,6 +182,10 @@ test("advance scan is opt-in, honest about gaps, and never claims an AI grade", 
   assert.match(combined, /no frame captured/i);
   assert.match(combined, /storage SMART/i);
   assert.match(combined, /reliability counters/i);
+  assert.match(combined, /EDID/);
+  assert.match(combined, /Wi-Fi/);
+  assert.match(combined, /MAC addresses are never printed/);
+  assert.doesNotMatch(combined, /MacAddress/);
 
   // Both permissions must start off, and a write test cannot stand alone.
   assert.match(app, /benchmarks:\s*false/);
