@@ -3,6 +3,7 @@ import {
   closeApplication,
   listScanTargets,
   loadShellBootstrap,
+  runAdvanceScan,
   runDeviceVerification,
   subscribeVerificationProgress,
 } from "./adapters/desktopBridge";
@@ -10,6 +11,9 @@ import { AppFrame } from "./components/AppFrame";
 import { InstallerSetup } from "./components/InstallerSetup";
 import { ShellScreen } from "./screens/ShellScreens";
 import type {
+  AdvanceScanConsent,
+  AdvanceScanPhase,
+  AdvanceScanRecord,
   BridgeState,
   NavigationId,
   ScanTarget,
@@ -28,6 +32,13 @@ export default function App() {
   const [progress, setProgress] = useState<VerificationProgress | null>(null);
   const [scanTargets, setScanTargets] = useState<ScanTarget[]>([]);
   const [selectedDrives, setSelectedDrives] = useState<string[]>([]);
+  const [advanceScan, setAdvanceScan] = useState<AdvanceScanRecord | null>(null);
+  const [advanceScanPhase, setAdvanceScanPhase] = useState<AdvanceScanPhase>("idle");
+  const [advanceScanError, setAdvanceScanError] = useState<string | null>(null);
+  const [advanceConsent, setAdvanceConsent] = useState<AdvanceScanConsent>({
+    benchmarks: false,
+    writeBenchmark: false,
+  });
 
   useEffect(() => {
     let active = true;
@@ -114,6 +125,33 @@ export default function App() {
     }
   }
 
+  async function handleRunAdvanceScan() {
+    setAdvanceScanError(null);
+    setAdvanceScanPhase("running");
+    try {
+      const record = await runAdvanceScan(advanceConsent);
+      setAdvanceScan(record);
+      setAdvanceScanPhase("complete");
+    } catch (error) {
+      setAdvanceScanPhase("error");
+      setAdvanceScanError(
+        error instanceof Error ? error.message : "CYVRA could not complete Advance scan.",
+      );
+    }
+  }
+
+  function handleToggleAdvanceConsent(field: keyof AdvanceScanConsent) {
+    if (advanceScanPhase === "running") return;
+    setAdvanceConsent((current) => {
+      const next = { ...current, [field]: !current[field] };
+      // A write test is meaningless without benchmarks, so it never stays on alone.
+      if (!next.benchmarks) {
+        next.writeBenchmark = false;
+      }
+      return next;
+    });
+  }
+
   function handleToggleDrive(letter: string) {
     if (verificationPhase === "running") return;
     setSelectedDrives((currentLetters) =>
@@ -170,6 +208,14 @@ export default function App() {
         onNavigate={setCurrent}
         onRunVerification={() => {
           void handleRunVerification();
+        }}
+        advanceScan={advanceScan}
+        advanceScanPhase={advanceScanPhase}
+        advanceScanError={advanceScanError}
+        advanceConsent={advanceConsent}
+        onToggleAdvanceConsent={handleToggleAdvanceConsent}
+        onRunAdvanceScan={() => {
+          void handleRunAdvanceScan();
         }}
         onExit={() => {
           void closeApplication();

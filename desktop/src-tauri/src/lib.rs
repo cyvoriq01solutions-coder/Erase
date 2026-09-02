@@ -73,6 +73,41 @@ struct VerificationOutcome {
     location_groups: Vec<NamedValueDto>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TelemetryGroupDto {
+    title: String,
+    rows: Vec<NamedValueDto>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdvanceScanOutcome {
+    ok: bool,
+    message: String,
+    schema_version: String,
+    elevation_state: String,
+    elevation_label: String,
+    benchmarks_consented: bool,
+    write_benchmark_consented: bool,
+    bytes_written: u64,
+    destructive_operations_enabled: bool,
+    content_inspected: bool,
+    boundary_note: String,
+    telemetry_groups: Vec<TelemetryGroupDto>,
+    coverage_rows: Vec<NamedValueDto>,
+    not_assessable: Vec<String>,
+    grading_engine: String,
+    grading_rubric: String,
+    grade_label: String,
+    grade_condition: String,
+    grade_withheld: bool,
+    grade_withheld_reason: Option<String>,
+    coverage_percent: u32,
+    index_percent: Option<u32>,
+    provisional: bool,
+}
+
 fn typed_core_boundary() -> &'static str {
     let _ = std::any::TypeId::of::<cyvra_core::CollectorError>();
     "direct_typed_cyvra_core"
@@ -145,6 +180,60 @@ fn run_device_verification_inner(
     Ok(verification_outcome(verification))
 }
 
+fn advance_scan_outcome(scan: cyvra_core::diagnostics::CustomerAdvanceScan) -> AdvanceScanOutcome {
+    AdvanceScanOutcome {
+        ok: scan.ok,
+        message: scan.message,
+        schema_version: scan.schema_version.to_string(),
+        elevation_state: scan.elevation_state.to_string(),
+        elevation_label: scan.elevation_label.to_string(),
+        benchmarks_consented: scan.benchmarks_consented,
+        write_benchmark_consented: scan.write_benchmark_consented,
+        bytes_written: scan.bytes_written,
+        destructive_operations_enabled: scan.destructive_operations_enabled,
+        content_inspected: scan.content_inspected,
+        boundary_note: scan.boundary_note,
+        telemetry_groups: scan
+            .telemetry_groups
+            .into_iter()
+            .map(|group| TelemetryGroupDto {
+                title: group.title,
+                rows: named_values(group.rows),
+            })
+            .collect(),
+        coverage_rows: named_values(scan.coverage_rows),
+        not_assessable: scan.not_assessable,
+        grading_engine: scan.grading_engine.to_string(),
+        grading_rubric: scan.grading_rubric.to_string(),
+        grade_label: scan.grade_label.to_string(),
+        grade_condition: scan.grade_condition.to_string(),
+        grade_withheld: scan.grade_withheld,
+        grade_withheld_reason: scan.grade_withheld_reason,
+        coverage_percent: scan.coverage_percent,
+        index_percent: scan.index_percent,
+        provisional: scan.provisional,
+    }
+}
+
+fn run_advance_scan_inner(
+    request: cyvra_core::diagnostics::AdvanceScanRequest,
+) -> Result<AdvanceScanOutcome, String> {
+    let bootstrap = safe_bootstrap();
+    if !bootstrap.live_collection_enabled {
+        return Err("Advance scan is not enabled in this build.".to_string());
+    }
+    if bootstrap.destructive_operations_enabled {
+        return Err("Destructive operations are not permitted.".to_string());
+    }
+
+    let scan = cyvra_core::diagnostics::run_advance_scan(&request);
+    if !scan.ok || scan.destructive_operations_enabled || scan.content_inspected {
+        return Err(scan.message);
+    }
+
+    Ok(advance_scan_outcome(scan))
+}
+
 #[tauri::command]
 fn get_shell_bootstrap() -> ShellBootstrap {
     safe_bootstrap()
@@ -200,6 +289,20 @@ async fn run_device_verification(
     })
     .await
     .map_err(|_| "CYVRA could not finish device verification.".to_string())?
+}
+
+#[tauri::command]
+async fn run_advance_scan(
+    benchmarks_consented: Option<bool>,
+    write_benchmark_consented: Option<bool>,
+) -> Result<AdvanceScanOutcome, String> {
+    let request = cyvra_core::diagnostics::AdvanceScanRequest {
+        benchmarks_consented: benchmarks_consented.unwrap_or(false),
+        write_benchmark_consented: write_benchmark_consented.unwrap_or(false),
+    };
+    tauri::async_runtime::spawn_blocking(move || run_advance_scan_inner(request))
+        .await
+        .map_err(|_| "CYVRA could not finish Advance scan.".to_string())?
 }
 
 #[tauri::command]
@@ -270,6 +373,7 @@ pub fn run() {
             activate_license,
             list_scan_targets,
             run_device_verification,
+            run_advance_scan,
             close_window
         ])
         .run(tauri::generate_context!())
@@ -278,7 +382,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{run_device_verification_inner, safe_bootstrap};
+    use super::{run_advance_scan_inner, run_device_verification_inner, safe_bootstrap};
 
     #[test]
     fn w_collect_enables_assessment_and_keeps_purge_off() {
@@ -312,5 +416,36 @@ mod tests {
                 || outcome.hardware_result == "not_windows"
         );
         assert!(!outcome.hardware_fields.is_empty());
+    }
+
+    #[test]
+    fn advance_scan_withholds_the_grade_and_writes_nothing() {
+        let outcome =
+            run_advance_scan_inner(cyvra_core::diagnostics::AdvanceScanRequest::default())
+                .expect("advance scan should complete");
+
+        assert!(outcome.ok);
+        assert!(!outcome.destructive_operations_enabled);
+        assert!(!outcome.content_inspected);
+        assert_eq!(outcome.bytes_written, 0);
+        assert!(outcome.grade_withheld);
+        assert!(outcome.provisional);
+        assert_eq!(outcome.index_percent, None);
+        assert_eq!(outcome.grading_engine, "CYVRA Grading Engine");
+        assert!(!outcome.telemetry_groups.is_empty());
+    }
+
+    #[test]
+    fn advance_scan_cannot_be_issued_while_grading_is_disabled() {
+        let bootstrap = safe_bootstrap();
+        let outcome = run_advance_scan_inner(cyvra_core::diagnostics::AdvanceScanRequest {
+            benchmarks_consented: true,
+            write_benchmark_consented: true,
+        })
+        .expect("advance scan should complete");
+
+        assert!(!bootstrap.grading_issuance_enabled);
+        assert!(outcome.provisional);
+        assert_eq!(outcome.bytes_written, 0);
     }
 }

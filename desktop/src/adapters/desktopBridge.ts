@@ -2,6 +2,8 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   assertSafeShellBootstrap,
+  type AdvanceScanConsent,
+  type AdvanceScanRecord,
   type ScanTarget,
   type ShellBootstrap,
   type VerificationProgress,
@@ -103,6 +105,27 @@ export async function runDeviceVerification(driveLetters: string[]): Promise<Ver
     locationGroups: response.locationGroups ?? [],
     message: response.message,
   };
+}
+
+export async function runAdvanceScan(consent: AdvanceScanConsent): Promise<AdvanceScanRecord> {
+  if (!isTauri()) {
+    throw new Error("Advance scan runs only in the installed CYVRA Erase application.");
+  }
+
+  const response = await invoke<AdvanceScanRecord>("run_advance_scan", {
+    benchmarksConsented: consent.benchmarks,
+    writeBenchmarkConsented: consent.writeBenchmark,
+  });
+
+  if (!response.ok || response.destructiveOperationsEnabled || response.contentInspected) {
+    throw new Error(response.message || "CYVRA stopped Advance scan.");
+  }
+
+  if (!consent.writeBenchmark && response.bytesWritten > 0) {
+    throw new Error("CYVRA stopped Advance scan because a write was recorded without consent.");
+  }
+
+  return response;
 }
 
 export async function subscribeVerificationProgress(

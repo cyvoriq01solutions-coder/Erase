@@ -1,0 +1,318 @@
+CYVRA GRADING ENGINE — RUBRIC CG-1.0
+====================================
+Date: 2 Sep 2026 (naming approved by the owner the same day)
+For: Advance scan / Report D
+Companion to ADVANCE_SCAN_FEASIBILITY_2026-09-02.txt
+            SLICE_A_SCAN_DESIGN_2026-09-02.txt
+Status: arithmetic implemented in slice A1.
+        grading_issuance_enabled stays false, so every grade is provisional.
+
+APPROVED NAME — the report prints exactly this and nothing more:
+
+    Graded by CYVRA Grading Engine
+
+No "AI", no "v1" on the customer line. The rubric identifier CG-1.0 is
+printed beside it as metadata. Enforced by tests on both sides: the
+Rust constant is asserted in the agent crate, and the desktop contract
+test forbids /CYVRA AI/i, /machine learning/i and /neural/i anywhere
+in desktop/src.
+
+
+1. FIRST PRINCIPLE
+------------------
+A grade is a claim about a device that someone will trade money
+on. Therefore:
+
+  We never award points for something we did not measure.
+  We never deduct points for something we could not measure.
+  We say out loud how much of the device we were able to assess.
+  Below a coverage floor we refuse to grade at all.
+
+The uploaded blueprint's matrix (Battery 20, CPU/Thermal 20,
+Memory 15, Storage 20, Ports 10, Screen/Keyboard/Peripherals 15)
+is a good weighting. Its gap is that it has no concept of
+"not assessable", which on tonight's Lenovo would have produced
+either a fraudulent A+ or an unjust F. CG-1.0 keeps the weights
+and adds the missing arithmetic.
+
+
+2. DOMAIN WEIGHTS (unchanged from the blueprint)
+------------------------------------------------
+  Battery and power .................... 20
+  Processor and thermal stability ...... 20
+  Memory integrity and speed ........... 15
+  Storage health and SMART ............. 20
+  Ports and connectivity ............... 10
+  Screen, keyboard and peripherals ..... 15
+  Total ................................ 100
+
+Each domain is scored independently and reports four numbers:
+
+  awarded            points earned by measured evidence
+  assessed           points that were actually measurable
+  not_assessable     points we could not measure
+  confidence         High | Medium | Low
+
+Invariant: awarded <= assessed, and assessed + not_assessable
+equals the domain weight.
+
+
+3. HEADLINE INDEX
+-----------------
+  Assessed Health Index = round( sum(awarded) / sum(assessed) x 100 )
+  Coverage              = round( sum(assessed) / 100 x 100 ) %
+
+Both are always printed together. The index alone is never
+printed anywhere in the product or the PDF.
+
+Example wording on Report D:
+
+  Assessed Health Index 86 / 100
+  Coverage 72% — 28 points were not assessable in this scan
+  Provisional grade A (software-observed, physical
+  verification required)
+
+
+4. COVERAGE FLOOR AND MANDATORY DOMAINS
+---------------------------------------
+  If Coverage < 70%          -> Grade = NOT GRADABLE
+  If a mandatory domain is entirely not assessable
+                             -> Grade = NOT GRADABLE
+
+  Mandatory domains:
+    Storage health   always mandatory
+    Battery          mandatory when form_factor is Laptop or
+                     Tablet; not_applicable on Desktop (its 20
+                     points are redistributed, see 5.7)
+
+NOT GRADABLE is not a failure of the device. The report must say
+so plainly:
+
+  Grade withheld. This scan could not assess enough of the
+  device to support a grade. Missing: storage SMART
+  (permission denied — administrator approval was declined).
+  Re-run Advance scan with administrator approval, or complete
+  physical intake.
+
+This is the single most important behaviour in the rubric. A
+withheld grade protects the customer, the buyer and CYVORIQ.
+
+
+5. DOMAIN RULES
+---------------
+5.1 Battery and power — 20
+  Requires: design capacity AND full-charge capacity, both > 0.
+  wear = (design - full_charge) / design x 100
+  health = 100 - wear
+
+    health >= 85          20 pts   Good
+    75 <= health < 85     16 pts   Good
+    60 <= health < 75     11 pts   Degraded
+    50 <= health < 60      6 pts   Degraded
+    health < 50            0 pts   Critical (service required)
+
+  Capacities unavailable -> awarded 0, assessed 0,
+    not_assessable 20, and the row prints "not collected in
+    this scan". This is exactly tonight's Lenovo state.
+  Battery absent on a desktop -> not_applicable, see 5.7.
+  Cycle count is reported when firmware gives it but is NOT
+    scored in CG-1.0; too many OEMs report 0 for it to be fair.
+
+5.2 Processor and thermal stability — 20
+  Identity present (model, cores, cache)          4 pts
+  Sustained clock under the CPU benchmark:
+    ratio of sustained to observed maximum clock
+    >= 0.90                                       16 pts
+    0.75 - 0.89                                   11 pts
+    0.60 - 0.74                                    6 pts
+    < 0.60                                         0 pts
+
+  On Windows we do NOT have package temperature (Ring 0 — see
+  the feasibility document), so the blueprint's ">95 C and >25%
+  frequency drop" rule cannot be evaluated. Consequences:
+    Benchmark declined or not run -> the 16 clock points are
+      not_assessable, only the 4 identity points are assessed.
+    Where an ACPI thermal zone was readable, print it as
+      "chassis/zone temperature" and use it ONLY to abort the
+      test, never to award points.
+  We must never print "no thermal throttling" from an absence
+  of temperature data. The honest phrase is "thermal behaviour
+  not assessable in this scan".
+
+5.3 Memory integrity and speed — 15
+  Module inventory complete (slots, capacity, speed)   5 pts
+  Pattern spot check passed on the tested region       7 pts
+  Bandwidth measured and within a sane floor           3 pts
+
+  Pattern test declined -> 7 pts not_assessable.
+  A user-mode pattern test can never cover kernel-resident
+  memory. The row must read "memory pattern spot check", and
+  the report must state that full-coverage memory testing
+  requires the pre-boot environment. Never print
+  "memory verified".
+  Any integrity mismatch -> domain awarded 0 and the device is
+  flagged Critical regardless of other domains (see 6.3).
+
+5.4 Storage health and SMART — 20
+  NVMe path:
+    percentage_used <= 5 and spare >= 95 and no critical
+      warning and media_errors = 0                    20 pts
+    percentage_used <= 20 and spare >= 90              16 pts
+    percentage_used <= 50                              11 pts
+    percentage_used <= 80                               6 pts
+    percentage_used > 80, or any critical warning,
+      or media_errors > 0, or spare < 50                0 pts
+  ATA/SATA path:
+    reallocated = 0 and pending = 0                    20 pts
+    reallocated 1-10 and pending = 0                   11 pts
+    pending > 0 or reallocated > 10                     0 pts
+  predict_failure = true -> domain awarded 0 and Critical flag.
+  SMART unreachable (USB bridge, RAID/VMD, elevation declined)
+    -> assessed 0, not_assessable 20, and because storage is
+    mandatory the overall grade is withheld.
+  Power-on hours and total bytes written are always printed.
+    They are not scored in CG-1.0 because a fair curve needs
+    population data we do not have yet, and they matter enormously
+    to a buyer. Printed, not judged.
+
+5.5 Ports and connectivity — 10
+  Wi-Fi radio present and reporting                    2 pts
+  Bluetooth radio present                              1 pt
+  Ethernet NIC present and link state readable         1 pt
+  USB controller topology enumerated                   2 pts
+  Physically verified ports (interactive insertion):
+    all attempted ports passed                         4 pts
+    partial pass                                       2 pts
+    any attempted port failed                          0 pts
+  Interactive port verification not attempted -> those 4 pts
+    are not_assessable. Controller enumeration alone never
+    earns them; a port that Windows lists is not a port a
+    technician has plugged into.
+
+5.6 Screen, keyboard and peripherals — 15
+  All operator-attested. Points are awarded only when a human
+  attested the outcome:
+    Display panel identified and colour wash inspected  4 pts
+    Keyboard: all attempted keys registered             4 pts
+    Trackpad: movement, clicks and gestures             3 pts
+    Speakers: both channels heard                       2 pts
+    Camera / microphone present and confirmed           2 pts
+  Any subject Skipped or NotAttempted -> its points are
+    not_assessable, never awarded, never deducted.
+  Keyboard caveat printed on the report: a webview cannot see
+  Fn combinations and some OEM hotkeys, so a full matrix claim
+  requires either the native raw-input build or physical intake.
+
+5.7 Not applicable redistribution
+  When a domain is genuinely not_applicable rather than
+  unmeasured (battery on a desktop), its weight is removed from
+  the denominator entirely: assessed 0, not_assessable 0, and
+  Coverage is computed against 80 instead of 100. The report
+  states "battery: not applicable (desktop chassis)".
+  Only Battery may ever be not_applicable in CG-1.0.
+
+
+6. GRADE BANDS
+--------------
+6.1 Bands (blueprint bands kept, applied to the Assessed Index)
+    A+   90 - 100    Pristine
+    A    80 - 89     Excellent
+    B    65 - 79     Fair
+    C    50 - 64     Degraded, service recommended
+    F    below 50    Defective / parts only
+
+6.2 Every grade in this version carries the word PROVISIONAL
+    and the line "physical verification required". While
+    grading_issuance_enabled is false, Report D also states
+    "This is not an issued CYVORIQ grading certificate."
+
+6.3 Critical override
+    Any of the following forces grade F regardless of the index,
+    and the reason is named on the report:
+      memory pattern integrity mismatch
+      SMART predict-failure true
+      NVMe critical warning set
+      pending sector count > 0
+    A single hard fault is not something a weighted average is
+    allowed to average away.
+
+6.4 Precedence, as implemented in slice A1
+    1. a MEASURED critical fault              -> F
+    2. a mandatory domain with nothing assessed -> withheld
+    3. coverage below the floor               -> withheld
+    4. otherwise the assessed index           -> band
+
+    Why a critical fault outranks withholding: a predicted disk
+    failure is evidence we hold, not evidence we lack. Missing data
+    must never condemn a device, and confirmed damage must never be
+    excused by missing data elsewhere.
+
+    NOT GRADABLE is not a band and must never be rendered as F.
+
+
+7. WHAT THE GRADE BLOCK PRINTS
+------------------------------
+  CYVRA ERASE · REPORT D
+  In-depth hardware diagnostic evaluation
+
+  Assessed Health Index      86 / 100
+  Coverage                   72%  (28 points not assessable)
+  Provisional grade          A — software-observed
+  Grading engine             CYVRA Grading Engine v1, rubric CG-1.0
+  Physical verification      required for a final grade
+
+  Not assessable in this scan:
+    Battery capacities (firmware did not report design capacity)
+    CPU sustained-clock benchmark (declined by operator)
+    Interactive port verification (not attempted)
+
+  Issued by CYVORIQ Solutions Pvt. Ltd., publisher of CYVRA
+  Erase. Computer-generated on the assessed PC. Not
+  cloud-authenticated in this version. This document is not a
+  Certificate of Sanitization, not NIST SP 800-88 Purge proof,
+  and not a DPDP compliance certificate. No data was erased.
+
+  Operator / technician (physical verification): ______________
+  Date: __________
+
+
+8. THE TWO WORDING DECISIONS
+----------------------------
+8.1 Grading attribution — DECIDED
+  CG-1.0 is a deterministic rubric. Nothing in it learns, so no
+  AI claim appears anywhere in the product. The approved line is
+  exactly:
+      Graded by CYVRA Grading Engine
+  with "rubric CG-1.0" printed beside it as metadata.
+  Path to an honest model later: collect outcome data per graded
+  device (resale price achieved, RMA within 90 days, observed
+  failure) and fit the weights to those outcomes. Only then does
+  a learned claim become true, the rubric becomes CG-2.0, and the
+  report can name the model and its measured error rate.
+
+8.2 "Certified and authenticated by CYVORIQ Solutions Pvt. Ltd."
+  Not yet true. report_authentication_enabled is false, there is
+  no report signature and no Authenticode signature.
+  Now:    Issued by CYVORIQ Solutions Pvt. Ltd.
+  After slice A9 (canonical JSON + local signature + QR digest
+  + verify page) and Authenticode:
+          Authenticated by CYVORIQ Solutions Pvt. Ltd.
+  "Certified" stays off the document until there is a named
+  accreditation to point at. Grading is CYVORIQ's own opinion,
+  competently formed and honestly bounded — that is worth
+  saying, and it is not the same thing as certification.
+
+
+9. TEST OBLIGATIONS FOR SLICE A8
+--------------------------------
+  A device with no assessable storage is NOT GRADABLE, not F.
+  A desktop with no battery is gradable, denominator 80.
+  A laptop with unreadable battery capacities loses 20 points
+    of coverage and never receives battery points.
+  Absent temperature data never yields "no thermal throttling".
+  A memory integrity mismatch forces F even at index 95.
+  predict_failure true forces F.
+  Skipped interactive subjects are not_assessable, never 0-scored.
+  awarded <= assessed and assessed + not_assessable == weight,
+    asserted for every domain on fixture inventories.
+  No rubric path can print a value that was never collected.

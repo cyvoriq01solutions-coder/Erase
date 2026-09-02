@@ -64,8 +64,9 @@ test("frontend bridge is narrow and has no network or persistence client", () =>
   assert.match(combined, /"activate_license"/);
   assert.match(combined, /"run_device_verification"/);
   assert.match(combined, /"list_scan_targets"/);
+  assert.match(combined, /"run_advance_scan"/);
   assert.match(combined, /"close_window"/);
-  assert.equal(occurrences(combined, /invoke<|invoke\(/g), 5);
+  assert.equal(occurrences(combined, /invoke<|invoke\(/g), 6);
 
   for (const forbidden of [
     /\bfetch\s*\(/,
@@ -83,10 +84,11 @@ test("Rust command boundary links the reusable core and fails closed", () => {
   const rust = read("src-tauri/src/lib.rs");
 
   assert.match(cargo, /cyvra-core\s*=\s*\{\s*package\s*=\s*"cyvoriq-erase-agent",\s*path\s*=\s*"\.\.\/\.\.\/agent-windows"\s*\}/);
-  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 5);
+  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 6);
   assert.match(rust, /activate_license/);
   assert.match(rust, /run_device_verification/);
   assert.match(rust, /list_scan_targets/);
+  assert.match(rust, /run_advance_scan/);
   assert.match(rust, /close_window/);
   assert.match(rust, /TypeId::of::<cyvra_core::CollectorError>/);
 
@@ -152,6 +154,41 @@ test("foundation does not ship destructive or obsolete customer wording", () => 
   assert.match(combined, /physical verification/);
   assert.doesNotMatch(combined, /Windows product key/i);
   assert.doesNotMatch(combined, /NIST certified/i);
+});
+
+test("advance scan is opt-in, honest about gaps, and never claims an AI grade", () => {
+  const files = sourceFiles(join(desktopRoot, "src"));
+  const combined = files.map((file) => readFileSync(file, "utf8")).join("\n");
+  const app = read("src/App.tsx");
+  const bridge = read("src/adapters/desktopBridge.ts");
+  const rust = read("src-tauri/src/lib.rs");
+
+  assert.match(combined, /Advance scan/);
+  assert.match(combined, /REPORT D/);
+  assert.match(combined, /Graded by CYVRA Grading Engine/);
+  assert.match(combined, /Assessed Health Index/);
+  assert.match(combined, /not assessable/i);
+  assert.match(combined, /physical verification/i);
+
+  // Both permissions must start off, and a write test cannot stand alone.
+  assert.match(app, /benchmarks:\s*false/);
+  assert.match(app, /writeBenchmark:\s*false/);
+  assert.match(app, /next\.writeBenchmark = false/);
+
+  // The bridge refuses a result that reports a write the operator never allowed.
+  assert.match(bridge, /bytesWritten > 0/);
+  assert.match(rust, /grade_withheld/);
+  assert.match(rust, /provisional/);
+
+  for (const forbidden of [
+    /CYVRA AI/i,
+    /machine learning/i,
+    /neural/i,
+    /Certified by CYVORIQ/i,
+    /Certificate of Grading/i,
+  ]) {
+    assert.doesNotMatch(combined, forbidden);
+  }
 });
 
 test("NSIS installer licence exists and is assessment-only", () => {

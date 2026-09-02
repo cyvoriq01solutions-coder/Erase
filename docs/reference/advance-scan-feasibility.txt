@@ -1,0 +1,434 @@
+ADVANCE SCAN — FEASIBILITY STUDY
+================================
+Date: 2 Sep 2026
+Inputs: LAPTOP_HARDWARE_DIAGNOSTIC_6708.txt
+        Laptop_Hardware_Diagnostic_App_Blueprint_01ad.txt
+Measured against: github.com/mukpswar-prog/Erase @ main
+RESUME CYVRA is ON HOLD. Wipe and B2 stay later. Nothing in this
+document changes code.
+
+
+1. VERDICT
+----------
+Feasible, and it fits our existing architecture better than the
+blueprint's own stack. Roughly 80% of the blueprint's PASSIVE
+telemetry can be collected from our current Rust agent in user
+mode. Most of the rest needs administrator elevation, which we
+can obtain with a bounded helper. A small but loud minority
+(per-core MSR temperatures, fan RPM, VRM, EC probing) needs a
+Ring 0 kernel driver, and I recommend we do NOT ship one.
+
+Recommended shape: exactly what you preferred — keep the current
+scan untouched and add a second button, "Advance scan". Basic
+scan keeps producing Report A. Advance scan produces a new,
+deeper Report D with a grade.
+
+Do NOT rewrite in C# / .NET 8 / LibreHardwareMonitorLib as the
+blueprint suggests. That would mean a second runtime inside the
+installer, a second supply chain, and the WinRing0 driver we
+should refuse. Everything except Ring 0 is reachable from Rust.
+
+
+2. WHAT WE ALREADY HAVE (why this is an upgrade, not a rebuild)
+---------------------------------------------------------------
+agent-windows/src/hardware_inventory_v1.rs already declares the
+typed sections the blueprint wants, and they are currently
+honest placeholders:
+
+  BatteryProfile   manufacturer, chemistry, serial, designed and
+                   full-charge capacity, cycle_count, health_ratio
+  StorageInventory devices + volumes
+  GraphicsInventory adapters + displays
+  PortRecord       UsbA / UsbC / Usb4OrThunderbolt / Hdmi /
+                   DisplayPort / Ethernet / Audio + count_kind
+  SensorPresence   Camera / Microphone / Lid / BiometricReader ...
+  NetworkAdapter   Ethernet / Wifi / Bluetooth / Cellular
+  PeripheralDevice AudioController / ImagingDevice / Keyboard ...
+
+Every field carries status, confidence, privacy_class and
+provenance. CollectionStatus already distinguishes reported /
+observed / derived / unknown / not_reported / not_applicable /
+permission_denied / unsupported / collection_error.
+
+That is exactly the vocabulary a grading engine needs. The
+blueprint has no equivalent of "permission_denied vs absent",
+which is why its grading matrix is unsafe as written (section 6).
+
+collector_runtime.rs already gives us a bounded execution
+sandbox: fixed application-owned script only, 30 s timeout,
+256 KiB stdout cap, 64 KiB stderr cap, cancellation token,
+strict hex protocol, per-section query_status. The Advance scan
+probes reuse this contract instead of inventing a new one.
+
+Note: agent-windows/Cargo.toml currently has ZERO dependencies.
+Advance scan needs `windows-sys` for Win32. That is our first
+external crate in the agent and must be pinned exactly.
+
+
+3. PER-SUBSYSTEM FEASIBILITY
+----------------------------
+GREEN  = user mode, no driver, no elevation, Rust today
+AMBER  = needs administrator elevation (bounded helper)
+RED    = needs a signed Ring 0 kernel driver — recommend refusing
+
+3.1 Battery — GREEN (this fixes tonight's Lenovo gap)
+  Method: open the battery device interface class
+  (GUID_DEVCLASS_BATTERY) via SetupAPI, then
+  IOCTL_BATTERY_QUERY_TAG + IOCTL_BATTERY_QUERY_INFORMATION
+  (BatteryInformation / BatteryDeviceName / BatteryManufactureName
+  / BatteryUniqueID / BatteryEstimatedTime / BatteryTemperature).
+  Yields designed capacity, full-charge capacity, chemistry,
+  cycle count where firmware reports it, serial, manufacture date.
+  Fallbacks: root\WMI BatteryStaticData / BatteryFullChargedCapacity
+  / BatteryCycleCount (inconsistent across OEMs), and
+  `powercfg /batteryreport` XML (Microsoft's own tool; writes one
+  file to %TEMP%, which we must disclose and delete).
+  Honest limit: many OEMs report cycle count as 0 or omit it.
+  It stays unknown. Wear % is only printed when design and
+  full-charge are both > 0 — the rule we already ship.
+  Why tonight failed: Win32_Battery alone returned no record, and
+  Win32_Battery never carries design capacity anyway. The IOCTL
+  path is the correct fix.
+
+3.2 CPU identification and clocks — GREEN
+  CPUID via core::arch::x86_64::__cpuid for vendor, family,
+  brand string, instruction sets (SSE4.2 / AVX2 / AVX-512).
+  Cache hierarchy L1/L2/L3 via GetLogicalProcessorInformationEx.
+  Live per-processor MHz via CallNtPowerInformation
+  (ProcessorInformation → CurrentMhz, MaxMhz) with NO admin.
+  Per-core load via NtQuerySystemInformation or
+  GetSystemTimes deltas.
+
+3.3 CPU temperature, PROCHOT, PL1/PL2 — RED (see 4)
+  The blueprint gets these from LibreHardwareMonitorLib, which
+  reads MSRs through a Ring 0 driver. Without a driver we can
+  only offer ACPI thermal zones (3.6, AMBER), which are chassis
+  or zone temperatures, not CPU package temperature. We must not
+  label a thermal zone reading as "CPU package temp".
+
+3.4 RAM inventory — GREEN (already partly shipped)
+  Win32_PhysicalMemory / PhysicalMemoryArray are already in our
+  snapshot: locator, capacity, speed, configured speed, memory
+  type, form factor, manufacturer, part number, serial.
+  Missing today and easy to add: channel mode inference,
+  GlobalMemoryStatusEx live free/used/commit.
+  Honest limit: channel mode is inferred from bank/locator
+  layout, not reported by Windows. Mark it derived, low
+  confidence, or omit.
+
+3.5 Storage SMART / NVMe health — AMBER, highest ITAD value
+  IOCTL_STORAGE_QUERY_PROPERTY (StorageDeviceProperty /
+  StorageAdapterProperty) works as standard user for model,
+  serial, bus type (NVMe / SATA / USB / eMMC), removable flag.
+  Health telemetry needs an elevated handle on \\.\PhysicalDriveN:
+    NVMe:  IOCTL_STORAGE_PROTOCOL_COMMAND, log page 0x02
+           (SMART / Health Information) → critical warning,
+           composite temperature, available spare %,
+           percentage used, data units read/written,
+           power cycles, power-on hours, unsafe shutdowns,
+           media and data integrity errors.
+    SATA:  IOCTL_ATA_PASS_THROUGH (SMART READ DATA) →
+           reallocated sectors, pending sectors, power-on hours,
+           power cycles, temperature.
+    Also:  root\WMI MSStorageDriver_FailurePredictStatus /
+           FailurePredictData for the coarse predict-failure bit.
+  This is the single most valuable block for refurbish/ITAD
+  grading, because power-on hours and TBW are what resale value
+  actually turns on.
+  Honest limit: USB-bridged and some RAID/Intel VMD controllers
+  will not pass SMART through. Those stay not_reported.
+
+3.6 Motherboard, thermal zones, fans — split
+  GREEN: baseboard, BIOS, Secure Boot, TPM — already shipped.
+  AMBER: root\WMI MSAcpi_ThermalZoneTemperature (admin) gives
+         ACPI zone temperatures in tenths of a Kelvin.
+  AMBER: some OEM WMI namespaces expose fan RPM (vendor
+         specific; Lenovo/Dell/HP each differ). Opportunistic
+         only, never required for a grade.
+  RED:   Super I/O chips (IT87 / Nuvoton / Winbond), VRM
+         temperatures, direct Embedded Controller port I/O.
+
+3.7 USB ports and Type-C — GREEN, and better than what we ship
+  SetupAPI with GUID_DEVINTERFACE_USB_HUB and
+  GUID_DEVINTERFACE_USB_DEVICE, then
+  IOCTL_USB_GET_NODE_INFORMATION and
+  IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX per port index →
+  real port count per hub/controller, per-port connection state,
+  and negotiated speed (Low / Full / High / Super / SuperPlus).
+  This directly replaces tonight's weak Win32_PortConnector
+  numbers, which is why the Lenovo printed "DisplayPort 3
+  firmware connectors" — SMBIOS designator noise, not three
+  physical DisplayPorts.
+  Honest limit: Windows exposes the USB controller topology, not
+  the plastic jacks. An internal-only port and a chassis port
+  look alike. We can label "controller ports" and confirm the
+  physical count only through interactive verification (3.10) or
+  physical intake.
+  Power Delivery negotiation: only partially exposed on Windows
+  and driver dependent. Treat as best-effort, not a grade input.
+
+3.8 Display — GREEN
+  QueryDisplayConfig for topology, active mode, refresh rate;
+  EDID from the display device's registry Device Parameters for
+  panel manufacturer, model, native resolution and manufacture
+  week/year; DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO for HDR
+  capability. Colour depth and DPI scaling from the mode info.
+
+3.9 Wi-Fi, Bluetooth, Ethernet — GREEN
+  wlanapi WlanOpenHandle / WlanEnumInterfaces /
+  WlanQueryInterface → interface state, SSID-free RSSI,
+  signal quality %, Rx/Tx link speed, radio state, and phy types
+  (which imply Wi-Fi 5 / 6 / 6E / 7 when the driver reports them).
+  BluetoothFindFirstRadio / BluetoothGetRadioInfo for the radio;
+  version and BLE support are inferred from driver/HCI data and
+  are often unreliable — keep them low confidence.
+  iphlpapi GetAdaptersAddresses for NIC link speed and media
+  state.
+  Privacy: MAC address is a DeviceIdentifier privacy class. Do
+  not print it on the customer report by default.
+
+3.10 Interactive suite — feasible, mixed effort
+  Display colour wash, keyboard highlight, trackpad tracking,
+  speaker tone: all doable in the existing webview with no new
+  Tauri permission. Keyboard is the caveat — a webview will not
+  see Fn combinations, some OEM hotkeys, or the Windows key
+  reliably. A true keyboard matrix needs native raw input
+  (RegisterRawInputDevices) in the Rust side. That is
+  implementable but sits close to keylogger behaviour: it must
+  never persist keystrokes, and on an unsigned build it can
+  raise antivirus heuristics. Recommend: webview key detection
+  first with the limitation stated on the report; native raw
+  input only after Authenticode.
+  Microphone record/playback and live webcam preview need the
+  webview media permissions relaxed, which breaks our current
+  frozen assertion that the capability set is exactly
+  ["core:default"] and that CSP is tight. Doable, but it is a
+  privacy-boundary change on a product whose promise is "we do
+  not open your private content". Recommend deferring live
+  capture to its own slice with an explicit consent screen,
+  in-memory only, nothing written to disk, nothing uploaded.
+  Interim: enumerate camera/mic natively (3.11) and let the
+  technician tick "camera image OK" after using the Windows
+  Camera app.
+
+3.11 Camera and microphone enumeration — GREEN (fixes tonight)
+  Tonight printed "None enumerated by Windows" because the
+  ClassGuid filter missed the UVC webcam. Correct method:
+  SetupAPI on KSCATEGORY_VIDEO_CAMERA / KSCATEGORY_CAPTURE, or
+  Media Foundation MFEnumDeviceSources with
+  MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP, plus the audio
+  capture endpoint enumeration via IMMDeviceEnumerator
+  (eCapture). Enumeration only — no frame is captured, no audio
+  is recorded.
+
+
+4. THE RING 0 QUESTION — RECOMMEND NO
+-------------------------------------
+The blueprint's temperature, fan RPM, VRM and throttle-flag
+features all depend on LibreHardwareMonitorLib, which loads a
+Ring 0 helper driver (WinRing0 / InpOut32 class). Problems:
+
+  a. WinRing0.sys has a documented arbitrary read/write
+     vulnerability history and appears on Microsoft's vulnerable
+     driver blocklist. On machines with Memory Integrity (HVCI)
+     enabled it will not load at all.
+  b. A kernel driver cannot be Authenticode-signed the way our
+     EXE will be. It needs EV signing plus Microsoft attestation
+     or WHQL. We are still blocked on a plain Authenticode .pfx.
+  c. Shipping a known-vulnerable driver inside a product whose
+     entire value is trust and auditability is indefensible. An
+     ITAD customer's security review would reject it, and
+     correctly.
+  d. Our own rule already says the sanitizer must not certify
+     itself. Escalating to Ring 0 to read a fan speed is a large
+     new attack surface for a small reporting gain.
+
+Consequences we accept: CPU package temperature, per-core
+temperature, PROCHOT / PL1 / PL2 throttle flags, fan RPM and VRM
+temperature are NOT collected in the Windows product. They stay
+"not collected in this scan", exactly as battery does today.
+Thermal behaviour can still be inferred honestly from frequency
+behaviour under load (see 5) plus ACPI zones where permitted.
+The deep thermal story belongs to the future pre-boot
+environment or to vendor tooling, and we say so.
+
+If a signed sensor driver is ever wanted, that is its own
+approved slice with its own budget and its own security review.
+Not part of Advance scan.
+
+
+5. ACTIVE TESTS — FEASIBLE, BUT THE BLUEPRINT'S DEFAULTS ARE UNSAFE
+-------------------------------------------------------------------
+5.1 CPU stress, 30 s multi-threaded
+  Feasible in Rust with std threads. Guards we must add:
+  refuse when battery is critical and no AC, hard wall-clock
+  cap, cooperative cancel button, and abort if any available
+  temperature source crosses a limit. Without temperature we
+  cannot claim "no thermal fault"; we can only report the
+  frequency curve. Honest output: "sustained clock held X% of
+  observed maximum over 30 s" plus "temperature not collected".
+  The blueprint's rule (">95 C and >25% frequency drop") is only
+  computable when temps exist. Where temps are absent, the
+  correct verdict is "not assessable", not "pass".
+
+5.2 RAM pattern test at 75% of free memory — REDUCE THIS
+  Allocating 75% of free RAM on a customer machine invites
+  paging storms, other applications being pushed out, and
+  failed allocations. It also cannot test the memory the kernel
+  itself occupies, so it can never certify RAM.
+  Recommend: cap at the smaller of 50% of free memory and 2 GiB,
+  check the commit limit first, use large-page-free ordinary
+  allocation, patterns 0x55 / 0xAA / pseudorandom with a seeded
+  verify, and report it as a "memory pattern spot check", never
+  "memory verified". Full-coverage memory testing is a pre-boot
+  feature. Say that on the report.
+
+5.3 Storage 1 GiB sequential write + 4K random write — CONSENT GATE
+  This is the one place where Advance scan would write to the
+  customer's disk. Report A's whole boundary is "nothing was
+  written". So:
+    - Read-only benchmark is the DEFAULT (sequential read plus
+      random-read latency at queue depth).
+    - Write benchmark is opt-in with its own checkbox, requires
+      at least 3x the test size free, writes one temp file,
+      flushes, measures, deletes, and the report states
+      "write benchmark performed: yes / no" with the byte count.
+    - Never benchmark a drive flagged as failing by SMART.
+    - Never write to a drive the operator did not select.
+  1 GiB of writes is negligible for SSD wear; the issue is the
+  integrity promise, not the endurance.
+
+5.4 USB interactive port verification
+  Feasible and genuinely useful: device-arrival detection, then
+  a small read/write on the inserted test stick. Note that the
+  read/write happens on the TECHNICIAN's test device, not the
+  customer's disk, which keeps the boundary clean. This is how
+  we convert "controller ports" into a defensible physical port
+  count.
+
+
+6. WHY THE BLUEPRINT'S GRADING MATRIX IS UNSAFE AS WRITTEN
+----------------------------------------------------------
+The blueprint assigns Battery 20, CPU/Thermal 20, Memory 15,
+Storage 20, Ports 10, Screen/Keyboard/Peripherals 15 = 100, then
+bands A+ to F. It never says what happens when a domain cannot
+be measured. Two failure modes, both fatal for an ITAD claim:
+
+  - Award the points anyway → a laptop whose SMART is
+    unreadable and whose battery IOCTL failed scores A+.
+    That is a false certificate.
+  - Award zero → a healthy desktop with no battery scores F.
+    That is a false condemnation.
+
+Tonight's Lenovo is the live example. Battery, HDMI, cameras and
+microphones were all unavailable or empty. Under the blueprint's
+matrix that device is either fraudulently A+ or wrongly F.
+
+Our rubric must therefore carry, per domain: points_awarded,
+points_possible_assessed, points_not_assessable, and a
+confidence. The headline number is a percentage of what was
+actually assessable, printed next to how much was not
+assessable, and the grade is withheld entirely below a coverage
+threshold. Full rubric: ADVANCE_SCAN_GRADING_RUBRIC_2026-09-02.txt
+
+
+7. BRANDING — TWO CORRECTIONS I HAVE TO PUT ON THE RECORD
+---------------------------------------------------------
+7.1 Grading attribution — DECIDED 2 Sep 2026
+  There is no model. The grading engine is a deterministic
+  weighted rubric — rules we wrote. Printing "AI" on an ITAD
+  document invites one question in a customer audit ("what
+  model, trained on what data, with what error rate?") that we
+  cannot answer today. The owner approved the accurate line, and
+  it is the only one the product prints:
+
+      Graded by CYVRA Grading Engine
+
+  with "rubric CG-1.0" beside it as metadata. Slice A1 enforces
+  this from both ends: the Rust constant is asserted in the agent
+  crate, and the desktop contract test forbids /CYVRA AI/i,
+  /machine learning/i and /neural/i anywhere in desktop/src.
+
+  A learned model becomes honest later, and it needs something we
+  do not have yet: outcome data from a population of graded
+  devices (resale price achieved, RMA rate, failure within 90
+  days). That is a genuine roadmap item, not a label change.
+
+7.2 "Certified and authenticated by CYVORIQ SOLUTIONS Pvt. Ltd."
+  Right now report_authentication_enabled is false, there is no
+  Authenticode signature, and there is no cloud counter-signature.
+  So "authenticated" is not yet true, and "certified" implies an
+  accreditation we do not hold. Keep what R-report already
+  landed:
+
+      Issued by CYVORIQ Solutions Pvt. Ltd., publisher of
+      CYVRA Erase. Computer-generated on the assessed PC.
+      Not cloud-authenticated in this version. Device rating
+      is possible only after physical verification.
+
+  The concrete path to earning the stronger wording:
+    1. Canonicalise Report D to deterministic JSON.
+    2. Sign it locally with a CYVORIQ key (Ed25519 or ECDSA
+       P-256), embed the signature and a QR of the digest.
+    3. Publish a verify page on cyvra.co.in that re-checks the
+       digest and, once the Worker counter-signs, records
+       issuance server-side.
+    4. Authenticode-sign the installer.
+  After steps 1-4, "Authenticated by CYVORIQ Solutions Pvt. Ltd."
+  is a statement of fact and we should print it proudly.
+
+
+8. RISKS
+--------
+  Elevation. Advance scan needs admin for SMART and thermal
+    zones. The app is standard-user today ("Standard-user
+    runtime" on the Overview screen). Mitigation: separate
+    bounded elevated probe, launched only when the operator asks
+    for Advance scan, read-only, no persistence.
+  Antivirus and SmartScreen. Physical-drive handles, SetupAPI
+    walking and raw input all look like tooling. On an UNSIGNED
+    build this raises the false-positive risk materially. This
+    is another argument for finishing Authenticode.
+  First external Rust dependency in the agent (windows-sys).
+    Pin exact, review features, no transitive surprises.
+  IOCTL correctness. Wrong buffer sizes on pass-through IOCTLs
+    are a real crash and, in the worst case, a data risk on
+    exotic controllers. Mitigation: never issue a write-class
+    command, allow-list only the query IOCTLs we implement,
+    check every returned length, and fuzz the parsers with
+    fixtures the way windows_hardware.rs is already tested.
+  Scope. This blueprint is a second product's worth of surface.
+    Sliced (section 5 of the design doc) it is safe; taken in
+    one PR it would stall the repo.
+  Claim creep. The more numbers we print, the more tempting it
+    is to grade on them. The rubric must stay explicit about
+    what physical verification still owns.
+
+
+9. RECOMMENDED ANSWER TO YOUR THREE QUESTIONS
+---------------------------------------------
+  "Can we update our hardware scanning like this?"
+      Yes, substantially — battery, storage SMART, USB topology,
+      display EDID, radios, camera/mic enumeration. Not the
+      Ring 0 sensor set.
+  "Can we build an application that does this low-level
+   scanning?"
+      We already have most of the skeleton. The gating items are
+      elevation, code signing, and (for true memory and thermal
+      testing) the pre-boot environment — not language or
+      framework.
+  "Introduce it as Advance scan with another button?"
+      Yes. That is the right call and it is the least invasive
+      option. Basic scan and Report A stay byte-for-byte as
+      shipped; Advance scan is additive and fails closed.
+
+Design: SLICE_A_SCAN_DESIGN_2026-09-02.txt
+Rubric: ADVANCE_SCAN_GRADING_RUBRIC_2026-09-02.txt
+
+
+10. STILL FROZEN
+----------------
+No wipe. No ATA/NVMe destructive commands. No B2 upload.
+No unsigned EXE published. No NIST / CERT-In / ADISA claim.
+No invented values: unavailable stays "not collected in this
+scan". RESUME CYVRA stays on hold until you say otherwise.
