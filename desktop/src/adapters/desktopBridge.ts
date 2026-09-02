@@ -186,15 +186,30 @@ function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
         ["Sectors pending reallocation", notCollected],
         ["Predicted failure", notCollected],
       ]),
-      group("Ports and connectivity", [
-        ["USB controller ports", notCollected],
-        ["Negotiated port speeds", notCollected],
-        ["Physically verified ports", notAttempted],
-        ["Wi-Fi signal quality", notCollected],
-        ["Wi-Fi link speed", notCollected],
-        ["Bluetooth radio", notCollected],
-        ["Ethernet link", notCollected],
-      ]),
+      group(
+        "Ports and connectivity",
+        [
+          ["USB controllers", "USB topology collection is only available on Windows."],
+          ["USB hubs", "USB topology collection is only available on Windows."],
+          ["USB controller ports", "USB topology collection is only available on Windows."],
+          ["Negotiated port speeds", notCollected],
+          ["Physically verified ports", notAttempted],
+          ["Wi-Fi signal quality", notCollected],
+          ["Wi-Fi link speed", notCollected],
+          ["Bluetooth radio", notCollected],
+          ["Ethernet link", notCollected],
+        ],
+        "Controller topology is not a count of plastic connectors. A port is confirmed only when a technician inserts a device.",
+      ),
+      group(
+        "USB sources consulted",
+        [
+          ["USB controllers", "Not queried on this PC"],
+          ["USB hubs", "Not queried on this PC"],
+          ["Attached USB devices", "Not queried on this PC"],
+        ],
+        "Advance scan walks USB controllers, hubs and attached devices. It does not guess empty sockets from SMBIOS labels.",
+      ),
       group("Display panel", [
         ["Panel manufacturer", notCollected],
         ["Panel model", notCollected],
@@ -203,10 +218,28 @@ function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
         ["HDR capability", notCollected],
         ["Panel manufacture year", notCollected],
       ]),
-      group("Cameras and microphones", [
-        ["Cameras", notCollected],
-        ["Microphones", notCollected],
-      ]),
+      group(
+        "Cameras and microphones",
+        [
+          ["Capture probe", "Camera and microphone collection is only available on Windows."],
+          ["Frames captured", "No"],
+          ["Audio recorded", "No"],
+          ["Camera image", notAttempted],
+        ],
+        "Enumeration only. No frame captured and no microphone audio is recorded in this adapter.",
+      ),
+      group(
+        "Capture sources consulted",
+        [
+          ["PnP Camera class", "Not queried on this PC"],
+          ["PnP Image class", "Not queried on this PC"],
+          ["USB video service", "Not queried on this PC"],
+          ["PnP Media class", "Not queried on this PC"],
+          ["Audio endpoint class", "Not queried on this PC"],
+          ["Windows sound device", "Not queried on this PC"],
+        ],
+        "The Camera ClassGuid alone misses some UVC webcams, so Advance scan also asks the USB video service and Image class.",
+      ),
       group("Benchmarks", [
         ["Processor sustained clock", benchmarkValue],
         ["Memory pattern check", benchmarkValue],
@@ -316,7 +349,12 @@ function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
       {
         label: "Physical ports",
         value:
-          "Windows exposes controller topology, not the plastic connectors. A port count is only confirmed when a technician inserts a device.",
+          "Windows exposes USB controller topology and attached devices, not the plastic connectors. A port is only confirmed when a technician inserts a device.",
+      },
+      {
+        label: "Cameras and microphones",
+        value:
+          "Advance scan enumerates capture devices across several PnP classes, including the USB video service that the Camera ClassGuid misses. No frame is captured and no audio is recorded.",
       },
       {
         label: "Unknown values",
@@ -374,9 +412,9 @@ async function runAdvanceScanPreview(consent: AdvanceScanConsent): Promise<Advan
     "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
     "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
     "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
+    "Walking USB controllers, hubs and attached devices. USB topology collection is only available on Windows.",
     "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
-    "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
-    "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
+    "Enumerating cameras and microphones. Camera and microphone collection is only available on Windows. No frame captured.",
     consent.benchmarks
       ? "Benchmarks were permitted, but none are implemented in this collector version."
       : "Benchmarks were not permitted, so none were run.",

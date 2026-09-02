@@ -1,6 +1,7 @@
 pub mod application_data;
 pub mod assessment;
 pub mod battery_probe;
+pub mod capture_probe;
 pub mod collector_runtime;
 pub mod cpu;
 pub mod device;
@@ -15,6 +16,7 @@ pub mod pdem;
 pub mod personal_data;
 pub mod report;
 pub mod storage;
+pub mod usb_topology;
 pub mod user_profiles;
 pub mod volume;
 pub mod windows_hardware;

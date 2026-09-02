@@ -7,12 +7,15 @@
 
 use crate::NamedValue;
 use crate::battery_probe::{self, BatteryProbe, BatterySource, SourceOutcome};
+use crate::capture_probe::{self, CaptureProbe};
 use crate::collector_runtime::CancellationToken;
 use crate::hardware_diagnostics_v1::{
     CoverageSummary, DeviceForm, DiagnosticDomain, DomainApplicability, DomainEvidence,
-    HardwareDiagnosticsV1, battery_points, evaluate,
+    HardwareDiagnosticsV1, battery_points, evaluate, usb_topology_points,
 };
 use crate::hardware_inventory_v1::Confidence;
+use crate::usb_topology::{self, UsbProbe, UsbSource};
+use std::collections::BTreeSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The frozen customer phrase for a subsystem this build cannot read yet.
@@ -146,9 +149,19 @@ pub fn run_advance_scan_with(
     report(2, NOT_COLLECTED);
     report(3, NOT_COLLECTED);
     report(4, NOT_COLLECTED);
-    report(5, NOT_COLLECTED);
+
+    report(5, "Walking USB controllers, hubs and attached devices.");
+    let usb = usb_topology::collect(cancellation);
+    report(5, &usb_progress_detail(&usb));
+
     report(6, NOT_COLLECTED);
-    report(7, NOT_COLLECTED);
+
+    report(
+        7,
+        "Enumerating cameras and microphones. No image or audio is captured.",
+    );
+    let capture = capture_probe::collect(cancellation);
+    report(7, &capture_progress_detail(&capture));
     report(
         8,
         if request.benchmarks_consented {
@@ -159,7 +172,7 @@ pub fn run_advance_scan_with(
     );
 
     report(9, "Scoring only the areas that were actually assessed.");
-    let outcome = build_report(&diagnostics, &battery, request.device_form);
+    let outcome = build_report(&diagnostics, &battery, &usb, &capture, request.device_form);
 
     report(
         10,
@@ -189,14 +202,40 @@ fn battery_progress_detail(battery: &BatteryProbe) -> String {
     "The battery did not report a design capacity.".to_string()
 }
 
+fn usb_progress_detail(usb: &UsbProbe) -> String {
+    if let Some(error) = usb.probe_error {
+        return error.to_string();
+    }
+    if !usb.topology_enumerated() {
+        return "Windows did not enumerate USB controllers on this PC.".to_string();
+    }
+    format!(
+        "USB topology: {} controller(s), {} hub(s), {} attached device(s). Empty plastic connectors are not visible.",
+        usb.controllers.len(),
+        usb.hubs.len(),
+        usb.devices.len()
+    )
+}
+
+fn capture_progress_detail(capture: &CaptureProbe) -> String {
+    if let Some(error) = capture.probe_error {
+        return error.to_string();
+    }
+    let cameras = capture.camera_names().len();
+    let mics = capture.microphone_names().len();
+    format!("Found {cameras} camera(s) and {mics} microphone(s). No image or audio was captured.")
+}
+
 fn build_report(
     diagnostics: &HardwareDiagnosticsV1,
     battery: &BatteryProbe,
+    usb: &UsbProbe,
+    capture: &CaptureProbe,
     device_form: DeviceForm,
 ) -> CustomerAdvanceScan {
     let wrote_without_consent =
         diagnostics.bytes_written > 0 && !diagnostics.write_benchmark_consented;
-    let evidence = domain_evidence(diagnostics, battery, device_form);
+    let evidence = domain_evidence(diagnostics, battery, usb, device_form);
     let summary = evaluate(&evidence, device_form, &[]);
 
     CustomerAdvanceScan {
@@ -212,7 +251,7 @@ fn build_report(
         destructive_operations_enabled: false,
         content_inspected: false,
         boundary_note: boundary_note(diagnostics),
-        telemetry_groups: telemetry_groups(diagnostics, battery),
+        telemetry_groups: telemetry_groups(diagnostics, battery, usb, capture),
         coverage_rows: coverage_rows(&summary),
         coverage_domains: coverage_domains(&evidence),
         method_rows: method_rows(),
@@ -279,12 +318,14 @@ fn temporary_files_note(battery: &BatteryProbe) -> String {
 fn domain_evidence(
     diagnostics: &HardwareDiagnosticsV1,
     battery: &BatteryProbe,
+    usb: &UsbProbe,
     device_form: DeviceForm,
 ) -> Vec<DomainEvidence> {
     DiagnosticDomain::ALL
         .iter()
         .map(|domain| match domain {
             DiagnosticDomain::BatteryAndPower => battery_evidence(battery, device_form),
+            DiagnosticDomain::PortsAndConnectivity => usb_evidence(usb),
             other => DomainEvidence::not_assessable(*other, domain_gap(*other, diagnostics)),
         })
         .collect()
@@ -320,6 +361,45 @@ fn battery_evidence(battery: &BatteryProbe, device_form: DeviceForm) -> DomainEv
     }
 
     DomainEvidence::not_assessable(domain, battery_gap(battery))
+}
+
+fn usb_evidence(usb: &UsbProbe) -> DomainEvidence {
+    let domain = DiagnosticDomain::PortsAndConnectivity;
+    if usb.topology_enumerated() {
+        let mut evidence = DomainEvidence::measured(
+            domain,
+            usb_topology_points(true),
+            usb_topology_points(true),
+            Confidence::High,
+        );
+        evidence.note = Some(
+            "USB controller topology enumerated. Wi-Fi, Bluetooth, Ethernet and physical insertion were not assessed."
+                .to_string(),
+        );
+        return evidence;
+    }
+    DomainEvidence::not_assessable(domain, usb_gap(usb))
+}
+
+fn usb_gap(usb: &UsbProbe) -> &'static str {
+    if usb.probe_error.is_some() {
+        return "The USB topology probe could not run on this PC";
+    }
+    match usb.outcome_for(UsbSource::Controller) {
+        crate::usb_topology::SourceOutcome::PermissionDenied => {
+            "Windows refused the USB controller query on this account"
+        }
+        crate::usb_topology::SourceOutcome::Unsupported => {
+            "Windows does not expose USB controllers on this PC"
+        }
+        crate::usb_topology::SourceOutcome::CollectionError => {
+            "Windows returned an error for the USB controller query"
+        }
+        crate::usb_topology::SourceOutcome::NotQueried => "The USB controller query did not run",
+        crate::usb_topology::SourceOutcome::Reported => {
+            "USB controller topology was not collected in this scan"
+        }
+    }
 }
 
 fn battery_gap(battery: &BatteryProbe) -> &'static str {
@@ -431,7 +511,11 @@ fn method_rows() -> Vec<NamedValue> {
         ),
         row(
             "Physical ports",
-            "Windows exposes controller topology, not the plastic connectors. A port count is only confirmed when a technician inserts a device.".to_string(),
+            "Windows exposes USB controller topology and attached devices, not the plastic connectors. A port is only confirmed when a technician inserts a device.".to_string(),
+        ),
+        row(
+            "Cameras and microphones",
+            "Advance scan enumerates capture devices across several PnP classes, including the USB video service that the Camera ClassGuid misses. No frame is captured and no audio is recorded.".to_string(),
         ),
         row(
             "Unknown values",
@@ -491,6 +575,8 @@ fn not_assessable(evidence: &[DomainEvidence]) -> Vec<String> {
 fn telemetry_groups(
     diagnostics: &HardwareDiagnosticsV1,
     battery: &BatteryProbe,
+    usb: &UsbProbe,
+    capture: &CaptureProbe,
 ) -> Vec<TelemetryGroup> {
     let benchmark_value = if diagnostics.benchmarks_consented {
         NOT_COLLECTED
@@ -534,18 +620,8 @@ fn telemetry_groups(
                 ("Predicted failure", NOT_COLLECTED),
             ],
         ),
-        group(
-            "Ports and connectivity",
-            &[
-                ("USB controller ports", NOT_COLLECTED),
-                ("Negotiated port speeds", NOT_COLLECTED),
-                ("Physically verified ports", NOT_ATTEMPTED),
-                ("Wi-Fi signal quality", NOT_COLLECTED),
-                ("Wi-Fi link speed", NOT_COLLECTED),
-                ("Bluetooth radio", NOT_COLLECTED),
-                ("Ethernet link", NOT_COLLECTED),
-            ],
-        ),
+        usb_group(usb),
+        usb_source_group(usb),
         group(
             "Display panel",
             &[
@@ -557,10 +633,8 @@ fn telemetry_groups(
                 ("Panel manufacture year", NOT_COLLECTED),
             ],
         ),
-        group(
-            "Cameras and microphones",
-            &[("Cameras", NOT_COLLECTED), ("Microphones", NOT_COLLECTED)],
-        ),
+        capture_group(capture),
+        capture_source_group(capture),
         group(
             "Benchmarks",
             &[
@@ -707,6 +781,200 @@ fn battery_source_group(battery: &BatteryProbe) -> TelemetryGroup {
     }
 }
 
+fn usb_group(usb: &UsbProbe) -> TelemetryGroup {
+    let mut rows = Vec::new();
+    if let Some(error) = usb.probe_error {
+        rows.push(row("USB probe", error.to_string()));
+        rows.push(row("Physically verified ports", NOT_ATTEMPTED.to_string()));
+        rows.push(row("Wi-Fi signal quality", NOT_COLLECTED.to_string()));
+        rows.push(row("Wi-Fi link speed", NOT_COLLECTED.to_string()));
+        rows.push(row("Bluetooth radio", NOT_COLLECTED.to_string()));
+        rows.push(row("Ethernet link", NOT_COLLECTED.to_string()));
+        return TelemetryGroup {
+            title: "Ports and connectivity".to_string(),
+            note: None,
+            rows,
+        };
+    }
+
+    let controllers = if usb.controllers.is_empty() {
+        if usb.topology_enumerated() {
+            "Windows reported USB controllers but named none on this PC.".to_string()
+        } else {
+            format!("Not collected in this scan. {}.", usb_gap(usb))
+        }
+    } else {
+        format!(
+            "{} · {}",
+            usb.controllers.len(),
+            usb.controllers
+                .iter()
+                .map(|item| item.name.as_str())
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    };
+
+    let hubs = if usb.hubs.is_empty() {
+        "None enumerated by Windows".to_string()
+    } else {
+        format!(
+            "{} · {}",
+            usb.hubs.len(),
+            usb.hubs
+                .iter()
+                .map(|item| item.name.as_str())
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    };
+
+    let attached = if usb.devices.is_empty() {
+        "None attached at scan time. Empty plastic connectors are not visible to Windows."
+            .to_string()
+    } else {
+        usb.devices
+            .iter()
+            .map(|device| {
+                let speed = device.speed.as_deref().unwrap_or("speed not reported");
+                match device.port_index {
+                    Some(port) => format!("{} (port {port}, {speed})", device.name),
+                    None => format!("{} ({speed})", device.name),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("; ")
+    };
+
+    rows.push(row("USB controllers", controllers));
+    rows.push(row("USB hubs", hubs));
+    rows.push(row("USB controller ports", attached));
+    rows.push(optional_row("Negotiated port speeds", usb.speed_summary()));
+    rows.push(row("Physically verified ports", NOT_ATTEMPTED.to_string()));
+    rows.push(row("Wi-Fi signal quality", NOT_COLLECTED.to_string()));
+    rows.push(row("Wi-Fi link speed", NOT_COLLECTED.to_string()));
+    rows.push(row("Bluetooth radio", NOT_COLLECTED.to_string()));
+    rows.push(row("Ethernet link", NOT_COLLECTED.to_string()));
+
+    TelemetryGroup {
+        title: "Ports and connectivity".to_string(),
+        note: Some(
+            "Controller topology is not a count of plastic connectors. A port is confirmed only when a technician inserts a device."
+                .to_string(),
+        ),
+        rows,
+    }
+}
+
+fn usb_source_group(usb: &UsbProbe) -> TelemetryGroup {
+    TelemetryGroup {
+        title: "USB sources consulted".to_string(),
+        note: Some(
+            "Advance scan walks USB controllers, hubs and attached devices. It does not guess empty sockets from SMBIOS labels."
+                .to_string(),
+        ),
+        rows: usb
+            .sources
+            .iter()
+            .map(|status| {
+                row(
+                    status.source.label(),
+                    status.outcome.customer_label().to_string(),
+                )
+            })
+            .collect(),
+    }
+}
+
+fn capture_group(capture: &CaptureProbe) -> TelemetryGroup {
+    let mut rows = Vec::new();
+    if let Some(error) = capture.probe_error {
+        rows.push(row("Capture probe", error.to_string()));
+        rows.push(row("Frames captured", "No".to_string()));
+        rows.push(row("Audio recorded", "No".to_string()));
+        return TelemetryGroup {
+            title: "Cameras and microphones".to_string(),
+            note: None,
+            rows,
+        };
+    }
+
+    let cameras = if capture.camera_names().is_empty() {
+        if capture.reports_no_cameras() {
+            "None enumerated by Windows after querying Camera, Image and USB video classes."
+                .to_string()
+        } else {
+            "Not collected in this scan. The camera query did not complete.".to_string()
+        }
+    } else {
+        capture.camera_names().join("; ")
+    };
+
+    let microphones = if capture.microphone_names().is_empty() {
+        if capture.reports_no_microphones() {
+            "None enumerated by Windows after querying audio endpoints and sound devices."
+                .to_string()
+        } else {
+            "Not collected in this scan. The microphone query did not complete.".to_string()
+        }
+    } else {
+        capture.microphone_names().join("; ")
+    };
+
+    let camera_via = capture
+        .cameras
+        .iter()
+        .filter_map(|device| device.enumerated_by.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+        .join("; ");
+
+    rows.push(row("Cameras", cameras));
+    if !camera_via.is_empty() {
+        rows.push(row("Camera enumerated by", camera_via));
+    }
+    rows.push(row("Microphones", microphones));
+    rows.push(row(
+        "Frames captured",
+        if capture.frames_captured { "Yes" } else { "No" }.to_string(),
+    ));
+    rows.push(row(
+        "Audio recorded",
+        if capture.audio_recorded { "Yes" } else { "No" }.to_string(),
+    ));
+    rows.push(row("Camera image", NOT_ATTEMPTED.to_string()));
+
+    TelemetryGroup {
+        title: "Cameras and microphones".to_string(),
+        note: Some(
+            "Enumeration only. No webcam frame is captured and no microphone audio is recorded in this slice."
+                .to_string(),
+        ),
+        rows,
+    }
+}
+
+fn capture_source_group(capture: &CaptureProbe) -> TelemetryGroup {
+    TelemetryGroup {
+        title: "Capture sources consulted".to_string(),
+        note: Some(
+            "The Camera ClassGuid alone misses some UVC webcams, so Advance scan also asks the USB video service and Image class."
+                .to_string(),
+        ),
+        rows: capture
+            .sources
+            .iter()
+            .map(|status| {
+                row(
+                    status.source.label(),
+                    status.outcome.customer_label().to_string(),
+                )
+            })
+            .collect(),
+    }
+}
+
 fn optional_row(label: &str, value: Option<String>) -> NamedValue {
     row(
         label,
@@ -741,7 +1009,9 @@ fn current_unix_timestamp() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::battery_probe::parse_probe;
+    use crate::battery_probe::parse_probe as parse_battery;
+    use crate::capture_probe::parse_probe as parse_capture;
+    use crate::usb_topology::parse_probe as parse_usb;
 
     fn hex(value: &str) -> String {
         value
@@ -751,15 +1021,18 @@ mod tests {
             .collect()
     }
 
-    fn probe_from(lines: &[(&str, usize, &str, &str)]) -> BatteryProbe {
-        let text = lines
+    fn protocol(lines: &[(&str, usize, &str, &str)]) -> String {
+        lines
             .iter()
             .map(|(section, index, name, value)| {
                 format!("{section}\t{index}\t{name}\t{}", hex(value))
             })
             .collect::<Vec<_>>()
-            .join("\n");
-        parse_probe(&text)
+            .join("\n")
+    }
+
+    fn probe_from(lines: &[(&str, usize, &str, &str)]) -> BatteryProbe {
+        parse_battery(&protocol(lines))
     }
 
     fn healthy_probe() -> BatteryProbe {
@@ -773,9 +1046,64 @@ mod tests {
         ])
     }
 
+    fn silent_usb() -> UsbProbe {
+        UsbProbe::unavailable("USB topology collection is only available on Windows.")
+    }
+
+    fn silent_capture() -> CaptureProbe {
+        CaptureProbe::unavailable("Camera and microphone collection is only available on Windows.")
+    }
+
+    fn enumerated_usb() -> UsbProbe {
+        parse_usb(&protocol(&[
+            ("controller", 0, "source_status", "reported"),
+            ("controller", 0, "present", "True"),
+            (
+                "controller",
+                0,
+                "name",
+                "Intel USB 3.0 eXtensible Host Controller",
+            ),
+            ("hub", 0, "source_status", "reported"),
+            ("hub", 0, "present", "True"),
+            ("hub", 0, "name", "USB Root Hub (USB 3.0)"),
+            ("hub", 0, "root_hub", "True"),
+            ("device", 0, "source_status", "reported"),
+            ("device", 0, "present", "True"),
+            ("device", 0, "name", "USB Composite Device"),
+            ("device", 0, "speed", "USB 2.0"),
+            ("device", 0, "port_index", "2"),
+        ]))
+    }
+
+    fn uvc_capture() -> CaptureProbe {
+        parse_capture(&protocol(&[
+            ("camera_class", 0, "source_status", "reported"),
+            ("usbvideo", 0, "source_status", "reported"),
+            ("audio_endpoint", 0, "source_status", "reported"),
+            ("camera", 0, "present", "True"),
+            ("camera", 0, "name", "USB Video Device"),
+            ("camera", 0, "enumerated_by", "USB video service"),
+            ("microphone", 0, "present", "True"),
+            ("microphone", 0, "name", "Microphone Array"),
+            ("capture", 0, "frames_captured", "False"),
+            ("capture", 0, "audio_recorded", "False"),
+        ]))
+    }
+
     fn report_for(probe: &BatteryProbe, form: DeviceForm) -> CustomerAdvanceScan {
         let diagnostics = HardwareDiagnosticsV1::not_collected(1_000);
-        build_report(&diagnostics, probe, form)
+        build_report(&diagnostics, probe, &silent_usb(), &silent_capture(), form)
+    }
+
+    fn report_full(
+        battery: &BatteryProbe,
+        usb: &UsbProbe,
+        capture: &CaptureProbe,
+        form: DeviceForm,
+    ) -> CustomerAdvanceScan {
+        let diagnostics = HardwareDiagnosticsV1::not_collected(1_000);
+        build_report(&diagnostics, battery, usb, capture, form)
     }
 
     fn group_named<'a>(outcome: &'a CustomerAdvanceScan, title: &str) -> &'a TelemetryGroup {
@@ -1003,7 +1331,12 @@ mod tests {
         let outcome = report_for(&healthy_probe(), DeviceForm::Portable);
 
         for group in &outcome.telemetry_groups {
-            if group.title.starts_with("Battery") {
+            if group.title.starts_with("Battery")
+                || group.title.starts_with("USB")
+                || group.title.starts_with("Ports")
+                || group.title.starts_with("Cameras")
+                || group.title.starts_with("Capture")
+            {
                 continue;
             }
             for row in &group.rows {
@@ -1048,9 +1381,121 @@ mod tests {
         let mut diagnostics = HardwareDiagnosticsV1::not_collected(1_000);
         diagnostics.bytes_written = 4_096;
 
-        let outcome = build_report(&diagnostics, &healthy_probe(), DeviceForm::Portable);
+        let outcome = build_report(
+            &diagnostics,
+            &healthy_probe(),
+            &silent_usb(),
+            &silent_capture(),
+            DeviceForm::Portable,
+        );
 
         assert!(!outcome.ok);
         assert!(outcome.message.contains("without consent"));
+    }
+
+    #[test]
+    fn a_uvc_camera_is_printed_and_does_not_award_screen_points() {
+        let outcome = report_full(
+            &healthy_probe(),
+            &silent_usb(),
+            &uvc_capture(),
+            DeviceForm::Portable,
+        );
+
+        assert_eq!(
+            value_of(&outcome, "Cameras and microphones", "Cameras"),
+            "USB Video Device"
+        );
+        assert_eq!(
+            value_of(&outcome, "Cameras and microphones", "Camera enumerated by"),
+            "USB video service"
+        );
+        assert_eq!(
+            value_of(&outcome, "Cameras and microphones", "Microphones"),
+            "Microphone Array"
+        );
+        assert_eq!(
+            value_of(&outcome, "Cameras and microphones", "Frames captured"),
+            "No"
+        );
+        assert_eq!(
+            value_of(&outcome, "Cameras and microphones", "Audio recorded"),
+            "No"
+        );
+        assert!(
+            value_of(&outcome, "Cameras and microphones", "Camera image")
+                .contains("Not attempted in this scan")
+        );
+        assert!(!outcome.content_inspected);
+
+        let screen = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Screen, keyboard and peripherals")
+            .expect("screen domain");
+        assert_eq!(screen.awarded, 0);
+        assert_eq!(screen.assessed, 0);
+        assert_eq!(outcome.coverage_percent, 20);
+    }
+
+    #[test]
+    fn enumerated_usb_awards_topology_points_and_leaves_physical_ports_unattempted() {
+        let outcome = report_full(
+            &healthy_probe(),
+            &enumerated_usb(),
+            &uvc_capture(),
+            DeviceForm::Portable,
+        );
+
+        assert!(
+            value_of(&outcome, "Ports and connectivity", "USB controllers")
+                .contains("Intel USB 3.0 eXtensible Host Controller")
+        );
+        assert!(
+            value_of(&outcome, "Ports and connectivity", "USB hubs")
+                .contains("USB Root Hub (USB 3.0)")
+        );
+        assert!(
+            value_of(&outcome, "Ports and connectivity", "USB controller ports")
+                .contains("USB Composite Device")
+        );
+        assert_eq!(
+            value_of(
+                &outcome,
+                "Ports and connectivity",
+                "Physically verified ports"
+            ),
+            NOT_ATTEMPTED
+        );
+        assert!(
+            value_of(&outcome, "Ports and connectivity", "Wi-Fi signal quality")
+                .contains("Not collected in this scan")
+        );
+
+        let ports = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Ports and connectivity")
+            .expect("ports domain");
+        assert_eq!(ports.awarded, 2);
+        assert_eq!(ports.assessed, 2);
+        assert_eq!(ports.not_assessable, 8);
+        assert_eq!(ports.state, "Partly assessed");
+        assert_eq!(outcome.coverage_percent, 22);
+        assert!(outcome.grade_withheld);
+        assert_eq!(outcome.grade_label, "Grade withheld");
+        assert!(
+            outcome
+                .grade_withheld_reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("Storage health")
+        );
+        assert!(
+            outcome
+                .method_rows
+                .iter()
+                .any(|row| row.value.contains("USB video service"))
+        );
     }
 }
