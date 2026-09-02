@@ -325,8 +325,9 @@ function AdvanceScanPanel({
       </div>
       <p className="panel-lead">
         Advance scan reads deeper hardware detail than the standard assessment: battery capacity and
-        wear, storage SMART health, port topology, panel identity and radios. It then prepares Report D
-        with a provisional grade. It still does not erase anything and it does not open file contents.
+        wear, USB controller topology, cameras and microphones with no frame captured, storage SMART
+        health, panel identity and radios. It then prepares Report D with a provisional grade. It still
+        does not erase anything and it does not open file contents.
       </p>
 
       <ul className="advance-scope">

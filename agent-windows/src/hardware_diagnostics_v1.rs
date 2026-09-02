@@ -390,6 +390,15 @@ pub fn evaluate(
     }
 }
 
+/// USB controller topology points, per rubric CG-1.0 section 5.5.
+/// Awarded only when Windows answered the controller class. Plastic
+/// connectors and interactive insertion are scored separately and stay
+/// not assessable until a technician plugs a device in.
+#[must_use]
+pub fn usb_topology_points(enumerated: bool) -> u32 {
+    if enumerated { 2 } else { 0 }
+}
+
 /// Battery points from measured health, per rubric CG-1.0 section 5.1.
 /// Only ever called with a health figure derived from two real capacities.
 #[must_use]
@@ -843,6 +852,13 @@ mod tests {
         assert_eq!(battery_points(59.9), 6);
         assert_eq!(battery_points(50.0), 6);
         assert_eq!(battery_points(49.9), 0);
+    }
+
+    #[test]
+    fn usb_topology_is_two_points_and_never_the_physical_connectors() {
+        assert_eq!(usb_topology_points(true), 2);
+        assert_eq!(usb_topology_points(false), 0);
+        assert!(usb_topology_points(true) < DiagnosticDomain::PortsAndConnectivity.weight());
     }
 
     #[test]

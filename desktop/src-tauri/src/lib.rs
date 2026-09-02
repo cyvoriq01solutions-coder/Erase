@@ -505,7 +505,24 @@ mod tests {
         assert_eq!(outcome.bytes_written, 0);
         assert!(outcome.grade_withheld);
         assert!(outcome.provisional);
-        assert_eq!(outcome.index_percent, None);
+        // Index is None only when nothing was assessed. On Windows, A3 may
+        // enumerate USB controllers and award 2 of 10 Ports points, which
+        // yields Some(100) on those assessed points. Storage is still unread,
+        // so the grade stays withheld.
+        match outcome.index_percent {
+            None => assert_eq!(outcome.coverage_percent, 0),
+            Some(index) => {
+                assert!(outcome.coverage_percent > 0);
+                assert!(index <= 100);
+            }
+        }
+        assert!(
+            outcome
+                .grade_withheld_reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("Storage")
+        );
         assert_eq!(outcome.grading_engine, "CYVRA Grading Engine");
         assert!(!outcome.telemetry_groups.is_empty());
         assert_eq!(outcome.coverage_domains.len(), 6);

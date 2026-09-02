@@ -177,6 +177,9 @@ test("advance scan is opt-in, honest about gaps, and never claims an AI grade", 
   assert.match(combined, /Method and limitations/);
   assert.match(combined, /inferDeviceForm/);
   assert.match(combined, /advance-scan-progress/);
+  assert.match(combined, /USB video service/i);
+  assert.match(combined, /physically verified/i);
+  assert.match(combined, /no frame captured/i);
 
   // Both permissions must start off, and a write test cannot stand alone.
   assert.match(app, /benchmarks:\s*false/);
