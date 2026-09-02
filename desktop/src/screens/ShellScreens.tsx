@@ -326,12 +326,12 @@ function AdvanceScanPanel({
       <p className="panel-lead">
         Advance scan reads deeper hardware detail than the standard assessment: battery capacity and
         wear, USB controller topology, cameras and microphones with no frame captured, storage SMART
-        health, panel identity and radios. It then prepares Report D with a provisional grade. It still
-        does not erase anything and it does not open file contents.
+        health from Windows reliability counters, panel identity and radios. It then prepares Report D
+        with a provisional grade. It still does not erase anything and it does not open file contents.
       </p>
 
       <ul className="advance-scope">
-        <li>Deep collection is read-only.</li>
+        <li>Deep collection is read-only. Storage SMART is read, never erased.</li>
         <li>Windows may ask for administrator approval. Declining still produces Report D.</li>
         <li>Anything this build cannot read is printed as not collected in this scan.</li>
       </ul>
