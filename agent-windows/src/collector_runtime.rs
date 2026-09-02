@@ -418,16 +418,13 @@ mod tests {
     use crate::{CollectorErrorKind, CollectorName};
     use std::{process::Command, time::Duration};
 
+    /// Windows CI already launches several PowerShell collectors during Advance
+    /// scan tests. These runtime tests must not compete for another
+    /// `powershell.exe` with a five-second cap; `cmd.exe` starts immediately.
     #[cfg(target_os = "windows")]
     fn test_command(windows_script: &'static str, _unix_script: &'static str) -> Command {
-        let mut command = Command::new("powershell.exe");
-        command.args([
-            "-NoLogo",
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            windows_script,
-        ]);
+        let mut command = Command::new("cmd.exe");
+        command.args(["/D", "/Q", "/C", windows_script]);
         command
     }
 
@@ -447,25 +444,33 @@ mod tests {
         )
     }
 
+    fn stdout_without_newline(output: &super::CommandOutput) -> &[u8] {
+        let stdout = output.stdout();
+        stdout
+            .strip_suffix(b"\r\n")
+            .or_else(|| stdout.strip_suffix(b"\n"))
+            .unwrap_or(stdout)
+    }
+
     #[test]
     fn successful_command_is_captured_within_limits() {
-        let mut command = test_command("[Console]::Out.Write('ok')", "printf ok");
+        let mut command = test_command("echo ok", "printf ok");
         let output = run_command(
             CollectorName::HardwareInventory,
             &mut command,
-            test_limits(Duration::from_secs(5), 1024),
+            test_limits(Duration::from_secs(30), 1024),
             &CancellationToken::new(),
         )
         .unwrap_or_else(|error| panic!("unexpected command failure: {:?}", error.kind));
 
-        assert_eq!(output.stdout(), b"ok");
+        assert_eq!(stdout_without_newline(&output), b"ok");
     }
 
     #[test]
     fn cancellation_is_honoured_before_process_spawn() {
         let cancellation = CancellationToken::new();
         cancellation.cancel();
-        let mut command = test_command("[Console]::Out.Write('not-run')", "printf not-run");
+        let mut command = test_command("echo not-run", "printf not-run");
 
         let error = match run_command(
             CollectorName::HardwareInventory,
@@ -482,7 +487,7 @@ mod tests {
 
     #[test]
     fn long_running_command_is_terminated_at_timeout() {
-        let mut command = test_command("Start-Sleep -Seconds 2", "sleep 2");
+        let mut command = test_command("ping -n 3 127.0.0.1 >nul", "sleep 2");
 
         let error = match run_command(
             CollectorName::HardwareInventory,
@@ -499,12 +504,15 @@ mod tests {
 
     #[test]
     fn excessive_output_is_terminated_and_not_returned() {
-        let mut command = test_command("[Console]::Out.Write('x' * 4096)", "printf '%4096s' x");
+        let mut command = test_command(
+            "echo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "printf '%4096s' x",
+        );
 
         let error = match run_command(
             CollectorName::HardwareInventory,
             &mut command,
-            test_limits(Duration::from_secs(5), 128),
+            test_limits(Duration::from_secs(30), 128),
             &CancellationToken::new(),
         ) {
             Ok(_) => panic!("over-limit command unexpectedly succeeded"),
