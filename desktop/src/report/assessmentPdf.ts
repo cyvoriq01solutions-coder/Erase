@@ -165,7 +165,7 @@ function wrapLine(text: string, maxChars: number): string[] {
 
 type PdfStyle = "title" | "kicker" | "heading" | "body" | "meta" | "label" | "value" | "notice" | "footer";
 
-type PdfItem =
+export type PdfItem =
   | { kind: "gap"; size: number }
   | { kind: "rule" }
   | { kind: "text"; style: PdfStyle; text: string; maxChars?: number };
@@ -193,7 +193,7 @@ function styleSpec(style: PdfStyle): { font: "F1" | "F2"; size: number; leading:
   }
 }
 
-function addSection(items: PdfItem[], heading: string, rows: NamedValue[], empty: string): void {
+export function addSection(items: PdfItem[], heading: string, rows: NamedValue[], empty: string): void {
   items.push({ kind: "gap", size: 10 });
   items.push({ kind: "text", style: "heading", text: heading });
   items.push({ kind: "rule" });
@@ -339,7 +339,7 @@ function emitText(x: number, y: number, font: "F1" | "F2", size: number, text: s
   return `BT /${font} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${pdfEscape(text)}) Tj ET`;
 }
 
-function paginate(items: PdfItem[]): string[] {
+export function paginate(items: PdfItem[]): string[] {
   const pages: string[][] = [];
   let ops: string[] = [];
   let y = PAGE_HEIGHT - MARGIN_TOP;
@@ -384,7 +384,7 @@ function paginate(items: PdfItem[]): string[] {
   return pages.map((pageOps) => pageOps.join("\n"));
 }
 
-function assemblePdf(pageStreams: string[], footer: string): Uint8Array {
+export function assemblePdf(pageStreams: string[], footer: string): Uint8Array {
   const objects: string[] = [];
   objects.push("1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n");
 
@@ -448,11 +448,8 @@ export function buildAssessmentPdf(verification: VerificationRecord, generatedAt
   return assemblePdf(pages, `${reportId}  ·  CYVORIQ Solutions Pvt. Ltd.  ·  not a sanitization certificate`);
 }
 
-export function saveAssessmentPdf(verification: VerificationRecord): { filename: string; reportId: string } {
-  const generatedAt = new Date();
-  const reportId = makeReportId(verification, generatedAt);
-  const filename = `CYVRA-Erase-assessment-${reportId}.pdf`;
-  const bytes = buildAssessmentPdf(verification, generatedAt);
+/** Hand a generated PDF to the operator as a download. Shared by every report. */
+export function downloadPdf(bytes: Uint8Array, filename: string): void {
   const copy = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(copy).set(bytes);
   const blob = new Blob([copy], { type: "application/pdf" });
@@ -465,5 +462,12 @@ export function saveAssessmentPdf(verification: VerificationRecord): { filename:
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+export function saveAssessmentPdf(verification: VerificationRecord): { filename: string; reportId: string } {
+  const generatedAt = new Date();
+  const reportId = makeReportId(verification, generatedAt);
+  const filename = `CYVRA-Erase-assessment-${reportId}.pdf`;
+  downloadPdf(buildAssessmentPdf(verification, generatedAt), filename);
   return { filename, reportId };
 }

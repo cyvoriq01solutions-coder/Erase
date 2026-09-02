@@ -82,7 +82,60 @@ export interface AdvanceScanConsent {
 
 export interface TelemetryGroup {
   title: string;
+  note: string | null;
   rows: NamedValue[];
+}
+
+export interface DomainCoverage {
+  domain: string;
+  awarded: number;
+  assessed: number;
+  notAssessable: number;
+  weight: number;
+  state: string;
+  note: string;
+}
+
+export interface AdvanceScanProgress {
+  percent: number;
+  stageIndex: number;
+  stage: string;
+  detail: string;
+}
+
+export type DeviceFormHint = "portable" | "fixed" | "unknown";
+
+/** Ordered Advance scan stages. Must stay aligned with agent-windows diagnostics::STAGES. */
+export const ADVANCE_SCAN_STAGES = [
+  "Preparing advance scan",
+  "Reading battery and power",
+  "Reading processor and cache",
+  "Reading memory",
+  "Reading storage identity and health",
+  "Reading ports and connectivity",
+  "Reading display panel",
+  "Reading cameras and microphones",
+  "Running permitted benchmarks",
+  "Scoring coverage",
+  "Preparing Report D",
+] as const;
+
+/** Chassis type from Report A, when the basic assessment has already run. */
+export function inferDeviceForm(verification: VerificationRecord | null): DeviceFormHint {
+  if (!verification) {
+    return "unknown";
+  }
+  const form = verification.hardwareFields
+    .find((row) => row.label.toLowerCase() === "form factor")
+    ?.value.toLowerCase()
+    .trim();
+  if (form === "laptop" || form === "tablet") {
+    return "portable";
+  }
+  if (form === "desktop") {
+    return "fixed";
+  }
+  return "unknown";
 }
 
 export interface AdvanceScanRecord {
@@ -97,8 +150,12 @@ export interface AdvanceScanRecord {
   destructiveOperationsEnabled: boolean;
   contentInspected: boolean;
   boundaryNote: string;
+  temporaryFilesNote: string;
   telemetryGroups: TelemetryGroup[];
   coverageRows: NamedValue[];
+  coverageDomains: DomainCoverage[];
+  methodRows: NamedValue[];
+  rubricRows: NamedValue[];
   notAssessable: string[];
   gradingEngine: string;
   gradingRubric: string;

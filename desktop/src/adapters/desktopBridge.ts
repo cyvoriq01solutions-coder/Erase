@@ -1,9 +1,12 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
+  ADVANCE_SCAN_STAGES,
   assertSafeShellBootstrap,
   type AdvanceScanConsent,
+  type AdvanceScanProgress,
   type AdvanceScanRecord,
+  type DeviceFormHint,
   type ScanTarget,
   type ShellBootstrap,
   type VerificationProgress,
@@ -107,14 +110,306 @@ export async function runDeviceVerification(driveLetters: string[]): Promise<Ver
   };
 }
 
-export async function runAdvanceScan(consent: AdvanceScanConsent): Promise<AdvanceScanRecord> {
+const advancePreviewListeners = new Set<(progress: AdvanceScanProgress) => void>();
+
+function emitAdvancePreview(progress: AdvanceScanProgress): void {
+  for (const listener of advancePreviewListeners) {
+    listener(progress);
+  }
+}
+
+function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
+  const notCollected =
+    "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.";
+  const needsKernel =
+    "Not collected in this scan. This value requires a kernel-mode sensor driver, which CYVRA deliberately does not ship.";
+  const declined = "Declined by the operator. No benchmark was run and nothing was written.";
+  const notAttempted = "Not attempted in this scan. A technician records this at physical verification.";
+  const benchmarkValue = consent.benchmarks ? notCollected : declined;
+  const group = (title: string, rows: Array<[string, string]>, note: string | null = null) => ({
+    title,
+    note,
+    rows: rows.map(([label, value]) => ({ label, value })),
+  });
+
+  return {
+    ok: true,
+    message:
+      "Advance scan finished. Coverage 0%. No grade was issued because too little of this device could be assessed.",
+    schemaVersion: "hardware_diagnostics_v1",
+    elevationState: "not_requested",
+    elevationLabel: "Administrator approval was not requested",
+    benchmarksConsented: consent.benchmarks,
+    writeBenchmarkConsented: consent.writeBenchmark,
+    bytesWritten: 0,
+    destructiveOperationsEnabled: false,
+    contentInspected: false,
+    boundaryNote:
+      "Advance scan collection is read-only. Benchmarks were not permitted, so none were run. Nothing was written to any assessed drive. File contents were not opened. No data was erased. Purge stays off.",
+    temporaryFilesNote: "No temporary file was created by this scan.",
+    telemetryGroups: [
+      group("Battery and power", [
+        ["Battery probe", "Battery collection is only available on Windows."],
+      ]),
+      group(
+        "Battery sources consulted",
+        [
+          ["Windows battery class", "Not queried on this PC"],
+          ["Firmware static data", "Not queried on this PC"],
+          ["Firmware full-charge capacity", "Not queried on this PC"],
+          ["Firmware cycle count", "Not queried on this PC"],
+          ["Windows battery report", "Not queried on this PC"],
+        ],
+        "Advance scan asks every source Windows offers and records the answer, so a missing value can be explained rather than guessed.",
+      ),
+      group("Processor and thermal", [
+        ["Base clock", notCollected],
+        ["Maximum clock", notCollected],
+        ["Cache hierarchy", notCollected],
+        ["Instruction sets", notCollected],
+        ["Package temperature", needsKernel],
+        ["Fan speed", needsKernel],
+      ]),
+      group("Memory", [
+        ["Installed total", notCollected],
+        ["Available", notCollected],
+        ["Channel mode", notCollected],
+      ]),
+      group("Storage health and SMART", [
+        ["Bus type", notCollected],
+        ["Power-on hours", notCollected],
+        ["Power cycles", notCollected],
+        ["Total bytes written", notCollected],
+        ["Percentage used", notCollected],
+        ["Available spare", notCollected],
+        ["Media errors", notCollected],
+        ["Sectors pending reallocation", notCollected],
+        ["Predicted failure", notCollected],
+      ]),
+      group("Ports and connectivity", [
+        ["USB controller ports", notCollected],
+        ["Negotiated port speeds", notCollected],
+        ["Physically verified ports", notAttempted],
+        ["Wi-Fi signal quality", notCollected],
+        ["Wi-Fi link speed", notCollected],
+        ["Bluetooth radio", notCollected],
+        ["Ethernet link", notCollected],
+      ]),
+      group("Display panel", [
+        ["Panel manufacturer", notCollected],
+        ["Panel model", notCollected],
+        ["Native resolution", notCollected],
+        ["Refresh rate", notCollected],
+        ["HDR capability", notCollected],
+        ["Panel manufacture year", notCollected],
+      ]),
+      group("Cameras and microphones", [
+        ["Cameras", notCollected],
+        ["Microphones", notCollected],
+      ]),
+      group("Benchmarks", [
+        ["Processor sustained clock", benchmarkValue],
+        ["Memory pattern check", benchmarkValue],
+        ["Sequential read", benchmarkValue],
+        ["Random read", benchmarkValue],
+        ["Write benchmark", consent.writeBenchmark ? notCollected : declined],
+      ]),
+      group("Technician checks", [
+        ["Keyboard", notAttempted],
+        ["Display inspection", notAttempted],
+        ["Trackpad", notAttempted],
+        ["Speakers", notAttempted],
+        ["Camera image", notAttempted],
+      ]),
+    ],
+    coverageRows: [
+      { label: "Points in scope", value: "100" },
+      { label: "Points assessed", value: "0" },
+      { label: "Points awarded", value: "0" },
+      { label: "Points not assessable", value: "100" },
+      { label: "Coverage", value: "0%" },
+      { label: "Assessed Health Index", value: "Not assessable in this scan" },
+      { label: "Grading engine", value: "CYVRA Grading Engine" },
+      { label: "Rubric", value: "CG-1.0" },
+    ],
+    coverageDomains: [
+      {
+        domain: "Battery and power",
+        awarded: 0,
+        assessed: 0,
+        notAssessable: 20,
+        weight: 20,
+        state: "Not assessable",
+        note: "The battery probe could not run on this PC",
+      },
+      {
+        domain: "Processor and thermal stability",
+        awarded: 0,
+        assessed: 0,
+        notAssessable: 20,
+        weight: 20,
+        state: "Not assessable",
+        note: consent.benchmarks
+          ? "Processor benchmark is not implemented in this collector version"
+          : "Processor benchmark was declined by the operator",
+      },
+      {
+        domain: "Memory integrity and speed",
+        awarded: 0,
+        assessed: 0,
+        notAssessable: 15,
+        weight: 15,
+        state: "Not assessable",
+        note: consent.benchmarks
+          ? "Memory pattern check is not implemented in this collector version"
+          : "Memory pattern check was declined by the operator",
+      },
+      {
+        domain: "Storage health and SMART",
+        awarded: 0,
+        assessed: 0,
+        notAssessable: 20,
+        weight: 20,
+        state: "Not assessable",
+        note: "Storage SMART telemetry is not collected in this scan",
+      },
+      {
+        domain: "Ports and connectivity",
+        awarded: 0,
+        assessed: 0,
+        notAssessable: 10,
+        weight: 10,
+        state: "Not assessable",
+        note: "Port topology and radio telemetry are not collected in this scan",
+      },
+      {
+        domain: "Screen, keyboard and peripherals",
+        awarded: 0,
+        assessed: 0,
+        notAssessable: 15,
+        weight: 15,
+        state: "Not assessable",
+        note: "Interactive technician checks were not attempted in this scan",
+      },
+    ],
+    methodRows: [
+      {
+        label: "Collection mode",
+        value:
+          "Read-only. Windows management classes, firmware tables and Windows' own battery report.",
+      },
+      {
+        label: "Battery capacity",
+        value:
+          "Design capacity and full-charge capacity as reported by firmware. Wear is the difference between them, never inferred from a charge level.",
+      },
+      {
+        label: "Temperatures and fan speed",
+        value:
+          "Not collected. Reading CPU package temperature or fan RPM requires a kernel-mode sensor driver. CYVRA does not ship one, because the drivers commonly used for this are on Microsoft's vulnerable-driver blocklist.",
+      },
+      {
+        label: "Memory testing",
+        value:
+          "A user-mode pattern check can never cover memory the kernel occupies, so full-coverage memory testing belongs to a pre-boot environment.",
+      },
+      {
+        label: "Physical ports",
+        value:
+          "Windows exposes controller topology, not the plastic connectors. A port count is only confirmed when a technician inserts a device.",
+      },
+      {
+        label: "Unknown values",
+        value:
+          "A value that was not read is printed as not collected. It is never replaced with zero and never estimated.",
+      },
+    ],
+    rubricRows: [
+      { label: "Battery and power", value: "20 points of 100" },
+      { label: "Processor and thermal stability", value: "20 points of 100" },
+      { label: "Memory integrity and speed", value: "15 points of 100" },
+      { label: "Storage health and SMART", value: "20 points of 100" },
+      { label: "Ports and connectivity", value: "10 points of 100" },
+      { label: "Screen, keyboard and peripherals", value: "15 points of 100" },
+      {
+        label: "Grade bands",
+        value: "A+ 90-100, A 80-89, B 65-79, C 50-64, F below 50, on the assessed index",
+      },
+      {
+        label: "Coverage floor",
+        value:
+          "Below 70% coverage, or with a required area unassessed, the grade is withheld rather than banded",
+      },
+      {
+        label: "Confirmed fault",
+        value:
+          "A measured critical fault forces F, because that is evidence held rather than evidence missing",
+      },
+    ],
+    notAssessable: [
+      "Battery and power — The battery probe could not run on this PC (20 of 20 points)",
+      "Processor and thermal stability — Processor benchmark was declined by the operator (20 of 20 points)",
+      "Memory integrity and speed — Memory pattern check was declined by the operator (15 of 15 points)",
+      "Storage health and SMART — Storage SMART telemetry is not collected in this scan (20 of 20 points)",
+      "Ports and connectivity — Port topology and radio telemetry are not collected in this scan (10 of 10 points)",
+      "Screen, keyboard and peripherals — Interactive technician checks were not attempted in this scan (15 of 15 points)",
+    ],
+    gradingEngine: "CYVRA Grading Engine",
+    gradingRubric: "CG-1.0",
+    gradeLabel: "Grade withheld",
+    gradeCondition: "Not enough of this device could be assessed",
+    gradeWithheld: true,
+    gradeWithheldReason:
+      "Grade withheld. A required area could not be assessed in this scan: Storage health and SMART.",
+    coveragePercent: 0,
+    indexPercent: null,
+    provisional: true,
+  };
+}
+
+async function runAdvanceScanPreview(consent: AdvanceScanConsent): Promise<AdvanceScanRecord> {
+  const details = [
+    "Checking the Advance scan boundary and permissions.",
+    "Asking Windows and the battery firmware for capacity.",
+    "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
+    "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
+    "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
+    "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
+    "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
+    "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
+    consent.benchmarks
+      ? "Benchmarks were permitted, but none are implemented in this collector version."
+      : "Benchmarks were not permitted, so none were run.",
+    "Scoring only the areas that were actually assessed.",
+    "Report D is ready. No grade was issued.",
+  ];
+
+  for (const [index, stage] of ADVANCE_SCAN_STAGES.entries()) {
+    const percent = Math.round((index / (ADVANCE_SCAN_STAGES.length - 1)) * 100);
+    emitAdvancePreview({
+      percent,
+      stageIndex: index,
+      stage,
+      detail: details[index] ?? stage,
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 160));
+  }
+
+  return previewAdvanceRecord(consent);
+}
+
+export async function runAdvanceScan(
+  consent: AdvanceScanConsent,
+  deviceForm: DeviceFormHint,
+): Promise<AdvanceScanRecord> {
   if (!isTauri()) {
-    throw new Error("Advance scan runs only in the installed CYVRA Erase application.");
+    return runAdvanceScanPreview(consent);
   }
 
   const response = await invoke<AdvanceScanRecord>("run_advance_scan", {
     benchmarksConsented: consent.benchmarks,
     writeBenchmarkConsented: consent.writeBenchmark,
+    deviceForm,
   });
 
   if (!response.ok || response.destructiveOperationsEnabled || response.contentInspected) {
@@ -136,6 +431,22 @@ export async function subscribeVerificationProgress(
   }
 
   const unlisten = await listen<VerificationProgress>("verification-progress", (event) => {
+    onProgress(event.payload);
+  });
+  return unlisten;
+}
+
+export async function subscribeAdvanceScanProgress(
+  onProgress: (progress: AdvanceScanProgress) => void,
+): Promise<() => void> {
+  if (!isTauri()) {
+    advancePreviewListeners.add(onProgress);
+    return () => {
+      advancePreviewListeners.delete(onProgress);
+    };
+  }
+
+  const unlisten = await listen<AdvanceScanProgress>("advance-scan-progress", (event) => {
     onProgress(event.payload);
   });
   return unlisten;

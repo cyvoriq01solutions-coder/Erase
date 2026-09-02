@@ -6,11 +6,14 @@ import {
   peripheralHealthRows,
   saveAssessmentPdf,
 } from "../report/assessmentPdf";
+import { makeDiagnosticId, saveDiagnosticPdf } from "../report/diagnosticPdf";
 import type {
   AdvanceScanConsent,
   AdvanceScanPhase,
+  AdvanceScanProgress,
   AdvanceScanRecord,
   BridgeState,
+  DomainCoverage,
   NamedValue,
   NavigationId,
   ScanTarget,
@@ -18,6 +21,7 @@ import type {
   VerificationProgress,
   VerificationRecord,
 } from "../types/shell";
+import { ADVANCE_SCAN_STAGES } from "../types/shell";
 
 interface ShellScreenProps {
   current: NavigationId;
@@ -34,6 +38,7 @@ interface ShellScreenProps {
   advanceScan: AdvanceScanRecord | null;
   advanceScanPhase: AdvanceScanPhase;
   advanceScanError: string | null;
+  advanceScanProgress: AdvanceScanProgress | null;
   advanceConsent: AdvanceScanConsent;
   onToggleAdvanceConsent: (field: keyof AdvanceScanConsent) => void;
   onRunAdvanceScan: () => void;
@@ -160,44 +165,157 @@ function OverviewScreen({
   );
 }
 
+function advanceStageStatus(
+  index: number,
+  phase: AdvanceScanPhase,
+  progress: AdvanceScanProgress | null,
+): "Pending" | "Running" | "Complete" | "Stopped" {
+  if (phase === "error") return "Stopped";
+  if (phase === "complete") return "Complete";
+  if (phase !== "running") return "Pending";
+  const current = progress?.stageIndex ?? 0;
+  if (index < current) return "Complete";
+  if (index === current) return "Running";
+  return "Pending";
+}
+
+function AdvanceProgressRing({
+  percent,
+  phase,
+  stage,
+  detail,
+}: {
+  percent: number;
+  phase: AdvanceScanPhase;
+  stage: string;
+  detail: string;
+}) {
+  const size = 156;
+  const stroke = 11;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(100, percent));
+  const offset = circumference - (clamped / 100) * circumference;
+  const tone =
+    phase === "error"
+      ? "advance-ring-error"
+      : phase === "complete"
+        ? "advance-ring-done"
+        : phase === "running"
+          ? "advance-ring-live"
+          : "advance-ring-idle";
+  const shown = phase === "idle" ? 0 : clamped;
+
+  return (
+    <div
+      className={`advance-progress ${tone}`}
+      role="status"
+      aria-live="polite"
+      aria-label="Advance scan progress"
+    >
+      <div className="advance-ring-wrap">
+        <svg
+          className="advance-ring"
+          width={size}
+          height={size}
+          viewBox={`0 0 ${size} ${size}`}
+          aria-hidden="true"
+        >
+          <circle
+            className="advance-ring-track"
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            strokeWidth={stroke}
+          />
+          <circle
+            className="advance-ring-value"
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            strokeWidth={stroke}
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        </svg>
+        <div className="advance-ring-label">
+          <strong>{phase === "idle" ? "0" : shown}</strong>
+          <span>{phase === "idle" ? "ready" : "%"}</span>
+        </div>
+      </div>
+      <div className="advance-progress-copy">
+        <p className="advance-progress-kicker">
+          {phase === "running"
+            ? "Now reading"
+            : phase === "complete"
+              ? "Finished"
+              : phase === "error"
+                ? "Stopped"
+                : "Waiting"}
+        </p>
+        <p className="advance-progress-stage">{stage}</p>
+        <p className="advance-progress-detail">{detail}</p>
+      </div>
+    </div>
+  );
+}
+
 function AdvanceScanPanel({
   collectionOn,
+  previewMode,
   verificationPhase,
   advanceScan,
   advanceScanPhase,
   advanceScanError,
+  advanceScanProgress,
   advanceConsent,
   onToggleAdvanceConsent,
   onRunAdvanceScan,
   onNavigate,
 }: {
   collectionOn: boolean;
+  previewMode: boolean;
 } & Pick<
   ShellScreenProps,
   | "verificationPhase"
   | "advanceScan"
   | "advanceScanPhase"
   | "advanceScanError"
+  | "advanceScanProgress"
   | "advanceConsent"
   | "onToggleAdvanceConsent"
   | "onRunAdvanceScan"
   | "onNavigate"
 >) {
   const busy = advanceScanPhase === "running" || verificationPhase === "running";
-  const canRun = collectionOn && !busy;
+  const canRun = (collectionOn || previewMode) && !busy;
+  const percent =
+    advanceScanPhase === "complete" ? 100 : (advanceScanProgress?.percent ?? 0);
+  const stage =
+    advanceScanProgress?.stage ??
+    (advanceScanPhase === "complete" ? "Preparing Report D" : "Preparing advance scan");
+  const detail =
+    advanceScanPhase === "running"
+      ? (advanceScanProgress?.detail ?? "Advance scan is reading this PC.")
+      : advanceScanPhase === "complete"
+        ? (advanceScanProgress?.detail ?? "Report D is ready.")
+        : advanceScanPhase === "error"
+          ? (advanceScanError ?? "Advance scan stopped.")
+          : "The circle shows live percent and the exact subsystem being read.";
 
   return (
-    <section className="content-panel" aria-labelledby="advance-title">
+    <section className="content-panel advance-panel" aria-labelledby="advance-title">
       <div className="panel-heading">
         <div>
           <span className="card-label">DEEPER, OPTIONAL</span>
           <h2 id="advance-title">Advance scan</h2>
         </div>
         <span
-          className={`status-pill ${advanceScanPhase === "complete" ? "status-positive" : "status-neutral"}`}
+          className={`status-pill ${advanceScanPhase === "complete" ? "status-positive" : advanceScanPhase === "running" ? "status-advance" : "status-neutral"}`}
         >
           {advanceScanPhase === "running"
-            ? "Running"
+            ? `${percent}%`
             : advanceScanPhase === "complete"
               ? "Complete"
               : advanceScanPhase === "error"
@@ -216,6 +334,28 @@ function AdvanceScanPanel({
         <li>Windows may ask for administrator approval. Declining still produces Report D.</li>
         <li>Anything this build cannot read is printed as not collected in this scan.</li>
       </ul>
+
+      <AdvanceProgressRing
+        percent={percent}
+        phase={advanceScanPhase}
+        stage={stage}
+        detail={detail}
+      />
+
+      <ol className="advance-stage-list">
+        {ADVANCE_SCAN_STAGES.map((name, index) => {
+          const status = advanceStageStatus(index, advanceScanPhase, advanceScanProgress);
+          return (
+            <li key={name} className={status === "Running" ? "advance-stage-current" : undefined}>
+              <span className="advance-stage-number" aria-hidden="true">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span>{name}</span>
+              <strong>{status}</strong>
+            </li>
+          );
+        })}
+      </ol>
 
       <fieldset className="advance-consent">
         <legend>Permissions for this run</legend>
@@ -259,7 +399,7 @@ function AdvanceScanPanel({
 
       <div className="action-row">
         <button
-          className="button button-secondary"
+          className="button button-advance"
           type="button"
           disabled={!canRun}
           onClick={onRunAdvanceScan}
@@ -268,8 +408,10 @@ function AdvanceScanPanel({
         </button>
         <p>
           {collectionOn
-            ? "Deeper collection arrives one subsystem at a time. This build reports honestly what it cannot read yet."
-            : "Open the installed Windows application to run Advance scan."}
+            ? "The bright ring shows live percent and the exact subsystem being read. Battery capacity is collected in this version."
+            : previewMode
+              ? "Browser preview walks the same stages. Battery firmware is only read on the installed Windows application."
+              : "Open the installed Windows application to run Advance scan."}
         </p>
       </div>
 
@@ -308,6 +450,7 @@ function VerificationScreen({
   advanceScan,
   advanceScanPhase,
   advanceScanError,
+  advanceScanProgress,
   advanceConsent,
   onToggleAdvanceConsent,
   onRunAdvanceScan,
@@ -326,12 +469,14 @@ function VerificationScreen({
   | "advanceScan"
   | "advanceScanPhase"
   | "advanceScanError"
+  | "advanceScanProgress"
   | "advanceConsent"
   | "onToggleAdvanceConsent"
   | "onRunAdvanceScan"
   | "onNavigate"
 >) {
   const collectionOn = bridge.status === "ready" && bridge.bootstrap.liveCollectionEnabled;
+  const previewMode = bridge.status === "ready" && bridge.bootstrap.runtimeMode === "browser_design_adapter";
   const canRun =
     collectionOn && verificationPhase !== "running" && selectedDrives.length > 0;
   const percent = verificationPhase === "complete" ? 100 : (progress?.percent ?? 0);
@@ -483,10 +628,12 @@ function VerificationScreen({
 
       <AdvanceScanPanel
         collectionOn={collectionOn}
+        previewMode={previewMode}
         verificationPhase={verificationPhase}
         advanceScan={advanceScan}
         advanceScanPhase={advanceScanPhase}
         advanceScanError={advanceScanError}
+        advanceScanProgress={advanceScanProgress}
         advanceConsent={advanceConsent}
         onToggleAdvanceConsent={onToggleAdvanceConsent}
         onRunAdvanceScan={onRunAdvanceScan}
@@ -596,10 +743,85 @@ function ReportTable({ title, rows, empty }: { title: string; rows: NamedValue[]
 
 const GRADING_ENGINE_LABEL = "Graded by CYVRA Grading Engine";
 
+function CoverageDomainTable({ domains }: { domains: DomainCoverage[] }) {
+  if (domains.length === 0) {
+    return (
+      <section className="report-table-block" aria-labelledby="coverage-by-area-heading">
+        <h3 id="coverage-by-area-heading">Coverage by diagnostic area</h3>
+        <p className="report-empty-copy">No diagnostic areas were evaluated.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="report-table-block" aria-labelledby="coverage-by-area-heading">
+      <h3 id="coverage-by-area-heading">Coverage by diagnostic area</h3>
+      <table className="report-table coverage-table">
+        <thead>
+          <tr>
+            <th scope="col">Area</th>
+            <th scope="col">State</th>
+            <th scope="col">Awarded</th>
+            <th scope="col">Assessed</th>
+            <th scope="col">Not assessable</th>
+            <th scope="col">Weight</th>
+          </tr>
+        </thead>
+        <tbody>
+          {domains.map((domain) => (
+            <tr key={domain.domain}>
+              <th scope="row">
+                {domain.domain}
+                <small className="coverage-note">{domain.note}</small>
+              </th>
+              <td>{domain.state}</td>
+              <td>{domain.awarded}</td>
+              <td>{domain.assessed}</td>
+              <td>{domain.notAssessable}</td>
+              <td>{domain.weight}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 function AdvanceReportBlock({
   advanceScan,
+  verification,
   onNavigate,
-}: { advanceScan: AdvanceScanRecord | null } & Pick<ShellScreenProps, "onNavigate">) {
+}: { advanceScan: AdvanceScanRecord | null; verification: VerificationRecord | null } & Pick<
+  ShellScreenProps,
+  "onNavigate"
+>) {
+  const [pdfSaved, setPdfSaved] = useState(false);
+  const [savingPdf, setSavingPdf] = useState(false);
+  const [pdfNote, setPdfNote] = useState<string | null>(null);
+  const generatedAt = useMemo(() => new Date(), [advanceScan]);
+  const documentId = advanceScan ? makeDiagnosticId(verification, generatedAt) : "";
+
+  function handleSaveDiagnostic() {
+    if (!advanceScan) return;
+    setSavingPdf(true);
+    setPdfNote(null);
+    try {
+      const saved = saveDiagnosticPdf(advanceScan, verification);
+      setPdfSaved(true);
+      setPdfNote(
+        `Saved ${saved.filename} to this PC’s Downloads folder (or the folder the save dialog chose). Keep a copy off the disks you may later erase.`,
+      );
+    } catch (caught) {
+      setPdfNote(
+        caught instanceof Error
+          ? caught.message
+          : "Could not write Report D here. Use Print and choose Microsoft Print to PDF.",
+      );
+    } finally {
+      setSavingPdf(false);
+    }
+  }
+
   if (!advanceScan) {
     return (
       <section className="report-shell" aria-labelledby="advance-report-title">
@@ -641,6 +863,11 @@ function AdvanceReportBlock({
         </p>
         <span className="card-label">REPORT D</span>
         <h2 id="advance-report-title">In-depth hardware diagnostic evaluation</h2>
+        <p className="report-meta">
+          Document no. <strong>{documentId}</strong>
+          <span aria-hidden="true"> · </span>
+          Generated <strong>{generatedAt.toLocaleString()}</strong>
+        </p>
         <p className="local-assessment-notice">
           This is a computer-generated diagnostic evaluation of this Windows PC. It is not a
           sanitization certificate, not NIST SP 800-88 Purge proof, and not a DPDP compliance
@@ -659,7 +886,7 @@ function AdvanceReportBlock({
           <strong>{advanceScan.elevationLabel}</strong>
         </div>
         <div>
-          <span>Bytes written to disk</span>
+          <span>Bytes written to assessed drives</span>
           <strong>{advanceScan.bytesWritten}</strong>
         </div>
       </div>
@@ -695,19 +922,41 @@ function AdvanceReportBlock({
         </div>
       </section>
 
+      <div className="email-row no-print">
+        <label>Keep a copy of Report D off this PC</label>
+        <p className="panel-lead">
+          Save the diagnostic evaluation as a PDF. Print and choose Microsoft Print to PDF if the
+          download does not appear.
+        </p>
+        <div className="email-actions">
+          <button
+            className="button button-advance"
+            type="button"
+            disabled={savingPdf}
+            onClick={handleSaveDiagnostic}
+          >
+            {savingPdf ? "Writing PDF…" : pdfSaved ? "Save Report D again" : "Save Report D as PDF"}
+          </button>
+          <button className="button button-secondary" type="button" onClick={() => window.print()}>
+            Print…
+          </button>
+        </div>
+        {pdfNote ? <p className="setup-note">{pdfNote}</p> : null}
+      </div>
+
       <ReportTable
         title="Coverage statement"
         rows={advanceScan.coverageRows}
         empty="No coverage statement was produced."
       />
 
+      <CoverageDomainTable domains={advanceScan.coverageDomains} />
+
       {advanceScan.telemetryGroups.map((group) => (
-        <ReportTable
-          key={group.title}
-          title={group.title}
-          rows={group.rows}
-          empty="Not collected in this scan."
-        />
+        <div key={group.title}>
+          <ReportTable title={group.title} rows={group.rows} empty="Not collected in this scan." />
+          {group.note ? <p className="telemetry-note">{group.note}</p> : null}
+        </div>
       ))}
 
       <section className="report-table-block" aria-labelledby="not-assessable-heading">
@@ -723,9 +972,22 @@ function AdvanceReportBlock({
         )}
       </section>
 
+      <ReportTable
+        title="Method and limitations"
+        rows={advanceScan.methodRows}
+        empty="No method statement was produced."
+      />
+
+      <ReportTable
+        title="Grading rubric"
+        rows={advanceScan.rubricRows}
+        empty="No rubric was recorded."
+      />
+
       <section className="report-table-block" aria-labelledby="advance-boundary-heading">
         <h3 id="advance-boundary-heading">Method and boundary</h3>
         <p className="report-empty-copy">{advanceScan.boundaryNote}</p>
+        <p className="report-empty-copy">{advanceScan.temporaryFilesNote}</p>
         <p className="report-empty-copy">
           Issued by CYVORIQ Solutions Pvt. Ltd. as publisher of CYVRA Erase. This document is
           computer-generated on the assessed PC and is not cloud-authenticated in this version.
@@ -1058,7 +1320,11 @@ function ReportScreen({
         </section>
       )}
 
-      <AdvanceReportBlock advanceScan={advanceScan} onNavigate={onNavigate} />
+      <AdvanceReportBlock
+        advanceScan={advanceScan}
+        verification={verification}
+        onNavigate={onNavigate}
+      />
     </div>
   );
 }
@@ -1145,6 +1411,7 @@ export function ShellScreen({
   advanceScan,
   advanceScanPhase,
   advanceScanError,
+  advanceScanProgress,
   advanceConsent,
   onToggleAdvanceConsent,
   onRunAdvanceScan,
@@ -1174,6 +1441,7 @@ export function ShellScreen({
           advanceScan={advanceScan}
           advanceScanPhase={advanceScanPhase}
           advanceScanError={advanceScanError}
+          advanceScanProgress={advanceScanProgress}
           advanceConsent={advanceConsent}
           onToggleAdvanceConsent={onToggleAdvanceConsent}
           onRunAdvanceScan={onRunAdvanceScan}
