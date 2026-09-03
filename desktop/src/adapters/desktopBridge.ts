@@ -338,6 +338,7 @@ function previewAdvanceRecord(
         notAssessable: 20,
         weight: 20,
         state: "Not assessable",
+        confidence: "Not rated",
         note: "The battery probe could not run on this PC",
       },
       {
@@ -347,6 +348,7 @@ function previewAdvanceRecord(
         notAssessable: 20,
         weight: 20,
         state: "Not assessable",
+        confidence: "Not rated",
         note: consent.benchmarks
           ? "Processor benchmark is not implemented in this collector version"
           : "Processor benchmark was declined by the operator",
@@ -358,6 +360,7 @@ function previewAdvanceRecord(
         notAssessable: 15,
         weight: 15,
         state: "Not assessable",
+        confidence: "Not rated",
         note: consent.benchmarks
           ? "Memory pattern check is not implemented in this collector version"
           : "Memory pattern check was declined by the operator",
@@ -369,6 +372,7 @@ function previewAdvanceRecord(
         notAssessable: 20,
         weight: 20,
         state: "Not assessable",
+        confidence: "Not rated",
         note: "Storage SMART telemetry is not collected in this scan",
       },
       {
@@ -378,6 +382,7 @@ function previewAdvanceRecord(
         notAssessable: 10,
         weight: 10,
         state: "Not assessable",
+        confidence: "Not rated",
         note: "Port topology and radio telemetry are not collected in this scan",
       },
       {
@@ -387,6 +392,7 @@ function previewAdvanceRecord(
         notAssessable: 15,
         weight: 15,
         state: "Not assessable",
+        confidence: "Not rated",
         note: "Interactive technician checks were not attempted in this scan",
       },
     ],
@@ -473,6 +479,11 @@ function previewAdvanceRecord(
         value:
           "A measured critical fault forces F, because that is evidence held rather than evidence missing",
       },
+      {
+        label: "Issuance",
+        value:
+          "This is not an issued CYVORIQ grading certificate. Physical verification is required for a final grade.",
+      },
     ],
     notAssessable: [
       "Battery and power — The battery probe could not run on this PC (20 of 20 points)",
@@ -486,12 +497,14 @@ function previewAdvanceRecord(
     gradingRubric: "CG-1.0",
     gradeLabel: "Grade withheld",
     gradeCondition: "Not enough of this device could be assessed",
+    gradeObservation: null,
     gradeWithheld: true,
     gradeWithheldReason:
       "Grade withheld. A required area could not be assessed in this scan: Storage health and SMART.",
     coveragePercent: 0,
     indexPercent: null,
     provisional: true,
+    issuanceNotice: "This is not an issued CYVORIQ grading certificate.",
   };
 }
 

@@ -14,9 +14,9 @@ use crate::cpu_memory::{self, CpuMemoryProbe};
 use crate::display_radio::{self, DisplayRadioProbe, DisplayRadioSource};
 use crate::hardware_diagnostics_v1::{
     CoverageSummary, DeviceForm, DiagnosticDomain, DomainApplicability, DomainEvidence,
-    ElevationState, HardwareDiagnosticsV1, InteractiveAttestations, PhysicalPortAttestation,
-    battery_points, bluetooth_radio_points, ethernet_radio_points, evaluate,
-    memory_bandwidth_points, memory_inventory_points, memory_pattern_points,
+    ElevationState, HardwareDiagnosticsV1, ISSUANCE_NOTICE, InteractiveAttestations,
+    PhysicalPortAttestation, battery_points, bluetooth_radio_points, ethernet_radio_points,
+    evaluate, memory_bandwidth_points, memory_inventory_points, memory_pattern_points,
     processor_clock_points, processor_identity_points, usb_topology_points, wifi_radio_points,
 };
 use crate::hardware_inventory_v1::Confidence;
@@ -88,6 +88,7 @@ pub struct DomainCoverageRow {
     pub not_assessable: u32,
     pub weight: u32,
     pub state: String,
+    pub confidence: String,
     pub note: String,
 }
 
@@ -116,11 +117,13 @@ pub struct CustomerAdvanceScan {
     pub grading_rubric: &'static str,
     pub grade_label: &'static str,
     pub grade_condition: &'static str,
+    pub grade_observation: Option<&'static str>,
     pub grade_withheld: bool,
     pub grade_withheld_reason: Option<String>,
     pub coverage_percent: u32,
     pub index_percent: Option<u32>,
     pub provisional: bool,
+    pub issuance_notice: &'static str,
 }
 
 /// Run Advance scan without progress reporting.
@@ -458,11 +461,13 @@ fn build_report(
         grading_rubric: summary.rubric,
         grade_label: summary.band.label(),
         grade_condition: summary.band.condition(),
+        grade_observation: summary.band.observation(),
         grade_withheld: summary.is_withheld(),
         grade_withheld_reason: summary.withheld_reason.clone(),
         coverage_percent: summary.coverage_percent,
         index_percent: summary.index_percent,
         provisional: summary.provisional,
+        issuance_notice: ISSUANCE_NOTICE,
     }
 }
 
@@ -843,12 +848,22 @@ fn coverage_domains(evidence: &[DomainEvidence]) -> Vec<DomainCoverageRow> {
                 }
                 DomainApplicability::Assessable => "Partly assessed".to_string(),
             },
+            confidence: confidence_label(domain.confidence),
             note: domain
                 .note
                 .clone()
                 .unwrap_or_else(|| "Measured".to_string()),
         })
         .collect()
+}
+
+fn confidence_label(confidence: Confidence) -> String {
+    match confidence {
+        Confidence::High => "High".to_string(),
+        Confidence::Medium => "Medium".to_string(),
+        Confidence::Low => "Low".to_string(),
+        Confidence::Unknown => "Not rated".to_string(),
+    }
 }
 
 fn method_rows() -> Vec<NamedValue> {
@@ -929,6 +944,12 @@ fn rubric_rows() -> Vec<NamedValue> {
             row(
                 "Confirmed fault",
                 "A measured critical fault forces F, because that is evidence held rather than evidence missing".to_string(),
+            ),
+            row(
+                "Issuance",
+                format!(
+                    "{ISSUANCE_NOTICE} Physical verification is required for a final grade."
+                ),
             ),
         ])
         .collect()
@@ -2179,7 +2200,11 @@ mod tests {
         assert_eq!(battery_domain.assessed, 20);
         assert_eq!(battery_domain.awarded, 20);
         assert_eq!(battery_domain.state, "Fully assessed");
+        assert_eq!(battery_domain.confidence, "High");
         assert_eq!(outcome.coverage_percent, 20);
+        assert_eq!(outcome.issuance_notice, ISSUANCE_NOTICE);
+        assert!(outcome.provisional);
+        assert_eq!(outcome.grade_observation, None);
     }
 
     #[test]
@@ -2933,6 +2958,15 @@ mod tests {
         assert!(!outcome.grade_withheld);
         assert!(outcome.provisional);
         assert_eq!(outcome.grade_label, "A+");
+        assert_eq!(outcome.grade_observation, Some("software-observed"));
+        assert_eq!(outcome.issuance_notice, ISSUANCE_NOTICE);
+        assert!(outcome.rubric_rows.iter().any(|row| {
+            row.label == "Issuance"
+                && row
+                    .value
+                    .contains("not an issued CYVORIQ grading certificate")
+        }));
+        assert_eq!(cpu.confidence, "High");
         assert!(
             value_of(&outcome, "Benchmarks", "Memory pattern check")
                 .contains("not full-coverage memory testing")

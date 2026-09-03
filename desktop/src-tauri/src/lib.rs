@@ -90,6 +90,7 @@ struct DomainCoverageDto {
     not_assessable: u32,
     weight: u32,
     state: String,
+    confidence: String,
     note: String,
 }
 
@@ -127,11 +128,13 @@ struct AdvanceScanOutcome {
     grading_rubric: String,
     grade_label: String,
     grade_condition: String,
+    grade_observation: Option<String>,
     grade_withheld: bool,
     grade_withheld_reason: Option<String>,
     coverage_percent: u32,
     index_percent: Option<u32>,
     provisional: bool,
+    issuance_notice: String,
 }
 
 fn typed_core_boundary() -> &'static str {
@@ -240,6 +243,7 @@ fn advance_scan_outcome(scan: cyvra_core::diagnostics::CustomerAdvanceScan) -> A
                 not_assessable: domain.not_assessable,
                 weight: domain.weight,
                 state: domain.state,
+                confidence: domain.confidence,
                 note: domain.note,
             })
             .collect(),
@@ -250,11 +254,13 @@ fn advance_scan_outcome(scan: cyvra_core::diagnostics::CustomerAdvanceScan) -> A
         grading_rubric: scan.grading_rubric.to_string(),
         grade_label: scan.grade_label.to_string(),
         grade_condition: scan.grade_condition.to_string(),
+        grade_observation: scan.grade_observation.map(str::to_string),
         grade_withheld: scan.grade_withheld,
         grade_withheld_reason: scan.grade_withheld_reason,
         coverage_percent: scan.coverage_percent,
         index_percent: scan.index_percent,
         provisional: scan.provisional,
+        issuance_notice: scan.issuance_notice.to_string(),
     }
 }
 
@@ -554,6 +560,17 @@ mod tests {
             assert_eq!(outcome.grade_label, "F");
         }
         assert_eq!(outcome.grading_engine, "CYVRA Grading Engine");
+        assert_eq!(
+            outcome.issuance_notice,
+            "This is not an issued CYVORIQ grading certificate."
+        );
+        assert!(outcome.provisional);
+        assert!(
+            !outcome
+                .coverage_domains
+                .iter()
+                .any(|domain| domain.confidence.is_empty())
+        );
         assert!(!outcome.telemetry_groups.is_empty());
         assert_eq!(outcome.coverage_domains.len(), 6);
         assert!(!outcome.method_rows.is_empty());
