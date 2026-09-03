@@ -89,6 +89,7 @@ test("Rust command boundary links the reusable core and fails closed", () => {
   assert.match(rust, /run_device_verification/);
   assert.match(rust, /list_scan_targets/);
   assert.match(rust, /run_advance_scan/);
+  assert.match(rust, /#\[allow\(clippy::too_many_arguments\)\]/);
   assert.match(rust, /close_window/);
   assert.match(rust, /TypeId::of::<cyvra_core::CollectorError>/);
 

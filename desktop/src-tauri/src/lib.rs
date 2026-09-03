@@ -348,6 +348,7 @@ async fn run_device_verification(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn run_advance_scan(
     app: tauri::AppHandle,
     benchmarks_consented: Option<bool>,
