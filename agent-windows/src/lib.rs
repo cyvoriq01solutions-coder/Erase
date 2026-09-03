@@ -19,6 +19,7 @@ pub mod os;
 pub mod pdem;
 pub mod personal_data;
 pub mod report;
+pub mod report_signing;
 pub mod storage;
 pub mod storage_health;
 pub mod usb_topology;

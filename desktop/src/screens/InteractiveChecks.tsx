@@ -6,6 +6,13 @@ import type {
   LivePowerStatus,
   LiveRemovableVolume,
   PortAttestationValue,
+  UsbPortMark,
+  UsbPortState,
+} from "../types/shell";
+import {
+  USB_PORT_LABELS,
+  derivePhysicalPorts,
+  usbPortMarkLabel,
 } from "../types/shell";
 
 const WASH_COLOURS = [
@@ -44,9 +51,28 @@ function describeVolumes(volumes: LiveRemovableVolume[]): string {
   return volumes
     .map((volume) => {
       const letter = `${volume.letter.replace(/:$/, "")}:`;
-      return volume.label ? `${letter} ${volume.label}` : letter;
+      const name = volume.label ? `${letter} ${volume.label}` : letter;
+      return volume.speedLabel ? `${name} (${volume.speedLabel})` : name;
     })
     .join("; ");
+}
+
+function nextGuidedPort(ports: UsbPortState[]): number {
+  const index = ports.findIndex((port) => port.mark === "skip");
+  return index;
+}
+
+function portBandLabel(value: PortAttestationValue): string {
+  if (value === "all_passed") {
+    return "all on-chassis ports passed";
+  }
+  if (value === "partial") {
+    return "some passed";
+  }
+  if (value === "any_failed") {
+    return "a port failed";
+  }
+  return "not attempted";
 }
 
 function recorderMimeType(): string {
@@ -76,7 +102,9 @@ export function InteractiveChecks({ value, disabled, onChange }: InteractiveChec
   const [usbVolumes, setUsbVolumes] = useState<LiveRemovableVolume[]>([]);
   const [usbNew, setUsbNew] = useState<LiveRemovableVolume[]>([]);
   const [usbError, setUsbError] = useState<string | null>(null);
+  const [guidedPort, setGuidedPort] = useState(0);
   const usbBaseline = useRef(new Set<string>());
+  const assignedVolumes = useRef(new Set<string>());
 
   const [chargerOpen, setChargerOpen] = useState(false);
   const [power, setPower] = useState<LivePowerStatus>(EMPTY_POWER);
@@ -126,6 +154,25 @@ export function InteractiveChecks({ value, disabled, onChange }: InteractiveChec
             : listed
               ? `Windows already listed removable volume ${listed} when this check opened. CYVRA did not write to the stick.`
               : "No removable volume was listed while this check was open.";
+          const unassigned = fresh.filter((volume) => !assignedVolumes.current.has(volumeKey(volume)));
+          if (unassigned.length > 0) {
+            const ports = next.usbPorts.map((port) => ({ ...port }));
+            const targetIndex = ports.findIndex((port) => port.mark === "skip");
+            if (targetIndex >= 0) {
+              const volume = unassigned[0];
+              assignedVolumes.current.add(volumeKey(volume));
+              ports[targetIndex] = {
+                ...ports[targetIndex],
+                mark: "pass",
+                volumeLetter: volume.letter.replace(/:$/, ""),
+                speedLabel: volume.speedLabel || "Not reported by Windows",
+              };
+              next.usbPorts = ports;
+              next.physicalPorts = derivePhysicalPorts(ports);
+              const following = nextGuidedPort(ports);
+              setGuidedPort(following < 0 ? targetIndex : following);
+            }
+          }
         }
         if (chargerOpen) {
           setPowerError(null);
@@ -221,6 +268,13 @@ export function InteractiveChecks({ value, disabled, onChange }: InteractiveChec
   async function openUsbCheck() {
     setUsbError(null);
     setUsbNew([]);
+    assignedVolumes.current = new Set(
+      valueRef.current.usbPorts
+        .map((port) => port.volumeLetter.trim().replace(/:$/, "").toUpperCase())
+        .filter(Boolean),
+    );
+    const following = nextGuidedPort(valueRef.current.usbPorts);
+    setGuidedPort(following < 0 ? 0 : following);
     try {
       const probe = await probeLiveIntake();
       usbBaseline.current = new Set(probe.removable.map(volumeKey));
@@ -230,6 +284,21 @@ export function InteractiveChecks({ value, disabled, onChange }: InteractiveChec
       setUsbVolumes([]);
     }
     setUsbOpen(true);
+  }
+
+  function setUsbPort(index: number, patch: Partial<UsbPortState>) {
+    const ports = valueRef.current.usbPorts.map((port, portIndex) =>
+      portIndex === index ? { ...port, ...patch } : port,
+    );
+    onChange({
+      ...valueRef.current,
+      usbPorts: ports,
+      physicalPorts: derivePhysicalPorts(ports),
+    });
+    const following = nextGuidedPort(ports);
+    if (following >= 0) {
+      setGuidedPort(following);
+    }
   }
 
   async function openChargerCheck() {
@@ -364,9 +433,9 @@ export function InteractiveChecks({ value, disabled, onChange }: InteractiveChec
     <fieldset className="advance-consent interactive-checks" disabled={disabled}>
       <legend>Technician checks (optional)</legend>
       <p className="interactive-lead">
-        After the keyboard, insert a USB stick, plug the charger, then open the camera. Skipped checks
-        stay not assessable; they are never scored as zero. Keystrokes, tones, colour washes, snapshots
-        and clips are not stored. The webcam light will turn on during the camera check.
+        After the keyboard, use Check USB ports (teal) to insert a stick into USB 1, then USB 2–4.
+        Plug the charger, then open the camera. Skipped checks stay not assessable; they are never
+        scored as zero. Keystrokes, tones, colour washes, snapshots and clips are not stored.
       </p>
 
       <Subject
@@ -382,7 +451,7 @@ export function InteractiveChecks({ value, disabled, onChange }: InteractiveChec
       />
       <Subject
         title="Keyboard"
-        copy="A webview cannot see Fn combinations and some OEM hotkeys. Attest only the keys you could try. Keystrokes are not stored."
+        copy="This window cannot see Fn combinations and some OEM hotkeys. Attest only the keys you could try. Keystrokes are not stored."
         value={value.keyboard}
         onChange={(next) => setSubject("keyboard", next)}
         actionLabel={keysOpen ? "Finish keyboard check" : "Start keyboard check"}
@@ -394,12 +463,13 @@ export function InteractiveChecks({ value, disabled, onChange }: InteractiveChec
         extra={keysOpen ? `${keysTried} distinct keys registered in this session. That count is not written to Report D.` : null}
       />
       <Subject
-        title="USB insertion"
-        copy="Insert any USB stick. CYVRA asks Windows whether a removable volume appeared. This listing does not write to the stick and does not award the four physical-port points. Attest those ports separately."
+        title="USB ports"
+        copy="PCs can have more than one USB socket. Tick USB 1 to USB 4 that exist on this chassis. A two-port laptop must mark USB 3 and USB 4 as Not on this PC — those sockets are not failed. Insert a stick when guided. CYVRA does not write to the stick. Speed is recorded as telemetry and does not award the four insertion points."
         value="skip"
         onChange={() => undefined}
         hideChoices
-        actionLabel={usbOpen ? "Finish USB check" : "Start USB insertion check"}
+        actionClassName="button button-usb"
+        actionLabel={usbOpen ? "Finish USB ports" : "Check USB ports"}
         onAction={() => {
           if (usbOpen) {
             setUsbOpen(false);
@@ -408,14 +478,21 @@ export function InteractiveChecks({ value, disabled, onChange }: InteractiveChec
           }
         }}
         extra={
-          value.liveUsb
-            ? value.liveUsb
-            : "Open this check, then insert a stick. Windows must list a letter before CYVRA can say it sensed the port."
+          <UsbPortGrid
+            ports={value.usbPorts}
+            disabled={disabled}
+            onChangePort={setUsbPort}
+            liveNote={
+              value.liveUsb
+                ? value.liveUsb
+                : "Open Check USB ports, then insert a stick into USB 1 when asked."
+            }
+          />
         }
       />
       <Subject
         title="Charger and charging"
-        copy="Plug the charger. CYVRA reads Win32_Battery only — no powercfg file. Charging is telemetry, not a CG-1.0 scoring item. Status 2 means AC is present, not that the pack is charging."
+        copy="Plug the charger. CYVRA reads the battery status Windows reports for this session. Charging is telemetry, not a grading point. On mains is not the same as charging. BatteryStatus 2 means AC is present, not that the pack is charging."
         value="skip"
         onChange={() => undefined}
         hideChoices
@@ -477,36 +554,10 @@ export function InteractiveChecks({ value, disabled, onChange }: InteractiveChec
         onChange={(next) => setSubject("capture", next)}
       />
 
-      <div className="interactive-subject">
-        <strong>Physically verified ports</strong>
-        <small>
-          Plug a technician test device into plastic connectors you want to confirm. A live USB
-          volume listing helps you see that Windows mounted a stick; it does not replace this
-          attestation and it is not a write to the stick or to an assessed drive.
-        </small>
-        <div className="interactive-choices" role="radiogroup" aria-label="Physically verified ports">
-          <Choice
-            checked={value.physicalPorts === "skip"}
-            label="Not attempted"
-            onSelect={() => setSubject("physicalPorts", "skip")}
-          />
-          <Choice
-            checked={value.physicalPorts === "all_passed"}
-            label="All attempted ports passed"
-            onSelect={() => setSubject("physicalPorts", "all_passed")}
-          />
-          <Choice
-            checked={value.physicalPorts === "partial"}
-            label="Some passed"
-            onSelect={() => setSubject("physicalPorts", "partial")}
-          />
-          <Choice
-            checked={value.physicalPorts === "any_failed"}
-            label="A port failed"
-            onSelect={() => setSubject("physicalPorts", "any_failed")}
-          />
-        </div>
-      </div>
+      <p className="ports-summary">
+        Physical port score from these ticks: {portBandLabel(value.physicalPorts)}. Empty sockets
+        marked Not on this PC are not failed.
+      </p>
 
       {washOpen ? (
         <div className="colour-wash" style={{ background: WASH_COLOURS[washIndex].value }}>
@@ -543,20 +594,33 @@ export function InteractiveChecks({ value, disabled, onChange }: InteractiveChec
       ) : null}
 
       {usbOpen ? (
-        <div className="interactive-overlay" role="dialog" aria-label="USB insertion check">
-          <p>Insert any USB stick now. CYVRA lists removable volumes Windows reports. Nothing is written to the stick.</p>
+        <div className="interactive-overlay usb-overlay" role="dialog" aria-label="USB port check">
+          <p className="usb-guide">
+            Insert a USB stick into <strong>{USB_PORT_LABELS[guidedPort] ?? "USB 1"}</strong> now.
+            Do not copy files onto the stick. CYVRA only reads the letter and speed Windows reports.
+          </p>
+          <p>
+            Then remove it and continue with the next socket that still shows Not attempted. If this
+            PC has no more sockets, mark the remaining rows Not on this PC.
+          </p>
           {usbError ? <p>{usbError}</p> : null}
           <p>
             {usbNew.length > 0
               ? `New since this check opened: ${describeVolumes(usbNew)}.`
-              : "Waiting for a new removable letter. If a stick is already in, Windows may already list it below."}
+              : "Waiting for a new removable letter on the guided socket."}
           </p>
           <p>
             {usbVolumes.length > 0
               ? `Currently listed: ${describeVolumes(usbVolumes)}.`
               : "No removable volume listed yet."}
           </p>
-          <button type="button" className="button" onClick={() => setUsbOpen(false)}>
+          <UsbPortGrid
+            ports={value.usbPorts}
+            disabled={false}
+            onChangePort={setUsbPort}
+            liveNote={null}
+          />
+          <button type="button" className="button button-usb" onClick={() => setUsbOpen(false)}>
             Close USB check
           </button>
         </div>
@@ -654,6 +718,7 @@ function Subject({
   onAction,
   extra,
   hideChoices,
+  actionClassName,
 }: {
   title: string;
   copy: string;
@@ -663,13 +728,14 @@ function Subject({
   onAction?: () => void;
   extra?: ReactNode;
   hideChoices?: boolean;
+  actionClassName?: string;
 }) {
   return (
     <div className="interactive-subject">
       <strong>{title}</strong>
       <small>{copy}</small>
       {onAction && actionLabel ? (
-        <button type="button" className="button button-secondary" onClick={onAction}>
+        <button type="button" className={actionClassName ?? "button button-secondary"} onClick={onAction}>
           {actionLabel}
         </button>
       ) : null}
@@ -681,6 +747,67 @@ function Subject({
           <Choice checked={value === "fail"} label="Fail" onSelect={() => onChange("fail")} />
         </div>
       )}
+    </div>
+  );
+}
+
+function UsbPortGrid({
+  ports,
+  disabled,
+  onChangePort,
+  liveNote,
+}: {
+  ports: UsbPortState[];
+  disabled: boolean;
+  onChangePort: (index: number, patch: Partial<UsbPortState>) => void;
+  liveNote: string | null;
+}) {
+  return (
+    <div className="usb-port-grid">
+      {liveNote ? <small className="usb-live-note">{liveNote}</small> : null}
+      {ports.map((port, index) => (
+        <article key={port.id} className="usb-port-card">
+          <label className="usb-port-tick">
+            <input
+              type="checkbox"
+              checked={port.mark !== "absent"}
+              disabled={disabled}
+              onChange={(event) =>
+                onChangePort(index, {
+                  mark: event.target.checked ? (port.mark === "absent" ? "skip" : port.mark) : "absent",
+                })
+              }
+            />
+            {USB_PORT_LABELS[index]}
+          </label>
+          <small>
+            {port.mark === "absent"
+              ? usbPortMarkLabel("absent")
+              : [usbPortMarkLabel(port.mark), port.volumeLetter ? `${port.volumeLetter.replace(/:$/, "")}:` : "", port.speedLabel]
+                  .filter(Boolean)
+                  .join(" · ")}
+          </small>
+          {port.mark === "absent" ? null : (
+            <div className="interactive-choices" role="radiogroup" aria-label={`${USB_PORT_LABELS[index]} result`}>
+              <Choice
+                checked={port.mark === "skip"}
+                label="Not attempted"
+                onSelect={() => onChangePort(index, { mark: "skip" as UsbPortMark })}
+              />
+              <Choice
+                checked={port.mark === "pass"}
+                label="Pass"
+                onSelect={() => onChangePort(index, { mark: "pass" })}
+              />
+              <Choice
+                checked={port.mark === "fail"}
+                label="Fail"
+                onSelect={() => onChangePort(index, { mark: "fail" })}
+              />
+            </div>
+          )}
+        </article>
+      ))}
     </div>
   );
 }

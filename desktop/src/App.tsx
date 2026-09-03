@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import logoUrl from "./assets/cyvoriq-logo.webp";
 import {
   closeApplication,
   listScanTargets,
@@ -200,9 +201,17 @@ export default function App() {
     return (
       <main className="setup-shell">
         <div className="setup-card">
-          <span className="eyebrow">CYVRA ERASE</span>
-          <h1>Starting CYVRA Erase</h1>
-          <p>Checking the application safety boundary.</p>
+          <header className="setup-brand">
+            <img src={logoUrl} alt="CYVORIQ Solutions" width="92" height="56" />
+            <span>
+              <strong>CYVORIQ SOLUTIONS</strong>
+              <small>CYVRA Erase · checking this PC</small>
+            </span>
+          </header>
+          <div className="setup-body">
+            <h1>Starting CYVRA Erase</h1>
+            <p>Checking the application safety boundary.</p>
+          </div>
         </div>
       </main>
     );

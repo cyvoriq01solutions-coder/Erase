@@ -14,3 +14,7 @@ name = "cyvra-cli"
 path = "src/main.rs"
 
 [dependencies]
+ed25519-dalek = { version = "=2.2.0", default-features = false, features = ["std", "alloc", "rand_core", "fast"] }
+qrcode = { version = "=0.14.1", default-features = false, features = ["svg"] }
+rand_core = { version = "=0.6.4", features = ["getrandom"] }
+sha2 = { version = "=0.10.9", default-features = false, features = ["std"] }

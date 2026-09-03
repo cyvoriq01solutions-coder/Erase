@@ -100,6 +100,7 @@ struct LiveIntakeArgs {
     usb: Option<String>,
     power: Option<String>,
     camera: Option<String>,
+    usb_ports: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -108,6 +109,7 @@ struct LiveRemovableDto {
     letter: String,
     label: String,
     size_label: String,
+    speed_label: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -137,6 +139,19 @@ struct AdvanceScanProgress {
     stage_index: u8,
     stage: String,
     detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IntegritySealDto {
+    scheme: String,
+    digest_hex: String,
+    public_key_hex: String,
+    signature_hex: String,
+    qr_payload: String,
+    qr_svg: String,
+    canonical_json: String,
+    notice: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -171,6 +186,7 @@ struct AdvanceScanOutcome {
     index_percent: Option<u32>,
     provisional: bool,
     issuance_notice: String,
+    integrity_seal: Option<IntegritySealDto>,
 }
 
 fn typed_core_boundary() -> &'static str {
@@ -297,6 +313,16 @@ fn advance_scan_outcome(scan: cyvra_core::diagnostics::CustomerAdvanceScan) -> A
         index_percent: scan.index_percent,
         provisional: scan.provisional,
         issuance_notice: scan.issuance_notice.to_string(),
+        integrity_seal: scan.integrity_seal.map(|seal| IntegritySealDto {
+            scheme: seal.scheme.to_string(),
+            digest_hex: seal.digest_hex,
+            public_key_hex: seal.public_key_hex,
+            signature_hex: seal.signature_hex,
+            qr_payload: seal.qr_payload,
+            qr_svg: seal.qr_svg,
+            canonical_json: seal.canonical_json,
+            notice: seal.notice.to_string(),
+        }),
     }
 }
 
@@ -408,6 +434,7 @@ async fn run_advance_scan(
         usb: None,
         power: None,
         camera: None,
+        usb_ports: None,
     });
     let request = cyvra_core::diagnostics::AdvanceScanRequest {
         benchmarks_consented: benchmarks_consented.unwrap_or(false),
@@ -437,6 +464,7 @@ async fn run_advance_scan(
             usb_listed: notes.usb.unwrap_or_default(),
             power_status: notes.power.unwrap_or_default(),
             camera_session: notes.camera.unwrap_or_default(),
+            usb_ports: notes.usb_ports.unwrap_or_default(),
         },
     };
     let progress_app = app.clone();
@@ -469,6 +497,7 @@ async fn probe_live_intake() -> Result<LiveIntakeDto, String> {
                     letter: volume.letter,
                     label: volume.label,
                     size_label: volume.size_label,
+                    speed_label: volume.speed_label,
                 })
                 .collect(),
             power: LivePowerDto {
@@ -654,6 +683,11 @@ mod tests {
         assert!(!outcome.method_rows.is_empty());
         assert!(!outcome.rubric_rows.is_empty());
         assert!(!stages.is_empty(), "progress must be reported");
+        let seal = outcome.integrity_seal.expect("A9 attaches a local seal");
+        assert_eq!(seal.scheme, "cyvra-erd-ed25519-v1");
+        assert_eq!(seal.digest_hex.len(), 64);
+        assert!(seal.qr_payload.starts_with("CYVRA-ERD:1:"));
+        assert!(seal.notice.contains("not cloud-authenticated"));
     }
 
     #[test]

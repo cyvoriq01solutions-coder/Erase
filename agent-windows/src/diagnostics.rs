@@ -127,6 +127,7 @@ pub struct CustomerAdvanceScan {
     pub index_percent: Option<u32>,
     pub provisional: bool,
     pub issuance_notice: &'static str,
+    pub integrity_seal: Option<crate::report_signing::IntegritySeal>,
 }
 
 /// Run Advance scan without progress reporting.
@@ -240,6 +241,7 @@ pub fn run_advance_scan_with(
         request.device_form,
     );
     apply_live_intake(&mut outcome, &request.live_intake);
+    outcome.integrity_seal = Some(crate::report_signing::seal(&outcome));
 
     report(
         10,
@@ -472,6 +474,7 @@ fn build_report(
         index_percent: summary.index_percent,
         provisional: summary.provisional,
         issuance_notice: ISSUANCE_NOTICE,
+        integrity_seal: None,
     }
 }
 
@@ -513,9 +516,9 @@ fn temporary_files_note(battery: &BatteryProbe, benches: &BenchResult) -> String
     let mut parts = Vec::new();
     if battery.temporary_file_written {
         if battery.temporary_file_removed {
-            parts.push("One temporary battery report was written to the Windows temporary folder by powercfg and then deleted. It was not written to an assessed drive.");
+            parts.push("One temporary battery report was written to the Windows temporary folder and then deleted. It was not written to an assessed drive.");
         } else {
-            parts.push("One temporary battery report was written to the Windows temporary folder by powercfg and could not be confirmed as deleted.");
+            parts.push("One temporary battery report was written to the Windows temporary folder and could not be confirmed as deleted.");
         }
     }
     if benches.bytes_written > 0 {
@@ -902,7 +905,7 @@ fn method_rows() -> Vec<NamedValue> {
         ),
         row(
             "Physical ports",
-            "Windows exposes USB controller topology and attached devices, not the plastic connectors. A port is only confirmed when a technician inserts a test device. Insertion is operator-attested; this scan does not write to the stick or to an assessed drive. A live USB-volume listing can show that Windows mounted a stick; that listing does not award the four insertion points.".to_string(),
+            "Windows exposes USB controller topology and attached devices, not the plastic connectors. USB 1, USB 2, USB 3 and USB 4 are confirmed only when a technician ticks them after inserting a stick. Not on this PC does not fail a laptop that has fewer sockets. This scan does not write to the stick. Volume listing and USB speed are telemetry; they do not award the four insertion points.".to_string(),
         ),
         row(
             "Display panel",
@@ -918,7 +921,7 @@ fn method_rows() -> Vec<NamedValue> {
         ),
         row(
             "Keyboard",
-            "A webview cannot see Fn combinations and some OEM hotkeys. Keyboard points are awarded only when the operator attests the keys they could try. Keystrokes are not stored.".to_string(),
+            "This window cannot see Fn combinations and some OEM hotkeys. Keyboard points are awarded only when the operator attests the keys they could try. Keystrokes are not stored.".to_string(),
         ),
         row(
             "Unknown values",
@@ -1806,6 +1809,10 @@ fn interactive_group(interactive: InteractiveAttestations) -> TelemetryGroup {
                 "USB insertion sense",
                 NOT_ATTEMPTED.to_string(),
             ),
+            row("USB 1", NOT_ATTEMPTED.to_string()),
+            row("USB 2", NOT_ATTEMPTED.to_string()),
+            row("USB 3", NOT_ATTEMPTED.to_string()),
+            row("USB 4", NOT_ATTEMPTED.to_string()),
             row(
                 "Charger status",
                 NOT_ATTEMPTED.to_string(),
@@ -1840,6 +1847,10 @@ fn apply_live_intake(scan: &mut CustomerAdvanceScan, notes: &LiveIntakeNotes) {
             for row in &mut group.rows {
                 match row.label.as_str() {
                     "USB insertion sense" => row.value = notes.usb_or_default(),
+                    "USB 1" => row.value = notes.usb_port_or_default(0),
+                    "USB 2" => row.value = notes.usb_port_or_default(1),
+                    "USB 3" => row.value = notes.usb_port_or_default(2),
+                    "USB 4" => row.value = notes.usb_port_or_default(3),
                     "Charger status" => row.value = notes.power_or_default(),
                     "Live camera session" => row.value = notes.camera_or_default(),
                     _ => {}
@@ -3136,11 +3147,20 @@ mod tests {
                 camera_session:
                     "Live preview opened. A snapshot was taken in this session and was not stored."
                         .to_string(),
+                usb_ports: vec![
+                    "USB 1: Pass · E: · USB 3.0 SuperSpeed".to_string(),
+                    "USB 2: Not on this PC".to_string(),
+                    String::new(),
+                    String::new(),
+                ],
             },
             ..AdvanceScanRequest::default()
         });
 
         assert!(value_of(&outcome, "Technician checks", "USB insertion sense").contains("E:"));
+        assert!(value_of(&outcome, "Technician checks", "USB 1").contains("USB 3.0 SuperSpeed"));
+        assert!(value_of(&outcome, "Technician checks", "USB 2").contains("Not on this PC"));
+        assert!(value_of(&outcome, "Technician checks", "USB 3").contains("Not attempted"));
         assert!(value_of(&outcome, "Technician checks", "Charger status").contains("Charging"));
         assert!(
             value_of(&outcome, "Technician checks", "Live camera session").contains("snapshot")
@@ -3190,5 +3210,15 @@ mod tests {
         assert_eq!(screen.awarded, 0);
         assert_eq!(screen.assessed, 4);
         assert!(value_of(&outcome, "Technician checks", "Display inspection").contains("Failed"));
+    }
+
+    #[test]
+    fn advance_scan_attaches_a_verifiable_local_integrity_seal() {
+        let outcome = run_advance_scan(&AdvanceScanRequest::default());
+        let seal = outcome.integrity_seal.expect("A9 attaches a local seal");
+        assert!(crate::report_signing::verify(&seal));
+        assert!(seal.notice.contains("not a CYVORIQ certificate"));
+        assert!(!seal.canonical_json.contains("integritySeal"));
+        assert!(seal.qr_payload.contains(&seal.digest_hex));
     }
 }

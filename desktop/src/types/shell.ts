@@ -106,6 +106,66 @@ export interface AdvanceScanProgress {
 
 export type AttestationValue = "skip" | "pass" | "fail";
 export type PortAttestationValue = "skip" | "all_passed" | "partial" | "any_failed";
+export type UsbPortMark = "skip" | "pass" | "fail" | "absent";
+
+export const USB_PORT_LABELS = ["USB 1", "USB 2", "USB 3", "USB 4"] as const;
+
+export interface UsbPortState {
+  id: 1 | 2 | 3 | 4;
+  mark: UsbPortMark;
+  volumeLetter: string;
+  speedLabel: string;
+}
+
+export function defaultUsbPorts(): UsbPortState[] {
+  return [
+    { id: 1, mark: "skip", volumeLetter: "", speedLabel: "" },
+    { id: 2, mark: "skip", volumeLetter: "", speedLabel: "" },
+    { id: 3, mark: "skip", volumeLetter: "", speedLabel: "" },
+    { id: 4, mark: "skip", volumeLetter: "", speedLabel: "" },
+  ];
+}
+
+export function usbPortMarkLabel(mark: UsbPortMark): string {
+  if (mark === "pass") {
+    return "Pass";
+  }
+  if (mark === "fail") {
+    return "Fail";
+  }
+  if (mark === "absent") {
+    return "Not on this PC";
+  }
+  return "Not attempted";
+}
+
+/** Four chassis ticks derive the CG-1.0 physical-port band. Absent sockets are not failures. */
+export function derivePhysicalPorts(ports: UsbPortState[]): PortAttestationValue {
+  const onChassis = ports.filter((port) => port.mark !== "absent");
+  const scored = onChassis.filter((port) => port.mark === "pass" || port.mark === "fail");
+  if (scored.some((port) => port.mark === "fail")) {
+    return "any_failed";
+  }
+  if (scored.length === 0) {
+    return "skip";
+  }
+  if (onChassis.length > 0 && onChassis.every((port) => port.mark === "pass")) {
+    return "all_passed";
+  }
+  return "partial";
+}
+
+export function summariseUsbPort(port: UsbPortState): string {
+  const parts = [`USB ${port.id}: ${usbPortMarkLabel(port.mark)}`];
+  if (port.volumeLetter.trim()) {
+    const letter = port.volumeLetter.trim().replace(/:$/, "");
+    parts.push(`${letter}:`);
+  }
+  if (port.speedLabel.trim()) {
+    parts.push(port.speedLabel.trim());
+  }
+  return parts.join(" · ");
+}
 
 /** Banded CG-1.0 grades are software-observed until a technician verifies the device. */
 export const SOFTWARE_OBSERVED_LABEL = "software-observed";
@@ -118,6 +178,7 @@ export interface AdvanceInteractive {
   speakers: AttestationValue;
   capture: AttestationValue;
   physicalPorts: PortAttestationValue;
+  usbPorts: UsbPortState[];
   liveUsb: string;
   livePower: string;
   liveCamera: string;
@@ -130,6 +191,7 @@ export const DEFAULT_ADVANCE_INTERACTIVE: AdvanceInteractive = {
   speakers: "skip",
   capture: "skip",
   physicalPorts: "skip",
+  usbPorts: defaultUsbPorts(),
   liveUsb: "",
   livePower: "",
   liveCamera: "",
@@ -139,6 +201,7 @@ export interface LiveRemovableVolume {
   letter: string;
   label: string;
   sizeLabel: string;
+  speedLabel: string;
 }
 
 export interface LivePowerStatus {
@@ -222,6 +285,18 @@ export interface AdvanceScanRecord {
   indexPercent: number | null;
   provisional: boolean;
   issuanceNotice: string;
+  integritySeal: IntegritySeal | null;
+}
+
+export interface IntegritySeal {
+  scheme: string;
+  digestHex: string;
+  publicKeyHex: string;
+  signatureHex: string;
+  qrPayload: string;
+  qrSvg: string;
+  canonicalJson: string;
+  notice: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

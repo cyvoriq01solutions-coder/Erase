@@ -3,6 +3,9 @@ import { listen } from "@tauri-apps/api/event";
 import {
   ADVANCE_SCAN_STAGES,
   DEFAULT_ADVANCE_INTERACTIVE,
+  defaultUsbPorts,
+  derivePhysicalPorts,
+  summariseUsbPort,
   assertSafeShellBootstrap,
   type AdvanceInteractive,
   type AdvanceScanConsent,
@@ -74,6 +77,7 @@ export async function probeLiveIntake(): Promise<LiveIntakeProbe> {
           letter: target.letter,
           label: target.label,
           sizeLabel: target.sizeLabel,
+          speedLabel: "USB 3.0 SuperSpeed",
         }),
       ),
       power: {
@@ -353,12 +357,16 @@ function previewAdvanceRecord(
           ["Display inspection", attestationLabel(interactive.colourWash)],
           ["Keyboard", attestationLabel(interactive.keyboard)],
           ["USB insertion sense", interactive.liveUsb || notAttempted],
+          ["USB 1", summariseUsbPort(interactive.usbPorts[0] ?? defaultUsbPorts()[0])],
+          ["USB 2", summariseUsbPort(interactive.usbPorts[1] ?? defaultUsbPorts()[1])],
+          ["USB 3", summariseUsbPort(interactive.usbPorts[2] ?? defaultUsbPorts()[2])],
+          ["USB 4", summariseUsbPort(interactive.usbPorts[3] ?? defaultUsbPorts()[3])],
           ["Charger status", interactive.livePower || notAttempted],
           ["Live camera session", interactive.liveCamera || notAttempted],
           ["Trackpad", attestationLabel(interactive.trackpad)],
           ["Speakers", attestationLabel(interactive.speakers)],
           ["Camera and microphone", attestationLabel(interactive.capture)],
-          ["Physically verified ports", portLabel(interactive.physicalPorts)],
+          ["Physically verified ports", portLabel(derivePhysicalPorts(interactive.usbPorts))],
         ],
         "Attested points are Pass / Fail / Not attempted. Live USB listing, charger status and in-session camera capture are telemetry. Keystrokes, speaker tones, colour washes, snapshots and clips are not stored.",
       ),
@@ -473,7 +481,7 @@ function previewAdvanceRecord(
       {
         label: "Physical ports",
         value:
-          "Windows exposes USB controller topology and attached devices, not the plastic connectors. A port is only confirmed when a technician inserts a test device. Insertion is operator-attested; this scan does not write to the stick or to an assessed drive. A live USB-volume listing can show that Windows mounted a stick; that listing does not award the four insertion points.",
+          "Windows exposes USB controller topology and attached devices, not the plastic connectors. USB 1, USB 2, USB 3 and USB 4 are confirmed only when a technician ticks them after inserting a stick. Not on this PC does not fail a laptop that has fewer sockets. This scan does not write to the stick. Volume listing and USB speed are telemetry; they do not award the four insertion points.",
       },
       {
         label: "Display panel",
@@ -493,7 +501,7 @@ function previewAdvanceRecord(
       {
         label: "Keyboard",
         value:
-          "A webview cannot see Fn combinations and some OEM hotkeys. Keyboard points are awarded only when the operator attests the keys they could try. Keystrokes are not stored.",
+          "This window cannot see Fn combinations and some OEM hotkeys. Keyboard points are awarded only when the operator attests the keys they could try. Keystrokes are not stored.",
       },
       {
         label: "Unknown values",
@@ -548,6 +556,18 @@ function previewAdvanceRecord(
     indexPercent: null,
     provisional: true,
     issuanceNotice: "This is not an issued CYVORIQ grading certificate.",
+    integritySeal: {
+      scheme: "cyvra-erd-ed25519-v1",
+      digestHex: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      publicKeyHex: "00".repeat(32),
+      signatureHex: "00".repeat(64),
+      qrPayload: "CYVRA-ERD:1:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      qrSvg:
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 168 168\"><rect width=\"168\" height=\"168\" fill=\"#ffffff\" stroke=\"#0b1f3a\"/><text x=\"12\" y=\"88\" font-size=\"11\" fill=\"#0b1f3a\">Preview seal</text></svg>",
+      canonicalJson: "{}",
+      notice:
+        "Local integrity seal. This proves the Report D JSON was not altered after this scan on this PC. It is not cloud-authenticated, not Authenticode, and not a CYVORIQ certificate.",
+    },
   };
 }
 
@@ -603,11 +623,12 @@ export async function runAdvanceScan(
     trackpad: interactive.trackpad,
     speakers: interactive.speakers,
     capture: interactive.capture,
-    physicalPorts: interactive.physicalPorts,
+    physicalPorts: derivePhysicalPorts(interactive.usbPorts),
     liveIntake: {
       usb: interactive.liveUsb || null,
       power: interactive.livePower || null,
       camera: interactive.liveCamera || null,
+      usbPorts: interactive.usbPorts.map(summariseUsbPort),
     },
   });
 

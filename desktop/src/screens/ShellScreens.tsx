@@ -7,6 +7,7 @@ import {
   saveAssessmentPdf,
 } from "../report/assessmentPdf";
 import { makeDiagnosticId, saveDiagnosticPdf } from "../report/diagnosticPdf";
+import { groupHex, verifyIntegritySeal, type SealCheck } from "../report/verifySeal";
 import type {
   AdvanceInteractive,
   AdvanceScanConsent,
@@ -15,6 +16,7 @@ import type {
   AdvanceScanRecord,
   BridgeState,
   DomainCoverage,
+  IntegritySeal,
   NamedValue,
   NavigationId,
   ScanTarget,
@@ -817,6 +819,58 @@ function CoverageDomainTable({ domains }: { domains: DomainCoverage[] }) {
   );
 }
 
+function IntegritySealCard({ seal }: { seal: IntegritySeal }) {
+  const [check, setCheck] = useState<SealCheck | null>(null);
+  const [busy, setBusy] = useState(false);
+  const qrSrc = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(seal.qrSvg)}`;
+
+  async function handleVerify() {
+    setBusy(true);
+    try {
+      setCheck(await verifyIntegritySeal(seal));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="seal-card" aria-labelledby="seal-title">
+      <div className="seal-qr">
+        <img src={qrSrc} width={168} height={168} alt="QR code of the Report D SHA-256 digest" />
+        <span className="card-label">LOCAL SEAL</span>
+      </div>
+      <div className="seal-body">
+        <h3 id="seal-title">Local integrity seal</h3>
+        <p>{seal.notice}</p>
+        <p className="seal-digest">
+          <span>SHA-256</span> {groupHex(seal.digestHex)}
+        </p>
+        <p className="setup-note">
+          Scheme {seal.scheme}. Scan the QR for the digest. Issued by CYVORIQ remains publisher
+          wording. This seal is not cloud authentication.
+        </p>
+        <div className="email-actions no-print">
+          <button
+            className="button button-secondary"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              void handleVerify();
+            }}
+          >
+            {busy ? "Checking…" : "Verify this report"}
+          </button>
+        </div>
+        {check ? (
+          <p className={check.ok ? "seal-pass" : "seal-fail"} role="status">
+            {check.detail}
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function AdvanceReportBlock({
   advanceScan,
   verification,
@@ -965,6 +1019,8 @@ function AdvanceReportBlock({
         </div>
       </section>
 
+      {advanceScan.integritySeal ? <IntegritySealCard seal={advanceScan.integritySeal} /> : null}
+
       <div className="email-row no-print">
         <label>Keep a copy of Report D off this PC</label>
         <p className="panel-lead">
@@ -1025,11 +1081,31 @@ function AdvanceReportBlock({
         <p className="report-empty-copy">{advanceScan.temporaryFilesNote}</p>
         <p className="report-empty-copy">
           Issued by CYVORIQ Solutions Pvt. Ltd. as publisher of CYVRA Erase. This document is
-          computer-generated on the assessed PC and is not cloud-authenticated in this version.
+          computer-generated on the assessed PC and is not cloud-authenticated in this version. A
+          local integrity seal, when present, proves the JSON was not altered after the scan. It is
+          not Authenticode and not a CYVORIQ certificate.
         </p>
-        <p className="report-empty-copy">
-          Operator / technician (physical verification): ________________________ Date: __________
-        </p>
+        <div className="verification-block">
+          <h3>Physical verification</h3>
+          <p>
+            Complete this block after inspecting the PC. USB 1–USB 4 ticks and other technician
+            checks above are the recorded result. This is not a handwritten signature line.
+          </p>
+          <dl className="verification-fields">
+            <div>
+              <dt>Technician name</dt>
+              <dd>Recorded at sign-off</dd>
+            </div>
+            <div>
+              <dt>Date of inspection</dt>
+              <dd>Recorded at sign-off</dd>
+            </div>
+            <div>
+              <dt>Physical verification</dt>
+              <dd>See Technician checks</dd>
+            </div>
+          </dl>
+        </div>
       </section>
     </section>
   );
@@ -1373,7 +1449,7 @@ function HelpScreen({
       <ScreenHeader
         eyebrow="HELP AND SETTINGS"
         title="Help and recovery"
-        copy="Activation, privacy and how to close CYVRA Erase safely."
+        copy="From first login to Report D download: what should happen, and what it means if it does not."
       />
 
       {bridge.status === "error" ? (
@@ -1393,35 +1469,56 @@ function HelpScreen({
       <section className="support-grid" aria-label="Support topics">
         <article className="support-card">
           <span className="support-number">01</span>
-          <h2>Activation key</h2>
+          <h2>Register and receive a key</h2>
           <p>
-            CYVRA emails the key from auth@cyvra.co.in after an administrator issues a licence. Enter it once on
-            this Windows PC.
+            Expected: an administrator approves the account, then auth@cyvra.co.in sends “Your CYVRA
+            Erase activation key”. If no mail arrives, the account is not licensed yet — do not guess
+            a key. If Activate later says invalid_key, the key is mistyped or already bound.
           </p>
         </article>
         <article className="support-card">
           <span className="support-number">02</span>
-          <h2>Drive selection</h2>
+          <h2>Install and activate</h2>
           <p>
-            Leave USB and backup disks unchecked unless you want them in the report. Large extra disks make
-            verification take longer.
+            Expected: Welcome, Terms, then Activate binds this Windows PC. If Windows SmartScreen
+            warns, that is unsigned assessment software, not a failed install. One licence is one PC.
           </p>
         </article>
         <article className="support-card">
           <span className="support-number">03</span>
-          <h2>What the report is</h2>
+          <h2>Drive selection and Report A</h2>
           <p>
-            The report is a local pre-sanitization assessment. Save it as a PDF. It is not a wipe certificate.
-            Battery health and port counts appear only when this scan collected them.
+            Expected: the system drive is selected; USB sticks stay off unless you want them in the
+            report. Report A is a local pre-sanitization assessment. Battery health and port counts
+            appear only when this scan collected them. If a serial prints as not reported, Windows
+            did not give one.
+          </p>
+        </article>
+        <article className="support-card">
+          <span className="support-number">04</span>
+          <h2>USB 1 to USB 4</h2>
+          <p>
+            Expected: Check USB ports (teal) asks you to insert a stick into USB 1, then the next
+            socket. Speed is listed when Windows knows it. Mark missing sockets Not on this PC. If
+            no letter appears, Windows did not mount the stick — do not award Pass.
           </p>
         </article>
         <article className="support-card">
           <span className="support-number">05</span>
           <h2>Technician live checks</h2>
           <p>
-            After the keyboard, insert a USB stick, plug the charger, then open the camera. CYVRA
-            lists a new removable letter, reads whether Windows says the pack is charging, and can
-            take a still or a five-second clip. Images are discarded. Nothing is written to the stick.
+            After the keyboard, check USB ports, plug the charger, then open the camera. Images are
+            discarded. Nothing is written to the stick. Charging is telemetry, not a grading point.
+          </p>
+        </article>
+        <article className="support-card">
+          <span className="support-number">06</span>
+          <h2>Report D download and verify</h2>
+          <p>
+            Expected: Save Report D as PDF. A local integrity seal (SHA-256 and Ed25519) proves the
+            JSON was not altered after the scan. Verify this report re-checks it on this PC. It is
+            not a wipe certificate, not cloud-authenticated, and not Authenticode. If the grade is
+            withheld, coverage was too low — inspect Not assessable.
           </p>
         </article>
       </section>
