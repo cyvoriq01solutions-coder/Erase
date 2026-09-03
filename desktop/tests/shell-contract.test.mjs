@@ -248,27 +248,40 @@ test("NSIS installer licence exists and is assessment-only", () => {
   assert.doesNotMatch(licence, /Backblaze/i);
 });
 
-test("USB 1-4 ticks, teal check, and customer copy hide construction names", () => {
+test("F2 removes live USB and charger overlays and keeps three workstreams", () => {
   const interactive = read("src/screens/InteractiveChecks.tsx");
   const installer = read("src/components/InstallerSetup.tsx");
   const screens = read("src/screens/ShellScreens.tsx");
+  const app = read("src/App.tsx");
   const diagnostic = read("src/report/diagnosticPdf.ts");
   const assessment = read("src/report/assessmentPdf.ts");
   const types = read("src/types/shell.ts");
+  const collector = readFileSync(join(repositoryRoot, "agent-windows/src/collector_runtime.rs"), "utf8");
   const customer = [interactive, installer, screens, diagnostic, assessment].join("\n");
 
-  assert.match(interactive, /USB 1/);
-  assert.match(interactive, /USB 2/);
-  assert.match(interactive, /USB 3/);
-  assert.match(interactive, /USB 4/);
-  assert.match(interactive, /button-usb/);
-  assert.match(interactive, /Insert a USB stick into/);
-  assert.match(interactive, /Check USB ports/);
+  assert.doesNotMatch(interactive, /probeLiveIntake/);
+  assert.doesNotMatch(interactive, /setInterval/);
+  assert.doesNotMatch(interactive, /button-usb/);
+  assert.doesNotMatch(interactive, /Check USB ports/);
+  assert.doesNotMatch(interactive, /Start charger check/);
+  assert.match(interactive, /read once during Advance scan/);
   assert.match(types, /derivePhysicalPorts/);
+  assert.match(types, /WorkstreamId/);
+  assert.match(screens, /workstream-card-assessment/);
+  assert.match(screens, /workstream-card-advance/);
+  assert.match(screens, /workstream-card-purge/);
+  assert.match(screens, /Back to main/);
+  assert.match(screens, /01 · Standard assessment/);
+  assert.match(screens, /02 · Advance diagnostic/);
+  assert.match(screens, /03 · Data purge/);
+  assert.match(app, /chooseWorkstream/);
   assert.match(installer, /setup-progress/);
   assert.match(installer, /CYVORIQ SOLUTIONS/);
   assert.match(screens, /Physical verification/);
   assert.match(diagnostic, /Physical verification/);
+  assert.match(diagnostic, /Advance scan pass/);
+  assert.match(collector, /-WindowStyle/);
+  assert.match(collector, /0x0800_0000/);
   assert.doesNotMatch(customer, /_{8,}/);
   assert.doesNotMatch(customer, /webview/i);
   assert.doesNotMatch(customer, /Win32_Battery/);

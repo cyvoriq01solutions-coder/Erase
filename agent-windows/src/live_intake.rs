@@ -1,11 +1,13 @@
 //! Live technician intake for USB insertion and charger sensing.
 //!
-//! The Interactive Checks overlay polls this while a technician inserts a USB
-//! stick or a charger. It is read-only: it never writes to a volume.
+//! F2 removed the Interactive Checks poll. `probe_live_intake` remains a
+//! registered command so the application still has exactly seven commands,
+//! but the technician UI does not call it. USB topology and battery/charger
+//! state for Report D come from the one-shot Advance scan collectors.
 //!
 //! Charging is not a CG-1.0 scoring domain. A sensed USB volume is not a
-//! substitute for the four physical-port attestation points. USB 1–USB 4 ticks
-//! award those points. Reported USB speed is telemetry only.
+//! substitute for the four physical-port attestation points. Reported USB
+//! speed is telemetry only.
 
 use crate::collector_runtime::{
     CancellationToken, CollectorLimits, TrustedPowerShellScript, run_fixed_powershell,

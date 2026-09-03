@@ -24,6 +24,7 @@ import type {
   VerificationPhase,
   VerificationProgress,
   VerificationRecord,
+  WorkstreamId,
 } from "./types/shell";
 import { DEFAULT_ADVANCE_INTERACTIVE, inferDeviceForm } from "./types/shell";
 
@@ -48,6 +49,7 @@ export default function App() {
   const [advanceInteractive, setAdvanceInteractive] = useState<AdvanceInteractive>(
     DEFAULT_ADVANCE_INTERACTIVE,
   );
+  const [workstream, setWorkstream] = useState<WorkstreamId>("assessment");
 
   useEffect(() => {
     let active = true;
@@ -137,7 +139,8 @@ export default function App() {
         detail: "The local assessment is ready to review.",
       });
       setVerificationPhase("complete");
-      setCurrent("results");
+      setWorkstream("assessment");
+      setCurrent("report");
     } catch (error) {
       setVerificationPhase("error");
       setVerificationError(
@@ -168,6 +171,8 @@ export default function App() {
           : "Report D is ready.",
       });
       setAdvanceScanPhase("complete");
+      setWorkstream("advance");
+      setCurrent("report");
     } catch (error) {
       setAdvanceScanPhase("error");
       setAdvanceScanError(
@@ -188,6 +193,15 @@ export default function App() {
     });
   }
 
+  function chooseWorkstream(id: WorkstreamId) {
+    setWorkstream(id);
+    if (id === "purge") {
+      setCurrent("report");
+      return;
+    }
+    setCurrent("verification");
+  }
+
   function handleToggleDrive(letter: string) {
     if (verificationPhase === "running") return;
     setSelectedDrives((currentLetters) =>
@@ -202,7 +216,7 @@ export default function App() {
       <main className="setup-shell">
         <div className="setup-card">
           <header className="setup-brand">
-            <img src={logoUrl} alt="CYVORIQ Solutions" width="92" height="56" />
+            <img src={logoUrl} alt="CYVORIQ Solutions" width="128" height="78" />
             <span>
               <strong>CYVORIQ SOLUTIONS</strong>
               <small>CYVRA Erase · checking this PC</small>
@@ -264,6 +278,8 @@ export default function App() {
         onRunAdvanceScan={() => {
           void handleRunAdvanceScan();
         }}
+        workstream={workstream}
+        onChooseWorkstream={chooseWorkstream}
         onExit={() => {
           void closeApplication();
         }}

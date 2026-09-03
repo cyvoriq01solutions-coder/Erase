@@ -68,7 +68,7 @@ export function AppFrame({
 
       <header className="titlebar">
         <div className="brand-lockup">
-          <img src={logoUrl} alt="CYVORIQ Solutions" width="70" height="42" />
+          <img src={logoUrl} alt="CYVORIQ Solutions" width="104" height="62" />
           <span className="brand-divider" aria-hidden="true" />
           <span className="product-name">
             <strong>CYVRA ERASE</strong>

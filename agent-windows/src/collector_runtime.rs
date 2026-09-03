@@ -171,9 +171,17 @@ pub fn run_fixed_powershell(
         "-NoLogo",
         "-NoProfile",
         "-NonInteractive",
+        "-WindowStyle",
+        "Hidden",
         "-Command",
         script.as_str(),
     ]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
 
     run_command(collector, &mut command, limits, cancellation)
 }
@@ -520,5 +528,13 @@ mod tests {
         };
 
         assert_eq!(error.kind, CollectorErrorKind::OutputLimitExceeded);
+    }
+
+    #[test]
+    fn powershell_runner_hides_the_console_window() {
+        let src = include_str!("collector_runtime.rs");
+        assert!(src.contains("-WindowStyle"));
+        assert!(src.contains("Hidden"));
+        assert!(src.contains("0x0800_0000"));
     }
 }

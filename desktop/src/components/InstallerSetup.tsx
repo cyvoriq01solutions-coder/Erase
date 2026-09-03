@@ -61,7 +61,7 @@ export function InstallerSetup({
     <main className="setup-shell" aria-labelledby="setup-title">
       <div className="setup-card">
         <header className="setup-brand">
-          <img src={logoUrl} alt="CYVORIQ Solutions" width="92" height="56" />
+          <img src={logoUrl} alt="CYVORIQ Solutions" width="128" height="78" />
           <span>
             <strong>CYVORIQ SOLUTIONS</strong>
             <small>CYVRA Erase · Windows assessment workstation</small>
@@ -88,7 +88,7 @@ export function InstallerSetup({
                 <li>Confirm this is an assessment product, not a wipe utility.</li>
                 <li>Accept the licence and privacy terms.</li>
                 <li>Enter the activation key emailed from auth@cyvra.co.in.</li>
-                <li>Choose drives, run verification, then generate Report A or Report D.</li>
+                <li>Choose a workstream: standard assessment, Advance diagnostic, or the wipe record.</li>
               </ol>
               <p className="setup-note">
                 Binding contacts api.cyvra.co.in from this application. Keep the activation key; it

@@ -731,7 +731,7 @@ fn screen_evidence(interactive: InteractiveAttestations) -> DomainEvidence {
     }
     let mut evidence = DomainEvidence::measured(domain, awarded, assessed, Confidence::High);
     evidence.note = Some(
-        "Screen, keyboard and peripheral points are operator-attested. Live USB listing, charger status and in-session camera capture do not add extra points.".to_string(),
+        "Screen, keyboard and peripheral points are operator-attested. USB topology and battery/charger state come from the Advance scan pass. Live USB and live charger overlays are not used. In-session camera capture does not add extra points.".to_string(),
     );
     evidence
 }
@@ -905,7 +905,7 @@ fn method_rows() -> Vec<NamedValue> {
         ),
         row(
             "Physical ports",
-            "Windows exposes USB controller topology and attached devices, not the plastic connectors. USB 1, USB 2, USB 3 and USB 4 are confirmed only when a technician ticks them after inserting a stick. Not on this PC does not fail a laptop that has fewer sockets. This scan does not write to the stick. Volume listing and USB speed are telemetry; they do not award the four insertion points.".to_string(),
+            "Windows exposes USB controller topology and attached devices during Advance scan. Live USB insertion and live charger overlays are not used in this version. Battery and USB rows on Report D come from that one diagnostic pass, not from a repeating live check. BatteryStatus codes (charging vs on mains) are telemetry, not extra points.".to_string(),
         ),
         row(
             "Display panel",
@@ -1794,7 +1794,7 @@ fn interactive_group(interactive: InteractiveAttestations) -> TelemetryGroup {
     TelemetryGroup {
         title: "Technician checks".to_string(),
         note: Some(
-            "Attested points are Pass / Fail / Not attempted. Live USB listing, charger status and in-session camera capture are telemetry. Keystrokes, speaker tones, colour washes, snapshots and clips are not stored.".to_string(),
+            "Attested points are Pass / Fail / Not attempted. USB topology and battery/charger state come from the Advance scan pass. Live USB and live charger overlays are not used. In-session camera capture is telemetry. Keystrokes, speaker tones, colour washes, snapshots and clips are not stored.".to_string(),
         ),
         rows: vec![
             row(
