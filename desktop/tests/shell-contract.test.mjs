@@ -271,9 +271,11 @@ test("F2 removes live USB and charger overlays and keeps three workstreams", () 
   assert.match(screens, /workstream-card-advance/);
   assert.match(screens, /workstream-card-purge/);
   assert.match(screens, /Back to main/);
-  assert.match(screens, /01 · Standard assessment/);
-  assert.match(screens, /02 · Advance diagnostic/);
-  assert.match(screens, /03 · Data purge/);
+  assert.match(screens, /01 · STANDARD ASSESSMENT/);
+  assert.match(screens, /02 · ADVANCED DIAGNOSTIC|02 · ADVANCE DIAGNOSTIC/);
+  assert.match(screens, /03 · DATA PURGE/);
+  assert.match(assessment, /Intake & Pre-Sanitization Assessment Record/);
+  assert.match(diagnostic, /Technical Diagnostic & Condition Evidence Record/);
   assert.match(app, /chooseWorkstream/);
   assert.match(installer, /setup-progress/);
   assert.match(installer, /CYVORIQ SOLUTIONS/);

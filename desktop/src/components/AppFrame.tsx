@@ -26,13 +26,13 @@ function bridgeLabel(bridge: BridgeState): string {
 }
 
 function footerState(phase: VerificationPhase, progress: VerificationProgress | null): string {
-  if (phase === "complete") return "assessment complete";
+  if (phase === "complete") return "Assessment complete";
   if (phase === "running") {
-    const detail = progress?.detail ?? "verification running";
+    const detail = progress?.detail ?? "Assessment in progress";
     return `${progress?.percent ?? 0}% · ${detail}`;
   }
-  if (phase === "error") return "verification stopped";
-  return "no verification started";
+  if (phase === "error") return "Assessment stopped";
+  return "Ready for this PC";
 }
 
 export function AppFrame({
@@ -62,7 +62,7 @@ export function AppFrame({
       <div className="foundation-banner" role="note">
         <strong>CYVRA ERASE · LOCAL ASSESSMENT</strong>
         <span>
-          Hardware and document map on this PC. Purge, grading issuance and cloud report authentication stay off. Report D can carry a local integrity seal.
+          Hardware and approved data-location assessment on this PC. This version does not erase, overwrite or destroy files. Purge stays off.
         </span>
       </div>
 
@@ -130,7 +130,7 @@ export function AppFrame({
         <span>Status: {footerState(verificationPhase, progress)}</span>
         <span>{bridgeLabel(bridge)}</span>
         <strong>
-          <span className="safe-dot" aria-hidden="true" /> Non-destructive foundation
+          <span className="safe-dot" aria-hidden="true" /> Non-Destructive Assessment
         </strong>
       </footer>
     </div>

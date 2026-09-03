@@ -249,31 +249,31 @@ export function InteractiveChecks({ value, disabled, onChange }: InteractiveChec
 
   return (
     <fieldset className="advance-consent interactive-checks" disabled={disabled}>
-      <legend>Technician checks (optional)</legend>
+      <legend>Technician checks — optional</legend>
       <p className="interactive-lead">
-        Colour wash, keyboard, camera, trackpad and speakers stay in this panel. USB sockets and
-        charger state are read once during Advance scan and printed on Report D. This version does
-        not run a live USB or live charger check. Skipped checks stay not assessable. Keystrokes,
-        tones, colour washes, snapshots and clips are not stored.
+        Use these optional checks to verify selected hardware functions. Test results are recorded,
+        but personal content is not stored. USB sockets and charger state are read once during Advance scan
+        and printed on Report D. This version does not run a live USB or live charger check. Skipped
+        checks stay not assessable. Keystrokes, tones, colour washes, snapshots and clips are not stored.
       </p>
 
       <Subject
-        title="Display colour wash"
-        copy="Full-screen red, green, blue, white and black. Look for dead pixels, lines and uneven backlight, then attest."
+        title="Display Colour Test"
+        copy="Start the colour wash: view each test colour and check for dead pixels, lines or uneven brightness. Select Pass if the display appears normal, or Fail if you identify a visible issue."
         value={value.colourWash}
         onChange={(next) => setSubject("colourWash", next)}
-        actionLabel={washOpen ? "Close colour wash" : "Start colour wash"}
+        actionLabel={washOpen ? "Close Colour Test" : "Start Colour Test"}
         onAction={() => {
           setWashIndex(0);
           setWashOpen((open) => !open);
         }}
       />
       <Subject
-        title="Keyboard"
-        copy="This window cannot see Fn combinations and some OEM hotkeys. Attest only the keys you could try. Keystrokes are not stored."
+        title="Keyboard Check"
+        copy="Press the requested keys and confirm that each key responds correctly. Keystrokes are not stored. Fn combinations and some OEM hotkeys will not register. Select Pass if the tested keys respond correctly."
         value={value.keyboard}
         onChange={(next) => setSubject("keyboard", next)}
-        actionLabel={keysOpen ? "Finish keyboard check" : "Start keyboard check"}
+        actionLabel={keysOpen ? "Finish Keyboard Check" : "Start Keyboard Check"}
         onAction={() => {
           seenKeys.current.clear();
           setKeysTried(0);
@@ -286,12 +286,12 @@ export function InteractiveChecks({ value, disabled, onChange }: InteractiveChec
         }
       />
       <Subject
-        title="Camera live capture"
-        copy="Opens the webcam now. Take a still or a five-second clip. The image stays in this window and is discarded when you close the check. Microphone audio is not recorded. Attest presence separately."
+        title="Camera Check"
+        copy="Open the camera and confirm that a live preview is available. No image or video is recorded or stored by CYVRA. Select Pass if the camera preview works correctly. Attest presence separately."
         value="skip"
         onChange={() => undefined}
         hideChoices
-        actionLabel={cameraOpen ? "Finish camera check" : "Open camera"}
+        actionLabel={cameraOpen ? "Finish Camera Check" : "Open Camera"}
         onAction={() => {
           if (cameraOpen) {
             closeCameraCheck();
@@ -302,17 +302,17 @@ export function InteractiveChecks({ value, disabled, onChange }: InteractiveChec
         extra={value.liveCamera || "The webcam light will turn on. That is expected."}
       />
       <Subject
-        title="Trackpad"
-        copy="Move, click and try a two-finger gesture on the canvas, then attest movement, clicks and gestures."
+        title="Trackpad Check"
+        copy="Move the pointer, test clicking and try a two-finger gesture. Select Pass if movement, clicking and gestures work correctly."
         value={value.trackpad}
         onChange={(next) => setSubject("trackpad", next)}
-        actionLabel={padOpen ? "Finish trackpad check" : "Open trackpad canvas"}
+        actionLabel={padOpen ? "Finish Trackpad Check" : "Open Trackpad Test"}
         onAction={() => setPadOpen((open) => !open)}
         extra={padMoved ? "Movement was seen on the canvas. Report D records only your attestation." : null}
       />
       <Subject
-        title="Speakers"
-        copy="Play a short left then right tone in memory. Attest only if you heard both channels. Nothing is recorded."
+        title="Speaker Check"
+        copy="Play the test tones and confirm that you can hear both audio channels. Audio is played for testing only and nothing is recorded. Select Pass if both test channels are heard clearly."
         value={value.speakers}
         onChange={(next) => setSubject("speakers", next)}
         extra={
