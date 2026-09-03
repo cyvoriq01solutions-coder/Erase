@@ -31,7 +31,7 @@ destinations. Wipe, B2 upload, and Authenticode stay out.
 4. **Charger** — plug in; wait for Charging (status 6–9) or On mains (status 2)
 5. **Camera** — Open camera, Take photo or Record 5s clip, then attest presence
 6. Trackpad, speakers
-7. Physically verified ports (the scored insertion)
+7. USB 1–USB 4 ticks (the scored insertion; Not on this PC is not a fail)
 
 ## Guards
 
@@ -46,6 +46,6 @@ destinations. Wipe, B2 upload, and Authenticode stay out.
 
 ## Still off
 
-- Report signing (A9)
+- Cloud authentication / Worker counter-sign (A9 is a local seal only)
 - Authenticode, unsigned B2 upload, WinPE
 - CYVRA Purge / Report B (plan only)

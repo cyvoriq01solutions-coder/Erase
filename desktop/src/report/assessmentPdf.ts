@@ -329,7 +329,7 @@ export function buildAssessmentDocument(verification: VerificationRecord, genera
   items.push({
     kind: "text",
     style: "body",
-    text: "Operator / technician (physical verification): ________________________    Date: __________",
+    text: "Physical verification. Technician name: recorded at sign-off on the assessed PC. Date of inspection: recorded at sign-off on the assessed PC. Result: see the hardware and location tables above. This block is not a handwritten signature line.",
   });
 
   return items;

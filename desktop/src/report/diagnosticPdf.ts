@@ -161,13 +161,31 @@ export function buildDiagnosticDocument(
   );
   sectionNumber += 1;
 
+  const seal = advanceScan.integritySeal;
+  if (seal) {
+    addSection(
+      items,
+      `${sectionNumber}. Local integrity seal`,
+      [
+        { label: "Scheme", value: seal.scheme },
+        { label: "SHA-256 digest", value: seal.digestHex },
+        { label: "QR payload", value: seal.qrPayload },
+        { label: "Ed25519 public key", value: seal.publicKeyHex },
+        { label: "Ed25519 signature", value: seal.signatureHex },
+        { label: "What this is", value: seal.notice },
+      ],
+      "No local integrity seal was attached.",
+    );
+    sectionNumber += 1;
+  }
+
   items.push({ kind: "gap", size: 10 });
   items.push({ kind: "text", style: "heading", text: `${sectionNumber}. Issuing organisation` });
   items.push({ kind: "rule" });
   items.push({
     kind: "text",
     style: "body",
-    text: "Issued by CYVORIQ Solutions Pvt. Ltd. as publisher of CYVRA Erase. This document is computer-generated on the assessed PC. It is not cloud-authenticated in this version. It does not certify sanitization, destruction, resale grade, or legal compliance.",
+    text: "Issued by CYVORIQ Solutions Pvt. Ltd. as publisher of CYVRA Erase. This document is computer-generated on the assessed PC. It is not cloud-authenticated in this version. A local integrity seal, when present, proves the JSON was not altered after the scan. It is not Authenticode and does not certify sanitization, destruction, resale grade, or legal compliance.",
   });
   items.push({
     kind: "text",
@@ -177,7 +195,7 @@ export function buildDiagnosticDocument(
   items.push({
     kind: "text",
     style: "body",
-    text: "Operator / technician (physical verification): ________________________    Date: __________",
+    text: "Physical verification. Technician name: recorded at sign-off on the assessed PC. Date of inspection: recorded at sign-off on the assessed PC. Result: see Technician checks, including USB 1–USB 4. This block is not a handwritten signature line.",
   });
 
   return items;

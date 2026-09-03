@@ -29,7 +29,7 @@ destinations. Wipe, B2 upload, and Authenticode stay out.
 ## Still off
 
 - Grading issuance (the flag stays false; A8 is the card, not a certificate)
-- Report signing / QR digest (A9)
+- Cloud authentication / Worker counter-sign (A9 is a local seal only)
 - Authenticode, unsigned B2 upload, WinPE
 - CYVRA Purge / Report B (plan only)
 

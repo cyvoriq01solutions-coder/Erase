@@ -55,7 +55,7 @@
     "createUpdaterArtifacts": false,
     "publisher": "CYVORIQ Solutions",
     "shortDescription": "CYVRA Erase assessment and verification for authorised Windows devices.",
-    "longDescription": "CYVRA Erase is a non-destructive assessment application. This NSIS package is an unsigned engineering installer until Authenticode signing and private Backblaze B2 release are approved. Live activation and collection stay disabled.",
+    "longDescription": "CYVRA Erase is a non-destructive assessment application for authorised Windows devices. This installer is unsigned until Authenticode signing and the authorised customer download are approved. This version does not erase files.",
     "copyright": "Copyright CYVORIQ Solutions. All rights reserved.",
     "licenseFile": "LICENSE.installer.txt",
     "category": "Utility",

@@ -62,7 +62,7 @@ export function AppFrame({
       <div className="foundation-banner" role="note">
         <strong>CYVRA ERASE · LOCAL ASSESSMENT</strong>
         <span>
-          Hardware and document map on this PC. Purge, grading issuance and cloud report authentication stay off.
+          Hardware and document map on this PC. Purge, grading issuance and cloud report authentication stay off. Report D can carry a local integrity seal.
         </span>
       </div>
 

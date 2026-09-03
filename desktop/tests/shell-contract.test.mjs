@@ -195,6 +195,12 @@ test("advance scan is opt-in, honest about gaps, and never claims an AI grade", 
   assert.match(combined, /USB insertion/i);
   assert.match(combined, /charger/i);
   assert.match(combined, /BatteryStatus/);
+  assert.match(combined, /Local integrity seal/);
+  assert.match(combined, /Ed25519/);
+  assert.match(combined, /SHA-256/);
+  assert.match(combined, /Verify this report/);
+  assert.match(combined, /cyvra-erd-ed25519-v1/);
+  assert.doesNotMatch(combined, /Authenticated by CYVORIQ/);
   assert.match(combined, /storage SMART/i);
   assert.match(combined, /reliability counters/i);
   assert.match(combined, /EDID/);
@@ -238,6 +244,38 @@ test("NSIS installer licence exists and is assessment-only", () => {
   assert.match(licence, /assessment/i);
   assert.match(licence, /not a customer\s+release/i);
   assert.doesNotMatch(licence, /erase customer files/i);
+  assert.doesNotMatch(licence, /\bNSIS\b/);
+  assert.doesNotMatch(licence, /Backblaze/i);
+});
+
+test("USB 1-4 ticks, teal check, and customer copy hide construction names", () => {
+  const interactive = read("src/screens/InteractiveChecks.tsx");
+  const installer = read("src/components/InstallerSetup.tsx");
+  const screens = read("src/screens/ShellScreens.tsx");
+  const diagnostic = read("src/report/diagnosticPdf.ts");
+  const assessment = read("src/report/assessmentPdf.ts");
+  const types = read("src/types/shell.ts");
+  const customer = [interactive, installer, screens, diagnostic, assessment].join("\n");
+
+  assert.match(interactive, /USB 1/);
+  assert.match(interactive, /USB 2/);
+  assert.match(interactive, /USB 3/);
+  assert.match(interactive, /USB 4/);
+  assert.match(interactive, /button-usb/);
+  assert.match(interactive, /Insert a USB stick into/);
+  assert.match(interactive, /Check USB ports/);
+  assert.match(types, /derivePhysicalPorts/);
+  assert.match(installer, /setup-progress/);
+  assert.match(installer, /CYVORIQ SOLUTIONS/);
+  assert.match(screens, /Physical verification/);
+  assert.match(diagnostic, /Physical verification/);
+  assert.doesNotMatch(customer, /_{8,}/);
+  assert.doesNotMatch(customer, /webview/i);
+  assert.doesNotMatch(customer, /Win32_Battery/);
+  assert.doesNotMatch(customer, /powercfg/i);
+  assert.doesNotMatch(customer, /\bNSIS\b/);
+  assert.doesNotMatch(customer, /\bVite\b/);
+  assert.doesNotMatch(customer, /Backblaze/i);
 });
 
 test("root workspace exposes bounded desktop checks", () => {
