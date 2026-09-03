@@ -6,6 +6,7 @@ import {
   type PdfItem,
 } from "./assessmentPdf";
 import type { AdvanceScanRecord, NamedValue, VerificationRecord } from "../types/shell";
+import { SOFTWARE_OBSERVED_LABEL } from "../types/shell";
 
 /** Report D document number, matching the ERA- convention used by Report A. */
 export function makeDiagnosticId(
@@ -18,9 +19,12 @@ export function makeDiagnosticId(
 }
 
 function gradeRows(advanceScan: AdvanceScanRecord): NamedValue[] {
+  const condition = advanceScan.gradeObservation
+    ? `${advanceScan.gradeCondition} — ${SOFTWARE_OBSERVED_LABEL}`
+    : advanceScan.gradeCondition;
   const rows: NamedValue[] = [
     { label: "Provisional grade", value: advanceScan.gradeLabel },
-    { label: "Condition", value: advanceScan.gradeCondition },
+    { label: "Condition", value: condition },
     {
       label: "Assessed Health Index",
       value:
@@ -32,9 +36,11 @@ function gradeRows(advanceScan: AdvanceScanRecord): NamedValue[] {
     { label: "Graded by", value: `${advanceScan.gradingEngine} · rubric ${advanceScan.gradingRubric}` },
     {
       label: "Issuance",
-      value: advanceScan.provisional
-        ? "Provisional. This is not an issued CYVORIQ grading certificate."
-        : "Issued",
+      value: advanceScan.issuanceNotice,
+    },
+    {
+      label: "Physical verification",
+      value: "Required for a final grade",
     },
   ];
   if (advanceScan.gradeWithheldReason) {
@@ -59,7 +65,7 @@ function identityRows(verification: VerificationRecord | null): NamedValue[] {
 function coverageByArea(advanceScan: AdvanceScanRecord): NamedValue[] {
   return advanceScan.coverageDomains.map((domain) => ({
     label: domain.domain,
-    value: `${domain.state} — awarded ${domain.awarded}, assessed ${domain.assessed}, not assessable ${domain.notAssessable} of ${domain.weight} points. ${domain.note}.`,
+    value: `${domain.state} (${domain.confidence}) — awarded ${domain.awarded}, assessed ${domain.assessed}, not assessable ${domain.notAssessable} of ${domain.weight} points. ${domain.note}.`,
   }));
 }
 
@@ -95,29 +101,29 @@ export function buildDiagnosticDocument(
     },
   ];
 
-  addSection(items, "1. Grading summary", gradeRows(advanceScan), "No grade was produced.");
-
   const identity = identityRows(verification);
   addSection(
     items,
-    "2. Device identity",
+    "1. Device identity",
     identity,
     "No basic assessment has been run in this session, so device identity is not carried onto this report.",
   );
 
   addSection(
     items,
-    "3. Coverage statement",
+    "2. Coverage statement",
     advanceScan.coverageRows,
     "No coverage statement was produced.",
   );
 
   addSection(
     items,
-    "4. Coverage by diagnostic area",
+    "3. Coverage by diagnostic area",
     coverageByArea(advanceScan),
     "No diagnostic areas were evaluated.",
   );
+
+  addSection(items, "4. Grading summary", gradeRows(advanceScan), "No grade was produced.");
 
   let sectionNumber = 5;
   for (const group of advanceScan.telemetryGroups) {

@@ -22,7 +22,7 @@ import type {
   VerificationProgress,
   VerificationRecord,
 } from "../types/shell";
-import { ADVANCE_SCAN_STAGES } from "../types/shell";
+import { ADVANCE_SCAN_STAGES, SOFTWARE_OBSERVED_LABEL } from "../types/shell";
 import { InteractiveChecks } from "./InteractiveChecks";
 
 interface ShellScreenProps {
@@ -788,6 +788,7 @@ function CoverageDomainTable({ domains }: { domains: DomainCoverage[] }) {
           <tr>
             <th scope="col">Area</th>
             <th scope="col">State</th>
+            <th scope="col">Confidence</th>
             <th scope="col">Awarded</th>
             <th scope="col">Assessed</th>
             <th scope="col">Not assessable</th>
@@ -802,6 +803,7 @@ function CoverageDomainTable({ domains }: { domains: DomainCoverage[] }) {
                 <small className="coverage-note">{domain.note}</small>
               </th>
               <td>{domain.state}</td>
+              <td>{domain.confidence}</td>
               <td>{domain.awarded}</td>
               <td>{domain.assessed}</td>
               <td>{domain.notAssessable}</td>
@@ -918,13 +920,25 @@ function AdvanceReportBlock({
         </div>
       </div>
 
+      <ReportTable
+        title="Coverage statement"
+        rows={advanceScan.coverageRows}
+        empty="No coverage statement was produced."
+      />
+
+      <CoverageDomainTable domains={advanceScan.coverageDomains} />
+
       <section className="grade-card" aria-labelledby="grade-title">
         <div className={advanceScan.gradeWithheld ? "grade-mark grade-mark-withheld" : "grade-mark"}>
           <span className="card-label">
             {advanceScan.provisional ? "PROVISIONAL GRADE" : "GRADE"}
           </span>
           <strong>{advanceScan.gradeLabel}</strong>
-          <span>{advanceScan.gradeCondition}</span>
+          <span>
+            {advanceScan.gradeObservation
+              ? `${advanceScan.gradeCondition} — ${SOFTWARE_OBSERVED_LABEL}`
+              : advanceScan.gradeCondition}
+          </span>
         </div>
         <div className="grade-body">
           <h3 id="grade-title">
@@ -942,6 +956,7 @@ function AdvanceReportBlock({
           {advanceScan.gradeWithheldReason ? (
             <p className="grade-withheld-reason">{advanceScan.gradeWithheldReason}</p>
           ) : null}
+          <p className="grade-issuance">{advanceScan.issuanceNotice}</p>
           <p className="setup-note">
             A grade is never awarded for an area that could not be measured, and never deducted for
             one either. Physical verification by a technician is required for a final grade.
@@ -970,14 +985,6 @@ function AdvanceReportBlock({
         </div>
         {pdfNote ? <p className="setup-note">{pdfNote}</p> : null}
       </div>
-
-      <ReportTable
-        title="Coverage statement"
-        rows={advanceScan.coverageRows}
-        empty="No coverage statement was produced."
-      />
-
-      <CoverageDomainTable domains={advanceScan.coverageDomains} />
 
       {advanceScan.telemetryGroups.map((group) => (
         <div key={group.title}>

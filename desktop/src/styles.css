@@ -1727,6 +1727,10 @@ a:focus-visible,
   font-weight: 650;
 }
 
+.grade-issuance {
+  font-weight: 650 !important;
+}
+
 .not-assessable-list {
   margin: 0;
   padding-left: 18px;

@@ -93,6 +93,7 @@ export interface DomainCoverage {
   notAssessable: number;
   weight: number;
   state: string;
+  confidence: string;
   note: string;
 }
 
@@ -105,6 +106,9 @@ export interface AdvanceScanProgress {
 
 export type AttestationValue = "skip" | "pass" | "fail";
 export type PortAttestationValue = "skip" | "all_passed" | "partial" | "any_failed";
+
+/** Banded CG-1.0 grades are software-observed until a technician verifies the device. */
+export const SOFTWARE_OBSERVED_LABEL = "software-observed";
 
 /** Phase-one technician checks. Defaults are not attempted, never zero-scored. */
 export interface AdvanceInteractive {
@@ -183,11 +187,13 @@ export interface AdvanceScanRecord {
   gradingRubric: string;
   gradeLabel: string;
   gradeCondition: string;
+  gradeObservation: string | null;
   gradeWithheld: boolean;
   gradeWithheldReason: string | null;
   coveragePercent: number;
   indexPercent: number | null;
   provisional: boolean;
+  issuanceNotice: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -173,6 +173,10 @@ test("advance scan is opt-in, honest about gaps, and never claims an AI grade", 
   assert.match(combined, /Assessed Health Index/);
   assert.match(combined, /not assessable/i);
   assert.match(combined, /physical verification/i);
+  assert.match(combined, /This is not an issued CYVORIQ grading certificate/);
+  assert.match(combined, /software-observed/);
+  assert.match(combined, /issuanceNotice|issuance_notice/);
+  assert.match(combined, /Coverage statement/);
   assert.match(combined, /advance-progress/);
   assert.match(combined, /AdvanceProgressRing|advance-ring/);
   assert.match(combined, /Save Report D as PDF/);

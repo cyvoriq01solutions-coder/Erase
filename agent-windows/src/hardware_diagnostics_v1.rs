@@ -19,6 +19,9 @@ pub const SCHEMA_VERSION: &str = "hardware_diagnostics_v1";
 pub const GRADING_ENGINE_NAME: &str = "CYVRA Grading Engine";
 pub const GRADING_RUBRIC: &str = "CG-1.0";
 
+/// While `grading_issuance_enabled` is false, Report D must print this sentence.
+pub const ISSUANCE_NOTICE: &str = "This is not an issued CYVORIQ grading certificate.";
+
 /// Below this share of in-scope points the grade is withheld instead of banded.
 pub const COVERAGE_FLOOR_PERCENT: u32 = 70;
 
@@ -184,6 +187,15 @@ impl GradeBand {
             65..=79 => Self::B,
             50..=64 => Self::C,
             _ => Self::F,
+        }
+    }
+
+    /// Printed beside a banded grade. Withheld grades are not observations.
+    #[must_use]
+    pub const fn observation(self) -> Option<&'static str> {
+        match self {
+            Self::NotGradable => None,
+            _ => Some("software-observed"),
         }
     }
 }
@@ -1210,5 +1222,17 @@ mod tests {
         assert_eq!(GradeBand::from_index(64), GradeBand::C);
         assert_eq!(GradeBand::from_index(50), GradeBand::C);
         assert_eq!(GradeBand::from_index(49), GradeBand::F);
+    }
+
+    #[test]
+    fn banded_grades_are_software_observed_and_never_issued() {
+        assert_eq!(GradeBand::A.observation(), Some("software-observed"));
+        assert_eq!(GradeBand::F.observation(), Some("software-observed"));
+        assert_eq!(GradeBand::NotGradable.observation(), None);
+        assert_eq!(
+            ISSUANCE_NOTICE,
+            "This is not an issued CYVORIQ grading certificate."
+        );
+        assert!(!ISSUANCE_NOTICE.to_ascii_lowercase().contains("certified"));
     }
 }
