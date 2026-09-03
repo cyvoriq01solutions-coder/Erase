@@ -348,16 +348,43 @@ async fn run_device_verification(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn run_advance_scan(
     app: tauri::AppHandle,
     benchmarks_consented: Option<bool>,
     write_benchmark_consented: Option<bool>,
     device_form: Option<String>,
+    colour_wash: Option<String>,
+    keyboard: Option<String>,
+    trackpad: Option<String>,
+    speakers: Option<String>,
+    capture: Option<String>,
+    physical_ports: Option<String>,
 ) -> Result<AdvanceScanOutcome, String> {
     let request = cyvra_core::diagnostics::AdvanceScanRequest {
         benchmarks_consented: benchmarks_consented.unwrap_or(false),
         write_benchmark_consented: write_benchmark_consented.unwrap_or(false),
         device_form: parse_device_form(device_form),
+        interactive: cyvra_core::hardware_diagnostics_v1::InteractiveAttestations {
+            colour_wash: cyvra_core::hardware_diagnostics_v1::OperatorAttestation::from_wire(
+                colour_wash.as_deref(),
+            ),
+            keyboard: cyvra_core::hardware_diagnostics_v1::OperatorAttestation::from_wire(
+                keyboard.as_deref(),
+            ),
+            trackpad: cyvra_core::hardware_diagnostics_v1::OperatorAttestation::from_wire(
+                trackpad.as_deref(),
+            ),
+            speakers: cyvra_core::hardware_diagnostics_v1::OperatorAttestation::from_wire(
+                speakers.as_deref(),
+            ),
+            capture: cyvra_core::hardware_diagnostics_v1::OperatorAttestation::from_wire(
+                capture.as_deref(),
+            ),
+            physical_ports: cyvra_core::hardware_diagnostics_v1::PhysicalPortAttestation::from_wire(
+                physical_ports.as_deref(),
+            ),
+        },
     };
     let progress_app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {

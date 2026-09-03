@@ -8,6 +8,7 @@ import {
 } from "../report/assessmentPdf";
 import { makeDiagnosticId, saveDiagnosticPdf } from "../report/diagnosticPdf";
 import type {
+  AdvanceInteractive,
   AdvanceScanConsent,
   AdvanceScanPhase,
   AdvanceScanProgress,
@@ -22,6 +23,7 @@ import type {
   VerificationRecord,
 } from "../types/shell";
 import { ADVANCE_SCAN_STAGES } from "../types/shell";
+import { InteractiveChecks } from "./InteractiveChecks";
 
 interface ShellScreenProps {
   current: NavigationId;
@@ -41,6 +43,8 @@ interface ShellScreenProps {
   advanceScanProgress: AdvanceScanProgress | null;
   advanceConsent: AdvanceScanConsent;
   onToggleAdvanceConsent: (field: keyof AdvanceScanConsent) => void;
+  advanceInteractive: AdvanceInteractive;
+  onChangeAdvanceInteractive: (next: AdvanceInteractive) => void;
   onRunAdvanceScan: () => void;
   onExit: () => void;
 }
@@ -271,6 +275,8 @@ function AdvanceScanPanel({
   advanceScanProgress,
   advanceConsent,
   onToggleAdvanceConsent,
+  advanceInteractive,
+  onChangeAdvanceInteractive,
   onRunAdvanceScan,
   onNavigate,
 }: {
@@ -285,6 +291,8 @@ function AdvanceScanPanel({
   | "advanceScanProgress"
   | "advanceConsent"
   | "onToggleAdvanceConsent"
+  | "advanceInteractive"
+  | "onChangeAdvanceInteractive"
   | "onRunAdvanceScan"
   | "onNavigate"
 >) {
@@ -327,9 +335,11 @@ function AdvanceScanPanel({
         Advance scan reads deeper hardware detail than the standard assessment: battery capacity and
         wear, processor and memory identity, USB controller topology, cameras and microphones with no
         frame captured, storage SMART health from Windows reliability counters, panel identity from
-        EDID, and Wi-Fi, Bluetooth and Ethernet radios. MAC addresses are never printed. CPU, memory
-        and storage workloads run only if you allow benchmarks. It then prepares Report D with a
-        provisional grade. It still does not erase anything and it does not open file contents.
+        EDID, and Wi-Fi, Bluetooth and Ethernet radios. Optional technician checks (colour wash,
+        keyboard, trackpad, speakers, physical ports) are operator-attested. MAC addresses are never
+        printed. CPU, memory and storage workloads run only if you allow benchmarks. It then prepares
+        Report D with a provisional grade. It still does not erase anything and it does not open file
+        contents.
       </p>
 
       <ul className="advance-scope">
@@ -396,6 +406,12 @@ function AdvanceScanPanel({
         </label>
       </fieldset>
 
+      <InteractiveChecks
+        value={advanceInteractive}
+        disabled={busy}
+        onChange={onChangeAdvanceInteractive}
+      />
+
       {advanceScanError ? (
         <Notice kind="error" title="Advance scan did not finish">
           {advanceScanError}
@@ -458,6 +474,8 @@ function VerificationScreen({
   advanceScanProgress,
   advanceConsent,
   onToggleAdvanceConsent,
+  advanceInteractive,
+  onChangeAdvanceInteractive,
   onRunAdvanceScan,
   onNavigate,
 }: Pick<
@@ -477,6 +495,8 @@ function VerificationScreen({
   | "advanceScanProgress"
   | "advanceConsent"
   | "onToggleAdvanceConsent"
+  | "advanceInteractive"
+  | "onChangeAdvanceInteractive"
   | "onRunAdvanceScan"
   | "onNavigate"
 >) {
@@ -641,6 +661,8 @@ function VerificationScreen({
         advanceScanProgress={advanceScanProgress}
         advanceConsent={advanceConsent}
         onToggleAdvanceConsent={onToggleAdvanceConsent}
+        advanceInteractive={advanceInteractive}
+        onChangeAdvanceInteractive={onChangeAdvanceInteractive}
         onRunAdvanceScan={onRunAdvanceScan}
         onNavigate={onNavigate}
       />
@@ -1419,6 +1441,8 @@ export function ShellScreen({
   advanceScanProgress,
   advanceConsent,
   onToggleAdvanceConsent,
+  advanceInteractive,
+  onChangeAdvanceInteractive,
   onRunAdvanceScan,
   onExit,
 }: ShellScreenProps) {
@@ -1449,6 +1473,8 @@ export function ShellScreen({
           advanceScanProgress={advanceScanProgress}
           advanceConsent={advanceConsent}
           onToggleAdvanceConsent={onToggleAdvanceConsent}
+          advanceInteractive={advanceInteractive}
+          onChangeAdvanceInteractive={onChangeAdvanceInteractive}
           onRunAdvanceScan={onRunAdvanceScan}
           onNavigate={onNavigate}
         />

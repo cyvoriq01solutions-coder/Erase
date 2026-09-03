@@ -2,11 +2,15 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   ADVANCE_SCAN_STAGES,
+  DEFAULT_ADVANCE_INTERACTIVE,
   assertSafeShellBootstrap,
+  type AdvanceInteractive,
   type AdvanceScanConsent,
   type AdvanceScanProgress,
   type AdvanceScanRecord,
+  type AttestationValue,
   type DeviceFormHint,
+  type PortAttestationValue,
   type ScanTarget,
   type ShellBootstrap,
   type VerificationProgress,
@@ -118,7 +122,33 @@ function emitAdvancePreview(progress: AdvanceScanProgress): void {
   }
 }
 
-function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
+function attestationLabel(value: AttestationValue): string {
+  if (value === "pass") {
+    return "Passed. The operator attested this check after inspecting the device.";
+  }
+  if (value === "fail") {
+    return "Failed. The operator attested a fault after inspecting the device.";
+  }
+  return "Not attempted in this scan. A technician records this at physical verification.";
+}
+
+function portLabel(value: PortAttestationValue): string {
+  if (value === "all_passed") {
+    return "All attempted ports passed after the operator inserted a test device.";
+  }
+  if (value === "partial") {
+    return "Some attempted ports passed. Controller topology is still not a count of empty sockets.";
+  }
+  if (value === "any_failed") {
+    return "An attempted port failed after the operator inserted a test device.";
+  }
+  return "Not attempted in this scan. A technician records this at physical verification.";
+}
+
+function previewAdvanceRecord(
+  consent: AdvanceScanConsent,
+  interactive: AdvanceInteractive,
+): AdvanceScanRecord {
   const notCollected =
     "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.";
   const needsKernel =
@@ -277,13 +307,18 @@ function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
         ["Random read", benchmarkValue],
         ["Write benchmark", consent.writeBenchmark ? notCollected : declined],
       ]),
-      group("Technician checks", [
-        ["Keyboard", notAttempted],
-        ["Display inspection", notAttempted],
-        ["Trackpad", notAttempted],
-        ["Speakers", notAttempted],
-        ["Camera image", notAttempted],
-      ]),
+      group(
+        "Technician checks",
+        [
+          ["Display inspection", attestationLabel(interactive.colourWash)],
+          ["Keyboard", attestationLabel(interactive.keyboard)],
+          ["Trackpad", attestationLabel(interactive.trackpad)],
+          ["Speakers", attestationLabel(interactive.speakers)],
+          ["Camera and microphone", attestationLabel(interactive.capture)],
+          ["Physically verified ports", portLabel(interactive.physicalPorts)],
+        ],
+        "These points are operator-attested. Keystrokes, speaker tones, and colour washes are not stored. Live camera and microphone capture is not part of this scan.",
+      ),
     ],
     coverageRows: [
       { label: "Points in scope", value: "100" },
@@ -389,12 +424,12 @@ function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
       {
         label: "Physical ports",
         value:
-          "Windows exposes USB controller topology and attached devices, not the plastic connectors. A port is only confirmed when a technician inserts a device.",
+          "Windows exposes USB controller topology and attached devices, not the plastic connectors. A port is only confirmed when a technician inserts a test device. Insertion is operator-attested; this scan does not write to the stick or to an assessed drive.",
       },
       {
         label: "Display panel",
         value:
-          "Native width and height come from the EDID preferred timing, never from the current desktop mode. HDR is not guessed. Screen-domain points stay unawarded until a technician attests a colour wash.",
+          "Native width and height come from the EDID preferred timing, never from the current desktop mode. HDR is not guessed. Colour-wash points are awarded only after a technician attests the inspection.",
       },
       {
         label: "Radios",
@@ -404,7 +439,12 @@ function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
       {
         label: "Cameras and microphones",
         value:
-          "Advance scan enumerates capture devices across several PnP classes, including the USB video service that the Camera ClassGuid misses. No frame is captured and no audio is recorded.",
+          "Advance scan enumerates capture devices across several PnP classes, including the USB video service that the Camera ClassGuid misses. No frame is captured and no audio is recorded. Presence confirmation is an operator attestation, not a live preview.",
+      },
+      {
+        label: "Keyboard",
+        value:
+          "A webview cannot see Fn combinations and some OEM hotkeys. Keyboard points are awarded only when the operator attests the keys they could try. Keystrokes are not stored.",
       },
       {
         label: "Unknown values",
@@ -455,7 +495,10 @@ function previewAdvanceRecord(consent: AdvanceScanConsent): AdvanceScanRecord {
   };
 }
 
-async function runAdvanceScanPreview(consent: AdvanceScanConsent): Promise<AdvanceScanRecord> {
+async function runAdvanceScanPreview(
+  consent: AdvanceScanConsent,
+  interactive: AdvanceInteractive,
+): Promise<AdvanceScanRecord> {
   const details = [
     "Checking the Advance scan boundary and permissions.",
     "Asking Windows and the battery firmware for capacity.",
@@ -468,7 +511,7 @@ async function runAdvanceScanPreview(consent: AdvanceScanConsent): Promise<Advan
     consent.benchmarks
       ? "Running consented CPU, memory and storage workloads. Package temperature is not collected. Benchmarks run only on the installed Windows application."
       : "Benchmarks were not permitted, so none were run.",
-    "Scoring only the areas that were actually assessed.",
+    "Scoring only the areas that were actually assessed, including technician attestations.",
     "Report D is ready. No grade was issued.",
   ];
 
@@ -483,21 +526,28 @@ async function runAdvanceScanPreview(consent: AdvanceScanConsent): Promise<Advan
     await new Promise((resolve) => window.setTimeout(resolve, 160));
   }
 
-  return previewAdvanceRecord(consent);
+  return previewAdvanceRecord(consent, interactive);
 }
 
 export async function runAdvanceScan(
   consent: AdvanceScanConsent,
   deviceForm: DeviceFormHint,
+  interactive: AdvanceInteractive = DEFAULT_ADVANCE_INTERACTIVE,
 ): Promise<AdvanceScanRecord> {
   if (!isTauri()) {
-    return runAdvanceScanPreview(consent);
+    return runAdvanceScanPreview(consent, interactive);
   }
 
   const response = await invoke<AdvanceScanRecord>("run_advance_scan", {
     benchmarksConsented: consent.benchmarks,
     writeBenchmarkConsented: consent.writeBenchmark,
     deviceForm,
+    colourWash: interactive.colourWash,
+    keyboard: interactive.keyboard,
+    trackpad: interactive.trackpad,
+    speakers: interactive.speakers,
+    capture: interactive.capture,
+    physicalPorts: interactive.physicalPorts,
   });
 
   if (!response.ok || response.destructiveOperationsEnabled || response.contentInspected) {

@@ -1545,6 +1545,99 @@ a:focus-visible,
   color: #9aa8ba;
 }
 
+.interactive-checks .interactive-lead {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.interactive-subject {
+  margin: 0 0 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.interactive-subject:last-of-type {
+  border-bottom: 0;
+}
+
+.interactive-subject strong {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.interactive-subject small {
+  display: block;
+  margin: 4px 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.interactive-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 8px;
+}
+
+.interactive-choices label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.interactive-tone-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.colour-wash,
+.interactive-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 24px;
+  color: #f5f7fb;
+  background: rgba(12, 18, 28, 0.92);
+}
+
+.colour-wash p,
+.interactive-overlay p {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.colour-wash div,
+.interactive-overlay {
+  color: #f5f7fb;
+}
+
+.trackpad-canvas {
+  width: min(100%, 480px);
+  height: 220px;
+  border-radius: 12px;
+  background: #0f1722;
+  touch-action: none;
+}
+
+@media (max-width: 720px) {
+  .interactive-choices {
+    flex-direction: column;
+  }
+}
+
 .link-button {
   padding: 0;
   border: 0;

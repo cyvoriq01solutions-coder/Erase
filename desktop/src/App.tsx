@@ -12,6 +12,7 @@ import { AppFrame } from "./components/AppFrame";
 import { InstallerSetup } from "./components/InstallerSetup";
 import { ShellScreen } from "./screens/ShellScreens";
 import type {
+  AdvanceInteractive,
   AdvanceScanConsent,
   AdvanceScanPhase,
   AdvanceScanProgress,
@@ -23,7 +24,7 @@ import type {
   VerificationProgress,
   VerificationRecord,
 } from "./types/shell";
-import { inferDeviceForm } from "./types/shell";
+import { DEFAULT_ADVANCE_INTERACTIVE, inferDeviceForm } from "./types/shell";
 
 export default function App() {
   const [setupComplete, setSetupComplete] = useState(false);
@@ -43,6 +44,9 @@ export default function App() {
     benchmarks: false,
     writeBenchmark: false,
   });
+  const [advanceInteractive, setAdvanceInteractive] = useState<AdvanceInteractive>(
+    DEFAULT_ADVANCE_INTERACTIVE,
+  );
 
   useEffect(() => {
     let active = true;
@@ -152,7 +156,7 @@ export default function App() {
     });
     setAdvanceScanPhase("running");
     try {
-      const record = await runAdvanceScan(advanceConsent, inferDeviceForm(verification));
+      const record = await runAdvanceScan(advanceConsent, inferDeviceForm(verification), advanceInteractive);
       setAdvanceScan(record);
       setAdvanceScanProgress({
         percent: 100,
@@ -246,6 +250,8 @@ export default function App() {
         advanceScanProgress={advanceScanProgress}
         advanceConsent={advanceConsent}
         onToggleAdvanceConsent={handleToggleAdvanceConsent}
+        advanceInteractive={advanceInteractive}
+        onChangeAdvanceInteractive={setAdvanceInteractive}
         onRunAdvanceScan={() => {
           void handleRunAdvanceScan();
         }}

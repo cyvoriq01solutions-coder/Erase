@@ -14,10 +14,10 @@ use crate::cpu_memory::{self, CpuMemoryProbe};
 use crate::display_radio::{self, DisplayRadioProbe, DisplayRadioSource};
 use crate::hardware_diagnostics_v1::{
     CoverageSummary, DeviceForm, DiagnosticDomain, DomainApplicability, DomainEvidence,
-    ElevationState, HardwareDiagnosticsV1, battery_points, bluetooth_radio_points,
-    ethernet_radio_points, evaluate, memory_bandwidth_points, memory_inventory_points,
-    memory_pattern_points, processor_clock_points, processor_identity_points, usb_topology_points,
-    wifi_radio_points,
+    ElevationState, HardwareDiagnosticsV1, InteractiveAttestations, PhysicalPortAttestation,
+    battery_points, bluetooth_radio_points, ethernet_radio_points, evaluate,
+    memory_bandwidth_points, memory_inventory_points, memory_pattern_points,
+    processor_clock_points, processor_identity_points, usb_topology_points, wifi_radio_points,
 };
 use crate::hardware_inventory_v1::Confidence;
 use crate::storage_health::{self, StorageProbe, StorageSource};
@@ -57,6 +57,7 @@ pub struct AdvanceScanRequest {
     pub benchmarks_consented: bool,
     pub write_benchmark_consented: bool,
     pub device_form: DeviceForm,
+    pub interactive: InteractiveAttestations,
 }
 
 impl Default for AdvanceScanRequest {
@@ -65,6 +66,7 @@ impl Default for AdvanceScanRequest {
             benchmarks_consented: false,
             write_benchmark_consented: false,
             device_form: DeviceForm::Unknown,
+            interactive: InteractiveAttestations::default(),
         }
     }
 }
@@ -215,7 +217,10 @@ pub fn run_advance_scan_with(
         &bench_progress_detail(&benches, request.benchmarks_consented),
     );
 
-    report(9, "Scoring only the areas that were actually assessed.");
+    report(
+        9,
+        "Scoring only the areas that were actually assessed, including technician attestations.",
+    );
     let outcome = build_report(
         &diagnostics,
         &battery,
@@ -225,6 +230,7 @@ pub fn run_advance_scan_with(
         &capture,
         &identity,
         &benches,
+        request.interactive,
         request.device_form,
     );
 
@@ -398,18 +404,19 @@ fn build_report(
     capture: &CaptureProbe,
     identity: &CpuMemoryProbe,
     benches: &BenchResult,
+    interactive: InteractiveAttestations,
     device_form: DeviceForm,
 ) -> CustomerAdvanceScan {
     let wrote_without_consent =
         diagnostics.bytes_written > 0 && !diagnostics.write_benchmark_consented;
     let evidence = domain_evidence(
-        diagnostics,
         battery,
         storage,
         usb,
         radios,
         identity,
         benches,
+        interactive,
         device_form,
     );
     let mut criticals = storage.critical_faults();
@@ -440,6 +447,7 @@ fn build_report(
             capture,
             identity,
             benches,
+            interactive,
         ),
         coverage_rows: coverage_rows(&summary),
         coverage_domains: coverage_domains(&evidence),
@@ -516,13 +524,13 @@ fn temporary_files_note(battery: &BatteryProbe, benches: &BenchResult) -> String
 
 #[allow(clippy::too_many_arguments)]
 fn domain_evidence(
-    diagnostics: &HardwareDiagnosticsV1,
     battery: &BatteryProbe,
     storage: &StorageProbe,
     usb: &UsbProbe,
     radios: &DisplayRadioProbe,
     identity: &CpuMemoryProbe,
     benches: &BenchResult,
+    interactive: InteractiveAttestations,
     device_form: DeviceForm,
 ) -> Vec<DomainEvidence> {
     DiagnosticDomain::ALL
@@ -532,8 +540,8 @@ fn domain_evidence(
             DiagnosticDomain::ProcessorAndThermal => processor_evidence(identity, benches),
             DiagnosticDomain::MemoryIntegrity => memory_evidence(identity, benches),
             DiagnosticDomain::StorageHealth => storage_evidence(storage),
-            DiagnosticDomain::PortsAndConnectivity => ports_evidence(usb, radios),
-            other => DomainEvidence::not_assessable(*other, domain_gap(*other, diagnostics)),
+            DiagnosticDomain::PortsAndConnectivity => ports_evidence(usb, radios, interactive),
+            DiagnosticDomain::ScreenAndPeripherals => screen_evidence(interactive),
         })
         .collect()
 }
@@ -679,21 +687,50 @@ fn storage_gap(storage: &StorageProbe) -> &'static str {
     }
 }
 
-fn ports_evidence(usb: &UsbProbe, radios: &DisplayRadioProbe) -> DomainEvidence {
+fn ports_evidence(
+    usb: &UsbProbe,
+    radios: &DisplayRadioProbe,
+    interactive: InteractiveAttestations,
+) -> DomainEvidence {
     let domain = DiagnosticDomain::PortsAndConnectivity;
-    let awarded = usb_topology_points(usb.topology_enumerated())
+    let topology = usb_topology_points(usb.topology_enumerated())
         + wifi_radio_points(radios.wifi_reporting())
         + bluetooth_radio_points(radios.bluetooth_present())
         + ethernet_radio_points(radios.ethernet_link_readable());
-    if awarded == 0 {
+    let (port_awarded, port_assessed) = interactive.physical_ports.points();
+    let awarded = topology + port_awarded;
+    let assessed = topology + port_assessed;
+    if assessed == 0 {
         return DomainEvidence::not_assessable(domain, ports_gap(usb, radios));
     }
-    let mut evidence = DomainEvidence::measured(domain, awarded, awarded, Confidence::High);
-    evidence.note = Some(ports_note(usb, radios, awarded));
+    let mut evidence = DomainEvidence::measured(domain, awarded, assessed, Confidence::High);
+    evidence.note = Some(ports_note(usb, radios, interactive, awarded, assessed));
     evidence
 }
 
-fn ports_note(usb: &UsbProbe, radios: &DisplayRadioProbe, awarded: u32) -> String {
+fn screen_evidence(interactive: InteractiveAttestations) -> DomainEvidence {
+    let domain = DiagnosticDomain::ScreenAndPeripherals;
+    let (awarded, assessed) = interactive.screen_points();
+    if assessed == 0 {
+        return DomainEvidence::not_assessable(
+            domain,
+            "Interactive technician checks were not attempted in this scan",
+        );
+    }
+    let mut evidence = DomainEvidence::measured(domain, awarded, assessed, Confidence::High);
+    evidence.note = Some(
+        "Screen, keyboard and peripheral points are operator-attested. Live camera and microphone capture is not part of this scan.".to_string(),
+    );
+    evidence
+}
+
+fn ports_note(
+    usb: &UsbProbe,
+    radios: &DisplayRadioProbe,
+    interactive: InteractiveAttestations,
+    awarded: u32,
+    assessed: u32,
+) -> String {
     let mut parts = Vec::new();
     if usb.topology_enumerated() {
         parts.push("USB controller topology enumerated");
@@ -707,9 +744,16 @@ fn ports_note(usb: &UsbProbe, radios: &DisplayRadioProbe, awarded: u32) -> Strin
     if radios.ethernet_link_readable() {
         parts.push("Ethernet link state readable");
     }
+    match interactive.physical_ports {
+        PhysicalPortAttestation::NotAttempted => parts.push("physical insertion not attempted"),
+        PhysicalPortAttestation::AllPassed => parts.push("all attempted ports passed"),
+        PhysicalPortAttestation::Partial => parts.push("some attempted ports passed"),
+        PhysicalPortAttestation::AnyFailed => parts.push("an attempted port failed"),
+    }
     format!(
-        "{}. Physical insertion stays unattempted ({} of 10 ports points awarded). MAC addresses were not collected.",
+        "{}. {} of {assessed} assessed ports points awarded ({} of 10). MAC addresses were not collected.",
         parts.join("; "),
+        awarded,
         awarded
     )
 }
@@ -755,33 +799,6 @@ fn battery_gap(battery: &BatteryProbe) -> &'static str {
         SourceOutcome::CollectionError => "Windows returned an error for the battery query",
         SourceOutcome::NotQueried => "The battery query did not run",
         SourceOutcome::Reported => "The battery firmware did not report a design capacity",
-    }
-}
-
-fn domain_gap(domain: DiagnosticDomain, diagnostics: &HardwareDiagnosticsV1) -> &'static str {
-    match domain {
-        DiagnosticDomain::BatteryAndPower => "Battery telemetry is not collected in this scan",
-        DiagnosticDomain::ProcessorAndThermal => {
-            if diagnostics.benchmarks_consented {
-                "Processor benchmark is not implemented in this collector version"
-            } else {
-                "Processor benchmark was declined by the operator"
-            }
-        }
-        DiagnosticDomain::MemoryIntegrity => {
-            if diagnostics.benchmarks_consented {
-                "Memory pattern check is not implemented in this collector version"
-            } else {
-                "Memory pattern check was declined by the operator"
-            }
-        }
-        DiagnosticDomain::StorageHealth => "Storage SMART telemetry is not collected in this scan",
-        DiagnosticDomain::PortsAndConnectivity => {
-            "Port topology and radio telemetry are not collected in this scan"
-        }
-        DiagnosticDomain::ScreenAndPeripherals => {
-            "Interactive technician checks were not attempted in this scan"
-        }
     }
 }
 
@@ -866,11 +883,11 @@ fn method_rows() -> Vec<NamedValue> {
         ),
         row(
             "Physical ports",
-            "Windows exposes USB controller topology and attached devices, not the plastic connectors. A port is only confirmed when a technician inserts a device.".to_string(),
+            "Windows exposes USB controller topology and attached devices, not the plastic connectors. A port is only confirmed when a technician inserts a test device. Insertion is operator-attested; this scan does not write to the stick or to an assessed drive.".to_string(),
         ),
         row(
             "Display panel",
-            "Native width and height come from the EDID preferred timing, never from the current desktop mode. HDR is not guessed. Screen-domain points stay unawarded until a technician attests a colour wash.".to_string(),
+            "Native width and height come from the EDID preferred timing, never from the current desktop mode. HDR is not guessed. Colour-wash points are awarded only after a technician attests the inspection.".to_string(),
         ),
         row(
             "Radios",
@@ -878,7 +895,11 @@ fn method_rows() -> Vec<NamedValue> {
         ),
         row(
             "Cameras and microphones",
-            "Advance scan enumerates capture devices across several PnP classes, including the USB video service that the Camera ClassGuid misses. No frame is captured and no audio is recorded.".to_string(),
+            "Advance scan enumerates capture devices across several PnP classes, including the USB video service that the Camera ClassGuid misses. No frame is captured and no audio is recorded. Presence confirmation is an operator attestation, not a live preview.".to_string(),
+        ),
+        row(
+            "Keyboard",
+            "A webview cannot see Fn combinations and some OEM hotkeys. Keyboard points are awarded only when the operator attests the keys they could try. Keystrokes are not stored.".to_string(),
         ),
         row(
             "Unknown values",
@@ -945,6 +966,7 @@ fn telemetry_groups(
     capture: &CaptureProbe,
     identity: &CpuMemoryProbe,
     benches: &BenchResult,
+    interactive: InteractiveAttestations,
 ) -> Vec<TelemetryGroup> {
     let mut groups = vec![battery_group(battery), battery_source_group(battery)];
 
@@ -954,7 +976,7 @@ fn telemetry_groups(
         identity_source_group(identity),
         storage_group(storage),
         storage_source_group(storage),
-        usb_group(usb, radios),
+        usb_group(usb, radios, interactive),
         usb_source_group(usb),
         radio_source_group(radios),
         display_group(radios),
@@ -962,16 +984,7 @@ fn telemetry_groups(
         capture_group(capture),
         capture_source_group(capture),
         bench_group(benches),
-        group(
-            "Technician checks",
-            &[
-                ("Keyboard", NOT_ATTEMPTED),
-                ("Display inspection", NOT_ATTEMPTED),
-                ("Trackpad", NOT_ATTEMPTED),
-                ("Speakers", NOT_ATTEMPTED),
-                ("Camera image", NOT_ATTEMPTED),
-            ],
-        ),
+        interactive_group(interactive),
     ]);
 
     groups
@@ -1416,11 +1429,18 @@ fn storage_source_group(storage: &StorageProbe) -> TelemetryGroup {
     }
 }
 
-fn usb_group(usb: &UsbProbe, radios: &DisplayRadioProbe) -> TelemetryGroup {
+fn usb_group(
+    usb: &UsbProbe,
+    radios: &DisplayRadioProbe,
+    interactive: InteractiveAttestations,
+) -> TelemetryGroup {
     let mut rows = Vec::new();
     if let Some(error) = usb.probe_error {
         rows.push(row("USB probe", error.to_string()));
-        rows.push(row("Physically verified ports", NOT_ATTEMPTED.to_string()));
+        rows.push(row(
+            "Physically verified ports",
+            interactive.physical_ports.customer_label().to_string(),
+        ));
         rows.extend(radio_rows(radios));
         return TelemetryGroup {
             title: "Ports and connectivity".to_string(),
@@ -1482,7 +1502,10 @@ fn usb_group(usb: &UsbProbe, radios: &DisplayRadioProbe) -> TelemetryGroup {
     rows.push(row("USB hubs", hubs));
     rows.push(row("USB controller ports", attached));
     rows.push(optional_row("Negotiated port speeds", usb.speed_summary()));
-    rows.push(row("Physically verified ports", NOT_ATTEMPTED.to_string()));
+    rows.push(row(
+        "Physically verified ports",
+        interactive.physical_ports.customer_label().to_string(),
+    ));
     rows.extend(radio_rows(radios));
 
     TelemetryGroup {
@@ -1718,7 +1741,7 @@ fn display_group(radios: &DisplayRadioProbe) -> TelemetryGroup {
     TelemetryGroup {
         title: "Display panel".to_string(),
         note: Some(
-            "Native resolution is the EDID preferred timing. Screen-domain points stay 0 until a technician attests a colour wash."
+            "Native resolution is the EDID preferred timing. Colour-wash points are operator-attested and are not inferred from EDID."
                 .to_string(),
         ),
         rows,
@@ -1737,6 +1760,41 @@ fn unread_display_rows() -> Vec<NamedValue> {
     .into_iter()
     .map(|(label, value)| row(label, value.to_string()))
     .collect()
+}
+
+fn interactive_group(interactive: InteractiveAttestations) -> TelemetryGroup {
+    TelemetryGroup {
+        title: "Technician checks".to_string(),
+        note: Some(
+            "These points are operator-attested. Keystrokes, speaker tones, and colour washes are not stored. Live camera and microphone capture is not part of this scan.".to_string(),
+        ),
+        rows: vec![
+            row(
+                "Display inspection",
+                interactive.colour_wash.customer_label().to_string(),
+            ),
+            row(
+                "Keyboard",
+                interactive.keyboard.customer_label().to_string(),
+            ),
+            row(
+                "Trackpad",
+                interactive.trackpad.customer_label().to_string(),
+            ),
+            row(
+                "Speakers",
+                interactive.speakers.customer_label().to_string(),
+            ),
+            row(
+                "Camera and microphone",
+                interactive.capture.customer_label().to_string(),
+            ),
+            row(
+                "Physically verified ports",
+                interactive.physical_ports.customer_label().to_string(),
+            ),
+        ],
+    }
 }
 
 fn usb_source_group(usb: &UsbProbe) -> TelemetryGroup {
@@ -1855,17 +1913,6 @@ fn optional_row(label: &str, value: Option<String>) -> NamedValue {
     )
 }
 
-fn group(title: &str, rows: &[(&str, &str)]) -> TelemetryGroup {
-    TelemetryGroup {
-        title: title.to_string(),
-        note: None,
-        rows: rows
-            .iter()
-            .map(|(label, value)| row(label, (*value).to_string()))
-            .collect(),
-    }
-}
-
 fn row(label: &str, value: String) -> NamedValue {
     NamedValue {
         label: label.to_string(),
@@ -1887,6 +1934,7 @@ mod tests {
     use crate::capture_probe::parse_probe as parse_capture;
     use crate::cpu_memory::parse_probe as parse_identity;
     use crate::display_radio::parse_probe as parse_radios;
+    use crate::hardware_diagnostics_v1::OperatorAttestation;
     use crate::storage_health::parse_probe as parse_storage;
     use crate::usb_topology::parse_probe as parse_usb;
 
@@ -2013,6 +2061,7 @@ mod tests {
             &silent_capture(),
             &silent_identity(),
             &BenchResult::declined(),
+            InteractiveAttestations::default(),
             form,
         )
     }
@@ -2035,6 +2084,7 @@ mod tests {
             capture,
             &silent_identity(),
             &BenchResult::declined(),
+            InteractiveAttestations::default(),
             form,
         )
     }
@@ -2274,7 +2324,8 @@ mod tests {
                 || group.title.starts_with("Radio")
                 || group.title.starts_with("Processor")
                 || group.title.starts_with("Memory")
-                || group.title.starts_with("Benchmark")
+                || group.title.starts_with("Technician")
+                || group.title.starts_with("Screen")
             {
                 continue;
             }
@@ -2329,6 +2380,7 @@ mod tests {
             &silent_capture(),
             &silent_identity(),
             &BenchResult::declined(),
+            InteractiveAttestations::default(),
             DeviceForm::Portable,
         );
 
@@ -2800,6 +2852,7 @@ mod tests {
             &uvc_capture(),
             &named_processor_and_ram(),
             &BenchResult::declined(),
+            InteractiveAttestations::default(),
             DeviceForm::Portable,
         );
         let cpu = outcome
@@ -2858,6 +2911,7 @@ mod tests {
             &uvc_capture(),
             &named_processor_and_ram(),
             &benches,
+            InteractiveAttestations::default(),
             DeviceForm::Portable,
         );
 
@@ -2907,6 +2961,7 @@ mod tests {
             &uvc_capture(),
             &named_processor_and_ram(),
             &benches,
+            InteractiveAttestations::default(),
             DeviceForm::Portable,
         );
         assert_eq!(outcome.grade_label, "F");
@@ -2918,5 +2973,104 @@ mod tests {
             .expect("memory domain");
         assert_eq!(memory.awarded, 0);
         assert_eq!(memory.assessed, 15);
+    }
+
+    #[test]
+    fn skipped_interactive_checks_do_not_score_the_screen_domain() {
+        let diagnostics = HardwareDiagnosticsV1::not_collected(1_000);
+        let outcome = build_report(
+            &diagnostics,
+            &healthy_probe(),
+            &healthy_nvme(),
+            &enumerated_usb(),
+            &panel_and_radios(),
+            &uvc_capture(),
+            &named_processor_and_ram(),
+            &BenchResult::declined(),
+            InteractiveAttestations::default(),
+            DeviceForm::Portable,
+        );
+        let screen = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Screen, keyboard and peripherals")
+            .expect("screen domain");
+        assert_eq!(screen.awarded, 0);
+        assert_eq!(screen.assessed, 0);
+        assert_eq!(outcome.coverage_percent, 55);
+        assert!(value_of(&outcome, "Technician checks", "Keyboard").contains("Not attempted"));
+    }
+
+    #[test]
+    fn attested_interactive_checks_award_screen_and_physical_port_points() {
+        let interactive = InteractiveAttestations {
+            colour_wash: OperatorAttestation::Passed,
+            keyboard: OperatorAttestation::Passed,
+            trackpad: OperatorAttestation::Passed,
+            speakers: OperatorAttestation::Passed,
+            capture: OperatorAttestation::Passed,
+            physical_ports: PhysicalPortAttestation::AllPassed,
+        };
+        let diagnostics = HardwareDiagnosticsV1::not_collected(1_000);
+        let outcome = build_report(
+            &diagnostics,
+            &healthy_probe(),
+            &healthy_nvme(),
+            &enumerated_usb(),
+            &panel_and_radios(),
+            &uvc_capture(),
+            &named_processor_and_ram(),
+            &BenchResult::declined(),
+            interactive,
+            DeviceForm::Portable,
+        );
+        let screen = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Screen, keyboard and peripherals")
+            .expect("screen domain");
+        assert_eq!(screen.awarded, 15);
+        assert_eq!(screen.assessed, 15);
+        let ports = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Ports and connectivity")
+            .expect("ports domain");
+        assert_eq!(ports.awarded, 10);
+        assert_eq!(ports.assessed, 10);
+        assert_eq!(outcome.coverage_percent, 74);
+        assert!(!outcome.grade_withheld);
+        assert!(outcome.provisional);
+        assert!(value_of(&outcome, "Technician checks", "Display inspection").contains("Passed"));
+        assert!(!value_of(&outcome, "Technician checks", "Keyboard").contains("Ctrl"));
+    }
+
+    #[test]
+    fn a_failed_colour_wash_assesses_the_subject_without_awarding_it() {
+        let interactive = InteractiveAttestations {
+            colour_wash: OperatorAttestation::Failed,
+            ..InteractiveAttestations::default()
+        };
+        let diagnostics = HardwareDiagnosticsV1::not_collected(1_000);
+        let outcome = build_report(
+            &diagnostics,
+            &healthy_probe(),
+            &silent_storage(),
+            &silent_usb(),
+            &silent_radios(),
+            &silent_capture(),
+            &silent_identity(),
+            &BenchResult::declined(),
+            interactive,
+            DeviceForm::Portable,
+        );
+        let screen = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Screen, keyboard and peripherals")
+            .expect("screen domain");
+        assert_eq!(screen.awarded, 0);
+        assert_eq!(screen.assessed, 4);
+        assert!(value_of(&outcome, "Technician checks", "Display inspection").contains("Failed"));
     }
 }
