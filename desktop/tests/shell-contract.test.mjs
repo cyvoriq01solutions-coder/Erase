@@ -156,6 +156,7 @@ test("foundation does not ship destructive or obsolete customer wording", () => 
   assert.doesNotMatch(combined, /NIST certified/i);
   assert.doesNotMatch(combined, /This memory is verified/i);
   assert.doesNotMatch(combined, /no thermal throttling/i);
+  assert.doesNotMatch(combined, /live camera preview/i);
 });
 
 test("advance scan is opt-in, honest about gaps, and never claims an AI grade", () => {
@@ -191,6 +192,11 @@ test("advance scan is opt-in, honest about gaps, and never claims an AI grade", 
   assert.match(combined, /Allow benchmarks/);
   assert.match(combined, /Package temperature is not collected/);
   assert.match(combined, /processor identity/i);
+  assert.match(combined, /Technician checks/);
+  assert.match(combined, /colour wash/i);
+  assert.match(combined, /Fn combinations/);
+  assert.match(combined, /Keystrokes are not stored/);
+  assert.match(combined, /not a live preview/i);
   assert.doesNotMatch(combined, /MacAddress/);
 
   // Both permissions must start off, and a write test cannot stand alone.

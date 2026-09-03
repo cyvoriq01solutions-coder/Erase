@@ -103,6 +103,28 @@ export interface AdvanceScanProgress {
   detail: string;
 }
 
+export type AttestationValue = "skip" | "pass" | "fail";
+export type PortAttestationValue = "skip" | "all_passed" | "partial" | "any_failed";
+
+/** Phase-one technician checks. Defaults are not attempted, never zero-scored. */
+export interface AdvanceInteractive {
+  colourWash: AttestationValue;
+  keyboard: AttestationValue;
+  trackpad: AttestationValue;
+  speakers: AttestationValue;
+  capture: AttestationValue;
+  physicalPorts: PortAttestationValue;
+}
+
+export const DEFAULT_ADVANCE_INTERACTIVE: AdvanceInteractive = {
+  colourWash: "skip",
+  keyboard: "skip",
+  trackpad: "skip",
+  speakers: "skip",
+  capture: "skip",
+  physicalPorts: "skip",
+};
+
 export type DeviceFormHint = "portable" | "fixed" | "unknown";
 
 /** Ordered Advance scan stages. Must stay aligned with agent-windows diagnostics::STAGES. */

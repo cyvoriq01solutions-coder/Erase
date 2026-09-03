@@ -466,6 +466,132 @@ pub fn memory_bandwidth_points(mib_s: Option<f64>) -> u32 {
     }
 }
 
+/// Operator attestation for one interactive subject. Skip is never scored as
+/// zero: it stays not assessable. Fail assesses the weight and awards 0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OperatorAttestation {
+    #[default]
+    NotAttempted,
+    Passed,
+    Failed,
+}
+
+impl OperatorAttestation {
+    #[must_use]
+    pub fn from_wire(value: Option<&str>) -> Self {
+        match value
+            .map(|text| text.trim().to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("pass" | "passed") => Self::Passed,
+            Some("fail" | "failed") => Self::Failed,
+            _ => Self::NotAttempted,
+        }
+    }
+
+    #[must_use]
+    pub const fn customer_label(self) -> &'static str {
+        match self {
+            Self::NotAttempted => {
+                "Not attempted in this scan. A technician records this at physical verification."
+            }
+            Self::Passed => "Passed. The operator attested this check after inspecting the device.",
+            Self::Failed => "Failed. The operator attested a fault after inspecting the device.",
+        }
+    }
+
+    /// `(awarded, assessed)` for this subject's rubric weight.
+    #[must_use]
+    pub const fn points(self, weight: u32) -> (u32, u32) {
+        match self {
+            Self::NotAttempted => (0, 0),
+            Self::Passed => (weight, weight),
+            Self::Failed => (0, weight),
+        }
+    }
+}
+
+/// Interactive insertion of a technician's test device into plastic connectors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PhysicalPortAttestation {
+    #[default]
+    NotAttempted,
+    AllPassed,
+    Partial,
+    AnyFailed,
+}
+
+impl PhysicalPortAttestation {
+    #[must_use]
+    pub fn from_wire(value: Option<&str>) -> Self {
+        match value
+            .map(|text| text.trim().to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("all_passed" | "all-passed" | "pass" | "passed") => Self::AllPassed,
+            Some("partial") => Self::Partial,
+            Some("any_failed" | "any-failed" | "fail" | "failed") => Self::AnyFailed,
+            _ => Self::NotAttempted,
+        }
+    }
+
+    #[must_use]
+    pub const fn customer_label(self) -> &'static str {
+        match self {
+            Self::NotAttempted => {
+                "Not attempted in this scan. A technician records this at physical verification."
+            }
+            Self::AllPassed => {
+                "All attempted ports passed after the operator inserted a test device."
+            }
+            Self::Partial => {
+                "Some attempted ports passed. Controller topology is still not a count of empty sockets."
+            }
+            Self::AnyFailed => {
+                "An attempted port failed after the operator inserted a test device."
+            }
+        }
+    }
+
+    /// Physical insertion is 4 of the 10 ports points, rubric CG-1.0 §5.5.
+    #[must_use]
+    pub const fn points(self) -> (u32, u32) {
+        match self {
+            Self::NotAttempted => (0, 0),
+            Self::AllPassed => (4, 4),
+            Self::Partial => (2, 4),
+            Self::AnyFailed => (0, 4),
+        }
+    }
+}
+
+/// Phase-one technician checks. Camera/mic live capture stays out (A10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InteractiveAttestations {
+    pub colour_wash: OperatorAttestation,
+    pub keyboard: OperatorAttestation,
+    pub trackpad: OperatorAttestation,
+    pub speakers: OperatorAttestation,
+    pub capture: OperatorAttestation,
+    pub physical_ports: PhysicalPortAttestation,
+}
+
+impl InteractiveAttestations {
+    /// Screen, keyboard and peripherals, rubric CG-1.0 §5.6.
+    #[must_use]
+    pub const fn screen_points(self) -> (u32, u32) {
+        let wash = self.colour_wash.points(4);
+        let keys = self.keyboard.points(4);
+        let pad = self.trackpad.points(3);
+        let speakers = self.speakers.points(2);
+        let capture = self.capture.points(2);
+        (
+            wash.0 + keys.0 + pad.0 + speakers.0 + capture.0,
+            wash.1 + keys.1 + pad.1 + speakers.1 + capture.1,
+        )
+    }
+}
+
 /// NVMe / SSD wear path, rubric CG-1.0 section 5.4.
 /// Available spare is required for the top two bands. A missing spare is never
 /// assumed to be 100%, so a healthy wear figure without spare caps at 16.
@@ -1017,6 +1143,38 @@ mod tests {
                 + memory_bandwidth_points(Some(200.0)),
             DiagnosticDomain::MemoryIntegrity.weight()
         );
+    }
+
+    #[test]
+    fn interactive_points_follow_the_rubric_and_skip_is_not_a_zero() {
+        assert_eq!(OperatorAttestation::Passed.points(4), (4, 4));
+        assert_eq!(OperatorAttestation::Failed.points(4), (0, 4));
+        assert_eq!(OperatorAttestation::NotAttempted.points(4), (0, 0));
+        assert_eq!(PhysicalPortAttestation::AllPassed.points(), (4, 4));
+        assert_eq!(PhysicalPortAttestation::Partial.points(), (2, 4));
+        assert_eq!(PhysicalPortAttestation::AnyFailed.points(), (0, 4));
+        assert_eq!(PhysicalPortAttestation::NotAttempted.points(), (0, 0));
+        let passed = InteractiveAttestations {
+            colour_wash: OperatorAttestation::Passed,
+            keyboard: OperatorAttestation::Passed,
+            trackpad: OperatorAttestation::Passed,
+            speakers: OperatorAttestation::Passed,
+            capture: OperatorAttestation::Passed,
+            physical_ports: PhysicalPortAttestation::AllPassed,
+        };
+        assert_eq!(
+            passed.screen_points(),
+            (DiagnosticDomain::ScreenAndPeripherals.weight(), 15)
+        );
+        assert_eq!(
+            usb_topology_points(true)
+                + wifi_radio_points(true)
+                + bluetooth_radio_points(true)
+                + ethernet_radio_points(true)
+                + passed.physical_ports.points().0,
+            DiagnosticDomain::PortsAndConnectivity.weight()
+        );
+        assert_eq!(InteractiveAttestations::default().screen_points(), (0, 0));
     }
 
     #[test]
