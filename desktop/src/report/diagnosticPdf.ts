@@ -195,7 +195,7 @@ export function buildDiagnosticDocument(
   items.push({
     kind: "text",
     style: "body",
-    text: "Physical verification. Technician name: recorded at sign-off on the assessed PC. Date of inspection: recorded at sign-off on the assessed PC. Result: see Technician checks, including USB 1–USB 4. This block is not a handwritten signature line.",
+    text: "Physical verification. Technician name: recorded at sign-off on the assessed PC. Date of inspection: recorded at sign-off on the assessed PC. Result: see Technician checks. USB topology and battery/charger state come from the Advance scan pass, not from a live USB or live charger overlay. This block is not a handwritten signature line.",
   });
 
   return items;

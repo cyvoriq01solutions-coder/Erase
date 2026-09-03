@@ -74,10 +74,15 @@ session without live binding is not a licensed assessment.
 ## 5. Overview and safety banner
 
 **What you do.** Confirm the banner: local assessment; purge and grading
-issuance stay off.
+issuance stay off. Home shows three coloured workstreams:
+
+1. **01 Standard assessment** (orange) — verification, Report A, Back to main.
+2. **02 Advance diagnostic** (purple) — Advance scan, Report D, Back to main.
+3. **03 Data purge** (red) — wipe record only; not enabled.
 
 **Expected result.** Five destinations only: Overview, Verification,
-Results, Report, Help.
+Results, Report, Help. Each workstream returns to Overview after the
+report is saved.
 
 **If not.** If the application will not load the safety boundary, no
 customer operation has started. Restart. Do not treat a failed start as a
@@ -94,9 +99,9 @@ and backup disks unchecked unless they must appear on Report A.
 removable volumes. Large extra disks make verification take longer.
 
 **If not.** If a USB stick you need is missing from the list, Windows has
-not mounted it. Insert it in File Explorer first, or include it later in
-Advance scan USB 1–USB 4. Missing letters are not proof the socket is dead
-until you attempt insertion.
+not mounted it. Insert it in File Explorer first if it must appear on
+Report A. Missing letters are not proof the socket is dead. USB topology
+for Report D comes from Advance scan, not from a live insertion check.
 
 ---
 
@@ -131,55 +136,43 @@ stop and treat the result as unsafe. Do not call that a completed Report D.
 
 ---
 
-## 9. Technician checks — display, keyboard, USB, charger, camera
+## 9. Technician checks — display, keyboard, camera
 
 Order on the PC:
 
 1. Colour wash (red, green, blue, white, black)
 2. Keyboard
-3. **USB ports (teal Check USB ports)**
-4. Charger
-5. Camera live capture
-6. Trackpad and speakers
-7. Camera/microphone presence attestation
+3. Camera live capture
+4. Trackpad and speakers
+5. Camera/microphone presence attestation
+
+USB sockets and charger/AC state are **not** live buttons. They are read
+once during Advance scan (USB controllers, hubs, attached devices, battery
+status) and printed on Report D. This version removed live USB insertion
+and live charger overlays because they opened repeating command windows
+and froze some laptops.
 
 Skipped checks stay not assessable. Keystrokes, tones, washes, snapshots
 and clips are not stored.
 
-### USB 1, USB 2, USB 3, USB 4
+### USB topology and charger on Report D
 
-**What you do.** Click **Check USB ports** (teal, not the orange primary
-actions). The guide says: insert a USB stick into **USB 1**. Tick the box
-beside each socket that exists on this chassis. PCs can have more than one
-USB port. When Windows lists a new letter, that socket can be marked Pass
-and the speed Windows reports is recorded (for example USB 3.0 SuperSpeed).
-Remove the stick, then USB 2, USB 3, USB 4 as needed. If this PC has only
-two sockets, mark USB 3 and USB 4 **Not on this PC**. CYVRA does not write
-to the stick.
+**What you do.** Run Advance scan. Do not look for Check USB ports or
+Start charger check — those controls are gone.
 
-**Expected result.** Each on-chassis socket you attempted has Pass or Fail.
-Speed is telemetry. The four ticks derive the physical-port score: all
-on-chassis Pass → all passed; any Fail → a port failed; some Pass and some
-not attempted → partial; none attempted → not attempted. Absent sockets do
-not fail a two-port laptop.
+**Expected result.** Report D lists USB topology Windows exposed in that
+one pass, and battery/charger state from the same pass. Charging is
+telemetry, not a grading point. USB 1–USB 4 technician ticks stay
+not-attempted unless a later version reintroduces attestation without a
+live process.
 
 **If not.**
 
 | What you see | What to derive |
 | --- | --- |
-| No new letter after insert | Windows did not mount a volume. Do not tick Pass. Try another stick, another socket, or mark Fail if the socket is dead. |
-| Letter appears but speed is “Not reported by Windows” | The socket worked; speed is unknown. Still telemetry, not extra points. |
-| USB 3 / USB 4 left as Not attempted on a two-port laptop | Coverage is partial, not all passed. Mark them Not on this PC. |
-| Same letter reused on two sockets | You did not move the stick. Only the first assignment counts. |
-| Stick already listed when the check opened | That is an existing volume, not proof of the guided socket until you insert into that socket. |
-
-### Charger
-
-**Expected.** After you plug in, Windows reports charging (BatteryStatus
-6–9) or on mains (BatteryStatus 2). Charging is not a grading point.
-
-**If not.** Status 2 is AC present, not charging — do not write “charging”.
-No battery pack on a desktop is expected. That is not a failed charger.
+| USB group says not collected | Windows did not return controller/device data in this pass. That is not a live-insert failure. |
+| Battery group empty on a desktop | No battery pack is expected. That is not a failed charger. |
+| Status is on mains, not charging | AC is present. Do not write “charging”. |
 
 ### Camera
 
@@ -196,13 +189,14 @@ attest Pass. No stored image is success, not a fault.
 **What you do.** Run Advance scan, open Report, Save Report D as PDF.
 Optionally Verify this report.
 
-**Expected result.** Report D shows coverage, technician rows including USB
-1–USB 4, method and limitations, and a Physical verification block
-(technician name, date, result — not a handwritten underscore line). A
-local integrity seal (SHA-256 and Ed25519, QR) proves the JSON was not
-altered after this scan on this PC. Printed: Graded by CYVRA Grading
-Engine, rubric CG-1.0. Issued by CYVORIQ Solutions Pvt. Ltd. The document
-is computer-generated and not cloud-authenticated.
+**Expected result.** Report D shows coverage, technician rows, USB
+topology and battery/charger state from that one Advance scan pass, method
+and limitations, and a Physical verification block (technician name, date,
+result — not a handwritten underscore line). A local integrity seal
+(SHA-256 and Ed25519, QR) proves the JSON was not altered after this scan
+on this PC. Printed: Graded by CYVRA Grading Engine, rubric CG-1.0. Issued
+by CYVORIQ Solutions Pvt. Ltd. The document is computer-generated and not
+cloud-authenticated. Save the PDF, then Back to main.
 
 **If not.**
 

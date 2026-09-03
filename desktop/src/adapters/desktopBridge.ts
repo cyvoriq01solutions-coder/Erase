@@ -368,7 +368,7 @@ function previewAdvanceRecord(
           ["Camera and microphone", attestationLabel(interactive.capture)],
           ["Physically verified ports", portLabel(derivePhysicalPorts(interactive.usbPorts))],
         ],
-        "Attested points are Pass / Fail / Not attempted. Live USB listing, charger status and in-session camera capture are telemetry. Keystrokes, speaker tones, colour washes, snapshots and clips are not stored.",
+        "Attested points are Pass / Fail / Not attempted. USB topology and battery/charger state come from the Advance scan pass. Live USB and live charger overlays are not used. In-session camera capture is telemetry. Keystrokes, speaker tones, colour washes, snapshots and clips are not stored.",
       ),
     ],
     coverageRows: [
@@ -481,7 +481,7 @@ function previewAdvanceRecord(
       {
         label: "Physical ports",
         value:
-          "Windows exposes USB controller topology and attached devices, not the plastic connectors. USB 1, USB 2, USB 3 and USB 4 are confirmed only when a technician ticks them after inserting a stick. Not on this PC does not fail a laptop that has fewer sockets. This scan does not write to the stick. Volume listing and USB speed are telemetry; they do not award the four insertion points.",
+          "Windows exposes USB controller topology and attached devices during Advance scan. Live USB insertion and live charger overlays are not used in this version. Battery and USB rows on Report D come from that one diagnostic pass, not from a repeating live check. BatteryStatus codes (charging vs on mains) are telemetry, not extra points.",
       },
       {
         label: "Display panel",

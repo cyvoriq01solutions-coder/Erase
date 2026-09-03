@@ -14,6 +14,8 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
   { id: "help", label: "Help", shortLabel: "?" },
 ];
 
+export type WorkstreamId = "assessment" | "advance" | "purge";
+
 export interface ShellBootstrap {
   appVersion: string;
   runtimeMode: string;
@@ -139,7 +141,7 @@ export function usbPortMarkLabel(mark: UsbPortMark): string {
   return "Not attempted";
 }
 
-/** Four chassis ticks derive the CG-1.0 physical-port band. Absent sockets are not failures. */
+/** Four chassis ticks can still derive the CG-1.0 physical-port band. F2 does not run live USB ticks; absent sockets are not failures. */
 export function derivePhysicalPorts(ports: UsbPortState[]): PortAttestationValue {
   const onChassis = ports.filter((port) => port.mark !== "absent");
   const scored = onChassis.filter((port) => port.mark === "pass" || port.mark === "fail");
