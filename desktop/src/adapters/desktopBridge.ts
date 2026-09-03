@@ -10,6 +10,7 @@ import {
   type AdvanceScanRecord,
   type AttestationValue,
   type DeviceFormHint,
+  type LiveIntakeProbe,
   type PortAttestationValue,
   type ScanTarget,
   type ShellBootstrap,
@@ -63,6 +64,45 @@ export async function listScanTargets(): Promise<ScanTarget[]> {
 
   const response = await invoke<ScanTarget[]>("list_scan_targets");
   return Array.isArray(response) ? response : [];
+}
+
+export async function probeLiveIntake(): Promise<LiveIntakeProbe> {
+  if (!isTauri()) {
+    return {
+      removable: PREVIEW_SCAN_TARGETS.filter((target) => target.kind === "Removable or USB").map(
+        (target) => ({
+          letter: target.letter,
+          label: target.label,
+          sizeLabel: target.sizeLabel,
+        }),
+      ),
+      power: {
+        present: true,
+        onMains: false,
+        charging: false,
+        statusCode: 1,
+        statusLabel: "Discharging",
+        chargePercent: 64,
+        available: false,
+        detail: "Live charger sensing runs only in the installed Windows application.",
+      },
+    };
+  }
+
+  const response = await invoke<LiveIntakeProbe>("probe_live_intake");
+  return {
+    removable: Array.isArray(response?.removable) ? response.removable : [],
+    power: response?.power ?? {
+      present: false,
+      onMains: false,
+      charging: false,
+      statusCode: null,
+      statusLabel: "Not collected",
+      chargePercent: null,
+      available: false,
+      detail: "CYVRA could not read live USB and charger status.",
+    },
+  };
 }
 
 export async function runDeviceVerification(driveLetters: string[]): Promise<VerificationRecord> {
@@ -284,9 +324,9 @@ function previewAdvanceRecord(
           ["Capture probe", "Camera and microphone collection is only available on Windows."],
           ["Frames captured", "No"],
           ["Audio recorded", "No"],
-          ["Camera image", notAttempted],
+          ["Camera image", interactive.liveCamera || notAttempted],
         ],
-        "Enumeration only. No frame captured and no microphone audio is recorded in this adapter.",
+        "Enumeration plus an in-session live preview when the operator opens the camera check. Snapshots and clips are discarded. Microphone audio is not recorded.",
       ),
       group(
         "Capture sources consulted",
@@ -312,12 +352,15 @@ function previewAdvanceRecord(
         [
           ["Display inspection", attestationLabel(interactive.colourWash)],
           ["Keyboard", attestationLabel(interactive.keyboard)],
+          ["USB insertion sense", interactive.liveUsb || notAttempted],
+          ["Charger status", interactive.livePower || notAttempted],
+          ["Live camera session", interactive.liveCamera || notAttempted],
           ["Trackpad", attestationLabel(interactive.trackpad)],
           ["Speakers", attestationLabel(interactive.speakers)],
           ["Camera and microphone", attestationLabel(interactive.capture)],
           ["Physically verified ports", portLabel(interactive.physicalPorts)],
         ],
-        "These points are operator-attested. Keystrokes, speaker tones, and colour washes are not stored. Live camera and microphone capture is not part of this scan.",
+        "Attested points are Pass / Fail / Not attempted. Live USB listing, charger status and in-session camera capture are telemetry. Keystrokes, speaker tones, colour washes, snapshots and clips are not stored.",
       ),
     ],
     coverageRows: [
@@ -430,7 +473,7 @@ function previewAdvanceRecord(
       {
         label: "Physical ports",
         value:
-          "Windows exposes USB controller topology and attached devices, not the plastic connectors. A port is only confirmed when a technician inserts a test device. Insertion is operator-attested; this scan does not write to the stick or to an assessed drive.",
+          "Windows exposes USB controller topology and attached devices, not the plastic connectors. A port is only confirmed when a technician inserts a test device. Insertion is operator-attested; this scan does not write to the stick or to an assessed drive. A live USB-volume listing can show that Windows mounted a stick; that listing does not award the four insertion points.",
       },
       {
         label: "Display panel",
@@ -445,7 +488,7 @@ function previewAdvanceRecord(
       {
         label: "Cameras and microphones",
         value:
-          "Advance scan enumerates capture devices across several PnP classes, including the USB video service that the Camera ClassGuid misses. No frame is captured and no audio is recorded. Presence confirmation is an operator attestation, not a live preview.",
+          "Advance scan enumerates capture devices across several PnP classes, including the USB video service that the Camera ClassGuid misses. The technician check can open a live camera preview and take a snapshot or short clip in memory. That image is discarded when the check closes and is never written to Report D. Microphone audio is not recorded. Presence confirmation remains an operator attestation.",
       },
       {
         label: "Keyboard",
@@ -520,7 +563,7 @@ async function runAdvanceScanPreview(
     "Not collected in this scan. Advance scan collection for this subsystem arrives in a later collector version.",
     "Walking USB controllers, hubs and attached devices. USB topology collection is only available on Windows.",
     "Reading panel identity from EDID. Display and radio collection is only available on Windows.",
-    "Enumerating cameras and microphones. Camera and microphone collection is only available on Windows. No frame captured.",
+    "Enumerating cameras and microphones. Camera and microphone collection is only available on Windows. Frames are not stored.",
     consent.benchmarks
       ? "Running consented CPU, memory and storage workloads. Package temperature is not collected. Benchmarks run only on the installed Windows application."
       : "Benchmarks were not permitted, so none were run.",
@@ -561,6 +604,11 @@ export async function runAdvanceScan(
     speakers: interactive.speakers,
     capture: interactive.capture,
     physicalPorts: interactive.physicalPorts,
+    liveIntake: {
+      usb: interactive.liveUsb || null,
+      power: interactive.livePower || null,
+      camera: interactive.liveCamera || null,
+    },
   });
 
   if (!response.ok || response.destructiveOperationsEnabled || response.contentInspected) {

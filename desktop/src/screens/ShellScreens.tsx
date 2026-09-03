@@ -333,10 +333,11 @@ function AdvanceScanPanel({
       </div>
       <p className="panel-lead">
         Advance scan reads deeper hardware detail than the standard assessment: battery capacity and
-        wear, processor and memory identity, USB controller topology, cameras and microphones with no
-        frame captured, storage SMART health from Windows reliability counters, panel identity from
-        EDID, and Wi-Fi, Bluetooth and Ethernet radios. Optional technician checks (colour wash,
-        keyboard, trackpad, speakers, physical ports) are operator-attested. MAC addresses are never
+        wear, processor and memory identity, USB controller topology, cameras and microphones,
+        storage SMART health from Windows reliability counters, panel identity from
+        EDID, and Wi-Fi, Bluetooth and Ethernet radios. Optional technician checks run after the
+        keyboard: USB insertion sense, charger status, live camera snapshot or clip, then trackpad,
+        speakers and port attestation. Snapshots are not stored. MAC addresses are never
         printed. CPU, memory and storage workloads run only if you allow benchmarks. It then prepares
         Report D with a provisional grade. It still does not erase anything and it does not open file
         contents.
@@ -1415,9 +1416,13 @@ function HelpScreen({
           </p>
         </article>
         <article className="support-card">
-          <span className="support-number">04</span>
-          <h2>Privacy</h2>
-          <p>Passwords, recovery keys and file contents are not collected. Raw identifiers stay off support logs.</p>
+          <span className="support-number">05</span>
+          <h2>Technician live checks</h2>
+          <p>
+            After the keyboard, insert a USB stick, plug the charger, then open the camera. CYVRA
+            lists a new removable letter, reads whether Windows says the pack is charging, and can
+            take a still or a five-second clip. Images are discarded. Nothing is written to the stick.
+          </p>
         </article>
       </section>
 

@@ -64,9 +64,10 @@ test("frontend bridge is narrow and has no network or persistence client", () =>
   assert.match(combined, /"activate_license"/);
   assert.match(combined, /"run_device_verification"/);
   assert.match(combined, /"list_scan_targets"/);
+  assert.match(combined, /"probe_live_intake"/);
   assert.match(combined, /"run_advance_scan"/);
   assert.match(combined, /"close_window"/);
-  assert.equal(occurrences(combined, /invoke<|invoke\(/g), 6);
+  assert.equal(occurrences(combined, /invoke<|invoke\(/g), 7);
 
   for (const forbidden of [
     /\bfetch\s*\(/,
@@ -84,10 +85,11 @@ test("Rust command boundary links the reusable core and fails closed", () => {
   const rust = read("src-tauri/src/lib.rs");
 
   assert.match(cargo, /cyvra-core\s*=\s*\{\s*package\s*=\s*"cyvoriq-erase-agent",\s*path\s*=\s*"\.\.\/\.\.\/agent-windows"\s*\}/);
-  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 6);
+  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 7);
   assert.match(rust, /activate_license/);
   assert.match(rust, /run_device_verification/);
   assert.match(rust, /list_scan_targets/);
+  assert.match(rust, /probe_live_intake/);
   assert.match(rust, /run_advance_scan/);
   assert.match(rust, /#\[allow\(clippy::too_many_arguments\)\]/);
   assert.match(rust, /close_window/);
@@ -123,6 +125,8 @@ test("Tauri capability and webview policy remain least privilege", () => {
   assert.equal(configuration.app.security.csp["default-src"], "'self'");
   assert.match(configuration.app.security.csp["connect-src"], /ipc:/);
   assert.equal(configuration.app.security.csp["object-src"], "'none'");
+  assert.match(configuration.app.security.csp["img-src"], /blob:/);
+  assert.match(configuration.app.security.csp["media-src"], /mediastream:/);
 });
 
 test("foundation does not ship destructive or obsolete customer wording", () => {
@@ -157,7 +161,6 @@ test("foundation does not ship destructive or obsolete customer wording", () => 
   assert.doesNotMatch(combined, /NIST certified/i);
   assert.doesNotMatch(combined, /This memory is verified/i);
   assert.doesNotMatch(combined, /no thermal throttling/i);
-  assert.doesNotMatch(combined, /live camera preview/i);
 });
 
 test("advance scan is opt-in, honest about gaps, and never claims an AI grade", () => {
@@ -187,7 +190,11 @@ test("advance scan is opt-in, honest about gaps, and never claims an AI grade", 
   assert.match(combined, /advance-scan-progress/);
   assert.match(combined, /USB video service/i);
   assert.match(combined, /physically verified/i);
-  assert.match(combined, /no frame captured/i);
+  assert.match(combined, /frames are not stored|not stored on Report D|was not stored/i);
+  assert.match(combined, /live camera preview/i);
+  assert.match(combined, /USB insertion/i);
+  assert.match(combined, /charger/i);
+  assert.match(combined, /BatteryStatus/);
   assert.match(combined, /storage SMART/i);
   assert.match(combined, /reliability counters/i);
   assert.match(combined, /EDID/);
@@ -201,7 +208,7 @@ test("advance scan is opt-in, honest about gaps, and never claims an AI grade", 
   assert.match(combined, /colour wash/i);
   assert.match(combined, /Fn combinations/);
   assert.match(combined, /Keystrokes are not stored/);
-  assert.match(combined, /not a live preview/i);
+  assert.match(combined, /live camera preview/i);
   assert.doesNotMatch(combined, /MacAddress/);
 
   // Both permissions must start off, and a write test cannot stand alone.

@@ -94,6 +94,42 @@ struct DomainCoverageDto {
     note: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LiveIntakeArgs {
+    usb: Option<String>,
+    power: Option<String>,
+    camera: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LiveRemovableDto {
+    letter: String,
+    label: String,
+    size_label: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LivePowerDto {
+    present: bool,
+    on_mains: bool,
+    charging: bool,
+    status_code: Option<i32>,
+    status_label: String,
+    charge_percent: Option<u8>,
+    available: bool,
+    detail: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LiveIntakeDto {
+    removable: Vec<LiveRemovableDto>,
+    power: LivePowerDto,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AdvanceScanProgress {
@@ -366,7 +402,13 @@ async fn run_advance_scan(
     speakers: Option<String>,
     capture: Option<String>,
     physical_ports: Option<String>,
+    live_intake: Option<LiveIntakeArgs>,
 ) -> Result<AdvanceScanOutcome, String> {
+    let notes = live_intake.unwrap_or(LiveIntakeArgs {
+        usb: None,
+        power: None,
+        camera: None,
+    });
     let request = cyvra_core::diagnostics::AdvanceScanRequest {
         benchmarks_consented: benchmarks_consented.unwrap_or(false),
         write_benchmark_consented: write_benchmark_consented.unwrap_or(false),
@@ -391,6 +433,11 @@ async fn run_advance_scan(
                 physical_ports.as_deref(),
             ),
         },
+        live_intake: cyvra_core::live_intake::LiveIntakeNotes {
+            usb_listed: notes.usb.unwrap_or_default(),
+            power_status: notes.power.unwrap_or_default(),
+            camera_session: notes.camera.unwrap_or_default(),
+        },
     };
     let progress_app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -408,6 +455,36 @@ async fn run_advance_scan(
     })
     .await
     .map_err(|_| "CYVRA could not finish Advance scan.".to_string())?
+}
+
+#[tauri::command]
+async fn probe_live_intake() -> Result<LiveIntakeDto, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let probe = cyvra_core::live_intake::probe_live_intake();
+        LiveIntakeDto {
+            removable: probe
+                .removable
+                .into_iter()
+                .map(|volume| LiveRemovableDto {
+                    letter: volume.letter,
+                    label: volume.label,
+                    size_label: volume.size_label,
+                })
+                .collect(),
+            power: LivePowerDto {
+                present: probe.power.present,
+                on_mains: probe.power.on_mains,
+                charging: probe.power.charging,
+                status_code: probe.power.status_code,
+                status_label: probe.power.status_label,
+                charge_percent: probe.power.charge_percent,
+                available: probe.power.available,
+                detail: probe.power.detail,
+            },
+        }
+    })
+    .await
+    .map_err(|_| "CYVRA could not read live USB and charger status.".to_string())
 }
 
 #[tauri::command]
@@ -477,6 +554,7 @@ pub fn run() {
             get_shell_bootstrap,
             activate_license,
             list_scan_targets,
+            probe_live_intake,
             run_device_verification,
             run_advance_scan,
             close_window

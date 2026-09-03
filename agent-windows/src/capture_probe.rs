@@ -6,8 +6,8 @@
 //! Windows actually uses for capture devices, records *which* class answered,
 //! and still captures nothing: no frame, no sample, no file.
 //!
-//! Live preview and microphone record/playback stay in a later consented
-//! slice (A10). A3 only lists what is plugged in.
+//! Live preview and in-session snapshot belong to the technician check (A10).
+//! This probe still captures nothing: no frame, no sample, no file.
 
 use crate::collector_runtime::{
     CancellationToken, CollectorLimits, TrustedPowerShellScript, run_fixed_powershell,

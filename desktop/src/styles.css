@@ -1632,6 +1632,20 @@ a:focus-visible,
   touch-action: none;
 }
 
+.interactive-camera {
+  justify-content: flex-start;
+  overflow: auto;
+}
+
+.camera-preview,
+.camera-still {
+  width: min(100%, 480px);
+  max-height: 280px;
+  border-radius: 12px;
+  background: #0f1722;
+  object-fit: contain;
+}
+
 @media (max-width: 720px) {
   .interactive-choices {
     flex-direction: column;
