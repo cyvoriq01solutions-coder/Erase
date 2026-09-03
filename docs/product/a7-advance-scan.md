@@ -1,9 +1,10 @@
 # A7: Interactive technician checks
 
 A7 adds phase-one technician checks to Advance scan. Colour wash, keyboard,
-trackpad, speakers, camera/microphone **presence**, and physical port
-insertion are operator-attested. Live camera preview and microphone record
-stay out (A10). Keystrokes, tones and washes are not stored.
+trackpad, speakers, camera/microphone presence, and physical port insertion
+are operator-attested. Live USB listing, charger sensing and in-session
+camera capture arrive in A10, immediately after the keyboard check.
+Keystrokes, tones and washes are not stored.
 
 Basic scan and Report A stay unchanged. Navigation still has exactly five
 destinations. Wipe, B2 upload, and Authenticode stay out.
@@ -47,8 +48,7 @@ may print. Issuance stays off.
 ## Guards
 
 - Default for every subject is not attempted
-- No live camera or microphone capture
-- No keystroke log on Report D
+- Keystroke log is not written to Report D
 - No write to a USB stick and no write to an assessed drive for insertion
 - No sixth navigation destination
 - `desktop/src-tauri/src/lib.rs` still has no `std::fs` / `std::process`
@@ -57,6 +57,6 @@ may print. Issuance stays off.
 
 - Grading issuance (A8)
 - Report signing (A9)
-- Live camera preview and microphone record (A10)
+- Live USB / charger / camera intake (A10)
 - Authenticode, unsigned B2 upload, WinPE
 - CYVRA Purge / Report B (plan only)

@@ -20,6 +20,7 @@ use crate::hardware_diagnostics_v1::{
     processor_clock_points, processor_identity_points, usb_topology_points, wifi_radio_points,
 };
 use crate::hardware_inventory_v1::Confidence;
+use crate::live_intake::LiveIntakeNotes;
 use crate::storage_health::{self, StorageProbe, StorageSource};
 use crate::usb_topology::{self, UsbProbe, UsbSource};
 use std::collections::BTreeSet;
@@ -52,12 +53,13 @@ pub const STAGES: [&str; 11] = [
 /// What the operator agreed to before Advance scan started. Both permissions
 /// default off. `device_form` comes from the basic assessment when one has run,
 /// so the grading engine knows whether a battery is even expected.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdvanceScanRequest {
     pub benchmarks_consented: bool,
     pub write_benchmark_consented: bool,
     pub device_form: DeviceForm,
     pub interactive: InteractiveAttestations,
+    pub live_intake: LiveIntakeNotes,
 }
 
 impl Default for AdvanceScanRequest {
@@ -67,6 +69,7 @@ impl Default for AdvanceScanRequest {
             write_benchmark_consented: false,
             device_form: DeviceForm::Unknown,
             interactive: InteractiveAttestations::default(),
+            live_intake: LiveIntakeNotes::default(),
         }
     }
 }
@@ -224,7 +227,7 @@ pub fn run_advance_scan_with(
         9,
         "Scoring only the areas that were actually assessed, including technician attestations.",
     );
-    let outcome = build_report(
+    let mut outcome = build_report(
         &diagnostics,
         &battery,
         &storage,
@@ -236,6 +239,7 @@ pub fn run_advance_scan_with(
         request.interactive,
         request.device_form,
     );
+    apply_live_intake(&mut outcome, &request.live_intake);
 
     report(
         10,
@@ -724,7 +728,7 @@ fn screen_evidence(interactive: InteractiveAttestations) -> DomainEvidence {
     }
     let mut evidence = DomainEvidence::measured(domain, awarded, assessed, Confidence::High);
     evidence.note = Some(
-        "Screen, keyboard and peripheral points are operator-attested. Live camera and microphone capture is not part of this scan.".to_string(),
+        "Screen, keyboard and peripheral points are operator-attested. Live USB listing, charger status and in-session camera capture do not add extra points.".to_string(),
     );
     evidence
 }
@@ -898,7 +902,7 @@ fn method_rows() -> Vec<NamedValue> {
         ),
         row(
             "Physical ports",
-            "Windows exposes USB controller topology and attached devices, not the plastic connectors. A port is only confirmed when a technician inserts a test device. Insertion is operator-attested; this scan does not write to the stick or to an assessed drive.".to_string(),
+            "Windows exposes USB controller topology and attached devices, not the plastic connectors. A port is only confirmed when a technician inserts a test device. Insertion is operator-attested; this scan does not write to the stick or to an assessed drive. A live USB-volume listing can show that Windows mounted a stick; that listing does not award the four insertion points.".to_string(),
         ),
         row(
             "Display panel",
@@ -910,7 +914,7 @@ fn method_rows() -> Vec<NamedValue> {
         ),
         row(
             "Cameras and microphones",
-            "Advance scan enumerates capture devices across several PnP classes, including the USB video service that the Camera ClassGuid misses. No frame is captured and no audio is recorded. Presence confirmation is an operator attestation, not a live preview.".to_string(),
+            "Advance scan enumerates capture devices across several PnP classes, including the USB video service that the Camera ClassGuid misses. The technician check can open a live camera preview and take a snapshot or short clip in memory. That image is discarded when the check closes and is never written to Report D. Microphone audio is not recorded. Presence confirmation remains an operator attestation.".to_string(),
         ),
         row(
             "Keyboard",
@@ -1787,7 +1791,7 @@ fn interactive_group(interactive: InteractiveAttestations) -> TelemetryGroup {
     TelemetryGroup {
         title: "Technician checks".to_string(),
         note: Some(
-            "These points are operator-attested. Keystrokes, speaker tones, and colour washes are not stored. Live camera and microphone capture is not part of this scan.".to_string(),
+            "Attested points are Pass / Fail / Not attempted. Live USB listing, charger status and in-session camera capture are telemetry. Keystrokes, speaker tones, colour washes, snapshots and clips are not stored.".to_string(),
         ),
         rows: vec![
             row(
@@ -1797,6 +1801,18 @@ fn interactive_group(interactive: InteractiveAttestations) -> TelemetryGroup {
             row(
                 "Keyboard",
                 interactive.keyboard.customer_label().to_string(),
+            ),
+            row(
+                "USB insertion sense",
+                NOT_ATTEMPTED.to_string(),
+            ),
+            row(
+                "Charger status",
+                NOT_ATTEMPTED.to_string(),
+            ),
+            row(
+                "Live camera session",
+                NOT_ATTEMPTED.to_string(),
             ),
             row(
                 "Trackpad",
@@ -1815,6 +1831,32 @@ fn interactive_group(interactive: InteractiveAttestations) -> TelemetryGroup {
                 interactive.physical_ports.customer_label().to_string(),
             ),
         ],
+    }
+}
+
+fn apply_live_intake(scan: &mut CustomerAdvanceScan, notes: &LiveIntakeNotes) {
+    for group in &mut scan.telemetry_groups {
+        if group.title == "Technician checks" {
+            for row in &mut group.rows {
+                match row.label.as_str() {
+                    "USB insertion sense" => row.value = notes.usb_or_default(),
+                    "Charger status" => row.value = notes.power_or_default(),
+                    "Live camera session" => row.value = notes.camera_or_default(),
+                    _ => {}
+                }
+            }
+        }
+        if group.title == "Cameras and microphones" && notes.has_camera_capture() {
+            for row in &mut group.rows {
+                if row.label == "Camera image" {
+                    row.value = notes.camera_or_default();
+                }
+            }
+            group.note = Some(
+                "Enumeration plus an in-session live preview. The snapshot or clip was discarded and is not stored on Report D. Microphone audio is not recorded."
+                    .to_string(),
+            );
+        }
     }
 }
 
@@ -1844,6 +1886,7 @@ fn capture_group(capture: &CaptureProbe) -> TelemetryGroup {
         rows.push(row("Capture probe", error.to_string()));
         rows.push(row("Frames captured", "No".to_string()));
         rows.push(row("Audio recorded", "No".to_string()));
+        rows.push(row("Camera image", NOT_ATTEMPTED.to_string()));
         return TelemetryGroup {
             title: "Cameras and microphones".to_string(),
             note: None,
@@ -1900,7 +1943,7 @@ fn capture_group(capture: &CaptureProbe) -> TelemetryGroup {
     TelemetryGroup {
         title: "Cameras and microphones".to_string(),
         note: Some(
-            "Enumeration only. No webcam frame is captured and no microphone audio is recorded in this slice."
+            "Enumeration lists what Windows can see. A live preview, if opened, is an in-session technician check. No image is stored on Report D and no microphone audio is recorded."
                 .to_string(),
         ),
         rows,
@@ -3077,6 +3120,47 @@ mod tests {
         assert!(outcome.provisional);
         assert!(value_of(&outcome, "Technician checks", "Display inspection").contains("Passed"));
         assert!(!value_of(&outcome, "Technician checks", "Keyboard").contains("Ctrl"));
+        assert!(
+            value_of(&outcome, "Technician checks", "USB insertion sense")
+                .contains("Not attempted")
+        );
+    }
+
+    #[test]
+    fn live_intake_notes_print_on_report_d_and_do_not_score() {
+        let outcome = run_advance_scan(&AdvanceScanRequest {
+            live_intake: crate::live_intake::LiveIntakeNotes {
+                usb_listed: "Windows listed a new removable volume E: during this check."
+                    .to_string(),
+                power_status: "Charging · 41% · Windows BatteryStatus 6.".to_string(),
+                camera_session:
+                    "Live preview opened. A snapshot was taken in this session and was not stored."
+                        .to_string(),
+            },
+            ..AdvanceScanRequest::default()
+        });
+
+        assert!(value_of(&outcome, "Technician checks", "USB insertion sense").contains("E:"));
+        assert!(value_of(&outcome, "Technician checks", "Charger status").contains("Charging"));
+        assert!(
+            value_of(&outcome, "Technician checks", "Live camera session").contains("snapshot")
+        );
+        assert!(value_of(&outcome, "Cameras and microphones", "Camera image").contains("snapshot"));
+        assert_eq!(
+            value_of(&outcome, "Cameras and microphones", "Frames captured"),
+            "No"
+        );
+        assert_eq!(
+            value_of(&outcome, "Cameras and microphones", "Audio recorded"),
+            "No"
+        );
+        let screen = outcome
+            .coverage_domains
+            .iter()
+            .find(|domain| domain.domain == "Screen, keyboard and peripherals")
+            .expect("screen domain");
+        assert_eq!(screen.awarded, 0);
+        assert_eq!(screen.assessed, 0);
     }
 
     #[test]

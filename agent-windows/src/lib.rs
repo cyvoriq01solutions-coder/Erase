@@ -14,6 +14,7 @@ pub mod evidence;
 pub mod hardware_diagnostics_v1;
 pub mod hardware_inventory_v1;
 pub mod hardware_validation;
+pub mod live_intake;
 pub mod os;
 pub mod pdem;
 pub mod personal_data;

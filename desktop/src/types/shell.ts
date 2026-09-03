@@ -118,6 +118,9 @@ export interface AdvanceInteractive {
   speakers: AttestationValue;
   capture: AttestationValue;
   physicalPorts: PortAttestationValue;
+  liveUsb: string;
+  livePower: string;
+  liveCamera: string;
 }
 
 export const DEFAULT_ADVANCE_INTERACTIVE: AdvanceInteractive = {
@@ -127,7 +130,32 @@ export const DEFAULT_ADVANCE_INTERACTIVE: AdvanceInteractive = {
   speakers: "skip",
   capture: "skip",
   physicalPorts: "skip",
+  liveUsb: "",
+  livePower: "",
+  liveCamera: "",
 };
+
+export interface LiveRemovableVolume {
+  letter: string;
+  label: string;
+  sizeLabel: string;
+}
+
+export interface LivePowerStatus {
+  present: boolean;
+  onMains: boolean;
+  charging: boolean;
+  statusCode: number | null;
+  statusLabel: string;
+  chargePercent: number | null;
+  available: boolean;
+  detail: string;
+}
+
+export interface LiveIntakeProbe {
+  removable: LiveRemovableVolume[];
+  power: LivePowerStatus;
+}
 
 export type DeviceFormHint = "portable" | "fixed" | "unknown";
 

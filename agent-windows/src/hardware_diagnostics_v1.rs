@@ -577,7 +577,8 @@ impl PhysicalPortAttestation {
     }
 }
 
-/// Phase-one technician checks. Camera/mic live capture stays out (A10).
+/// Phase-one technician checks. Live USB/charger sensing and in-session camera
+/// preview are telemetry, not extra rubric points. Frames are not stored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct InteractiveAttestations {
     pub colour_wash: OperatorAttestation,

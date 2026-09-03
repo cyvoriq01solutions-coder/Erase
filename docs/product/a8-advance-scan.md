@@ -30,13 +30,12 @@ destinations. Wipe, B2 upload, and Authenticode stay out.
 
 - Grading issuance (the flag stays false; A8 is the card, not a certificate)
 - Report signing / QR digest (A9)
-- Live camera preview and microphone record (A10)
 - Authenticode, unsigned B2 upload, WinPE
 - CYVRA Purge / Report B (plan only)
 
 ## Guards
 
-- Five destinations, six Tauri commands
+- Five destinations. A8 shipped six Tauri commands; A10 adds `probe_live_intake`
 - `desktop/src-tauri/src/lib.rs` still has no `std::fs` / `std::process`
 - No invented numbers. Absent stays absent
 - No NIST / CERT-In / ADISA / DPDP certification claims
