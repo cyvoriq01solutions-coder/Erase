@@ -55,14 +55,14 @@ interface ShellScreenProps {
 }
 
 const verificationStages = [
-  "Preparing verification",
-  "Confirming device identity",
-  "Collecting hardware information",
-  "Assessing personal-data locations",
+  "Preparing Verification",
+  "Confirming Device Identity",
+  "Collecting Hardware Information",
+  "Assessing Data Locations",
   "Building the Privacy Exposure Map",
-  "Preparing evidence",
-  "Checking consistency",
-  "Preparing results",
+  "Preparing Evidence",
+  "Checking Consistency",
+  "Preparing Results",
 ] as const;
 
 function ScreenHeader({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
@@ -113,75 +113,71 @@ function OverviewScreen({
     <div className="screen-stack">
       <ScreenHeader
         eyebrow="WORKSTATION HOME"
-        title="Choose a workstream"
-        copy="Three coloured paths. Each one runs, writes its report, then returns here. CYVRA Erase does not erase files in this version."
+        title="Choose an Assessment"
+        copy="Select an assessment for this PC. Each assessment is non-destructive and returns you here when complete."
       />
 
       <section className="workstream-grid" aria-label="Workstreams">
         <article className="workstream-card workstream-card-assessment">
-          <span className="workstream-kicker">01 · Standard assessment</span>
+          <span className="workstream-kicker">01 · STANDARD ASSESSMENT</span>
           <h2>Report A</h2>
           <p>
-            Identify this PC, map where documents appear to live, then save or email Report A. File
-            contents are not opened.
+            Identify this PC, review selected hardware and map approved data locations without
+            opening personal files.
           </p>
           <ol>
-            <li>Select drives and run verification.</li>
+            <li>Select the drives to assess.</li>
+            <li>Run the verification.</li>
             <li>Generate Report A.</li>
-            <li>Return to this home screen.</li>
           </ol>
           <p className="workstream-status">
             {verificationPhase === "complete"
-              ? "Assessment complete on this PC."
+              ? "Assessment complete."
               : verificationPhase === "running"
-                ? "Verification is running."
-                : "Not yet run in this session."}
+                ? "Assessment in progress."
+                : "Not yet run on this PC."}
           </p>
           <button className="button button-primary" type="button" onClick={() => onChooseWorkstream("assessment")}>
-            {verification ? "Open standard assessment" : "Start standard assessment"}
+            {verification ? "Open Standard Assessment" : "Start Standard Assessment"}
           </button>
         </article>
 
         <article className="workstream-card workstream-card-advance">
-          <span className="workstream-kicker">02 · Advance diagnostic</span>
+          <span className="workstream-kicker">02 · ADVANCED DIAGNOSTIC</span>
           <h2>Report D</h2>
           <p>
-            In-depth hardware diagnostic. USB topology and battery/charger state are collected once
-            during this scan. Optional technician checks do not include live USB or live charger
-            buttons.
+            Run an in-depth hardware diagnostic with optional benchmarks and technician checks. USB
+            topology and battery/charger state are collected once during this scan.
           </p>
           <ol>
-            <li>Run Advance scan on this PC.</li>
+            <li>Run the advanced diagnostic.</li>
+            <li>Complete optional technician checks.</li>
             <li>Generate Report D.</li>
-            <li>Return to this home screen.</li>
           </ol>
           <p className="workstream-status">
             {advanceScanPhase === "complete"
-              ? "Advance scan complete. Report D is ready."
+              ? "Assessment complete. Report D is ready."
               : advanceScanPhase === "running"
-                ? "Advance scan is running."
-                : "Not yet run in this session."}
+                ? "Assessment in progress."
+                : "Not yet run on this PC."}
           </p>
           <button className="button button-advance" type="button" onClick={() => onChooseWorkstream("advance")}>
-            {advanceScan ? "Open advance diagnostic" : "Start advance diagnostic"}
+            {advanceScan ? "Open Advanced Diagnostic" : "Start Advanced Diagnostic"}
           </button>
         </article>
 
         <article className="workstream-card workstream-card-purge">
-          <span className="workstream-kicker">03 · Data purge</span>
-          <h2>Wipe (not enabled)</h2>
-          <p>
-            After Report A is saved, Data purge can be offered in a later licensed build. This
-            installer will not erase, overwrite or destroy files.
-          </p>
+          <span className="workstream-kicker">03 · DATA PURGE</span>
+          <h2>Data Purge — Not Available</h2>
+          <p>Secure data purge is not enabled in this version of CYVRA Erase.</p>
           <ol>
-            <li>Complete standard assessment first.</li>
+            <li>Complete the standard assessment first.</li>
             <li>Save Report A.</li>
-            <li>Data purge stays off until a Purge licence is issued.</li>
+            <li>Data purge stays off in this version.</li>
           </ol>
-          <p className="workstream-status">Disabled in this version. No data was erased.</p>
+          <p className="workstream-status">No data will be erased, overwritten or destroyed.</p>
           <button className="button button-danger" type="button" onClick={() => onChooseWorkstream("purge")}>
-            Open data purge (not enabled)
+            Data Purge Not Available
           </button>
         </article>
       </section>
@@ -335,14 +331,14 @@ function AdvanceScanPanel({
         ? (advanceScanProgress?.detail ?? "Report D is ready.")
         : advanceScanPhase === "error"
           ? (advanceScanError ?? "Advance scan stopped.")
-          : "The circle shows live percent and the exact subsystem being read.";
+          : "CYVRA is preparing the diagnostic environment and checking available system capabilities.";
 
   return (
     <section className="content-panel advance-panel" aria-labelledby="advance-title">
       <div className="panel-heading">
         <div>
           <span className="card-label">02 · ADVANCE DIAGNOSTIC</span>
-          <h2 id="advance-title">Advance scan · Report D</h2>
+          <h2 id="advance-title">Advanced Diagnostic · Report D</h2>
         </div>
         <span
           className={`status-pill ${advanceScanPhase === "complete" ? "status-positive" : advanceScanPhase === "running" ? "status-advance" : "status-neutral"}`}
@@ -357,16 +353,13 @@ function AdvanceScanPanel({
         </span>
       </div>
       <p className="panel-lead">
-        Advance scan reads deeper hardware detail than the standard assessment: battery capacity and
-        wear, charger/AC state, processor and memory identity, USB controller topology, cameras and
-        microphones, storage SMART health from Windows reliability counters, panel identity from
-        EDID, and Wi-Fi, Bluetooth and Ethernet radios. USB sockets and charger state are collected
-        once in this pass and printed on Report D. Optional technician checks are colour wash,
-        keyboard, camera preview, trackpad, speakers and presence attestation. This version does not
-        run a live USB insertion check or a live charger overlay. Snapshots are not stored. MAC
-        addresses are never printed. CPU, memory and storage workloads run only if you allow
-        benchmarks. It then prepares Report D with a provisional grade. It still does not erase
-        anything and it does not open file contents.
+        CYVRA is reading approved system information without changing your files or settings. USB
+        sockets and charger state are collected once in this pass and printed on Report D. Optional
+        technician checks verify selected hardware functions. This version does not run a live USB
+        insertion check or a live charger overlay. Snapshots are not stored. MAC addresses are never
+        printed. Storage SMART is read, never erased. Package temperature is not collected. CPU,
+        memory and storage workloads run only if you allow benchmarks. Report D then records a
+        provisional grade. It still does not erase anything and it does not open file contents.
       </p>
 
       <ul className="advance-scope">
@@ -398,7 +391,7 @@ function AdvanceScanPanel({
       </ol>
 
       <fieldset className="advance-consent">
-        <legend>Permissions for this run</legend>
+        <legend>Permissions for This Run</legend>
         <label>
           <input
             type="checkbox"
@@ -409,9 +402,10 @@ function AdvanceScanPanel({
           <span>
             <strong>Allow benchmarks</strong>
             <small>
-              Short in-process processor, memory and storage-read measurements. Off by default.
-              Without them, clock and memory-integrity points stay not assessable. Package
-              temperature is not collected. This is never printed as memory verified.
+              Run short processor, memory and storage performance checks. No personal data is
+              accessed. Off by default. Without them, clock and memory-integrity points stay not
+              assessable. Package temperature is not collected. This is never printed as memory
+              verified.
             </small>
           </span>
         </label>
@@ -423,11 +417,12 @@ function AdvanceScanPanel({
             onChange={() => onToggleAdvanceConsent("writeBenchmark")}
           />
           <span>
-            <strong>Allow one temporary write test</strong>
+            <strong>Allow Temporary Storage Write Test</strong>
             <small>
-              Writes one 8 MiB temporary file in the Windows temporary folder, measures write speed,
-              then deletes it. Leave this off to keep the scan strictly read-only. Predicted-failure
-              disks are not exercised. Report D always records how many bytes were written.
+              Write and automatically delete a small temporary test file to measure storage
+              performance. The temporary test file is removed automatically when the check is
+              complete. Leave this off to keep the scan strictly read-only. Report D always records
+              how many bytes were written.
             </small>
           </span>
         </label>
@@ -452,7 +447,7 @@ function AdvanceScanPanel({
           disabled={!canRun}
           onClick={onRunAdvanceScan}
         >
-          {advanceScanPhase === "running" ? "Advance scan running…" : "Run advance scan"}
+          {advanceScanPhase === "running" ? "Advanced diagnostic running…" : "Run Advanced Diagnostic"}
         </button>
         <p>
           {collectionOn
@@ -548,7 +543,7 @@ function VerificationScreen({
       <ScreenHeader
         eyebrow="DEVICE VERIFICATION"
         title="Verification"
-        copy="Two coloured workstreams on this page: standard assessment (Report A), then advance diagnostic (Report D). Return home when each report is saved."
+        copy="Confirm your selected drives and start the non-destructive assessment. Return home when each report is saved."
       />
 
       <div className="workstream-toolbar">
@@ -562,12 +557,13 @@ function VerificationScreen({
         aria-labelledby="drive-title"
       >
         <div className="workstream-panel-head">
-          <span className="workstream-kicker">01 · Standard assessment</span>
-          <h2 id="drive-title">Choose drives and run Report A</h2>
+          <span className="workstream-kicker">01 · STANDARD ASSESSMENT</span>
+          <h2 id="drive-title">Select Drives</h2>
         </div>
         <p className="panel-lead">
-          The Windows system drive is selected by default. Extra letters can be USB or backup disks.
-          Uncheck anything you do not want scanned. CYVRA will not erase files on any drive.
+          Choose the drives you want to include in this assessment. This is the Windows system drive
+          and is recommended for every assessment. Select additional internal or attached drives only
+          when they need to be assessed. CYVRA Erase will not open or modify personal file contents.
         </p>
         {scanTargets.length === 0 ? (
           <Notice kind="information" title="Drive list">
@@ -618,11 +614,11 @@ function VerificationScreen({
             <span className="card-label">STEP 2</span>
             <h2 id="progress-title">
               {verificationPhase === "idle"
-                ? "Start verification"
+                ? "Ready to Verify"
                 : verificationPhase === "running"
-                  ? "Verification is running on this PC"
+                  ? "Verification in Progress"
                   : verificationPhase === "complete"
-                    ? "Verification finished"
+                    ? "Assessment Complete"
                     : "Verification stopped"}
             </h2>
           </div>
@@ -669,19 +665,19 @@ function VerificationScreen({
 
       <div className="action-row">
         <button className="button button-primary" type="button" disabled={!canRun} onClick={onRunVerification}>
-          {verificationPhase === "running" ? "Verification running…" : "Start verification"}
+          {verificationPhase === "running" ? "Assessment in progress…" : "Start Verification"}
         </button>
         <p>
           {collectionOn
             ? selectedDrives.length === 0
               ? "Select at least one drive to continue."
-              : "This can take several minutes on large disks. CYVRA will not erase files."
+              : "This assessment may take several minutes. CYVRA Erase will not erase files."
             : "Open the installed Windows application to run verification."}
         </p>
       </div>
 
       {verification ? (
-        <Notice kind="success" title="Local assessment finished">
+        <Notice kind="success" title="Assessment Complete">
           Hardware {hardwareResultLabel(verification.hardwareResult).toLowerCase()}. Document map{" "}
           {verification.personalLocationCount} locations on {verification.scannedDrives}. File contents
           were not opened. No data was erased.
@@ -745,7 +741,7 @@ function ResultsScreen({
       <ScreenHeader
         eyebrow="ASSESSMENT SUMMARY"
         title="Results"
-        copy="Hardware condition and privacy exposure stay separate. This is an assessment, not a sanitization certificate. Save the report, then return to the home screen."
+        copy="The assessment has finished successfully and your results are ready to review. This is an assessment, not a sanitization certificate."
       />
 
       <div className="workstream-toolbar">
@@ -811,7 +807,7 @@ function ResultsScreen({
           Generate report
         </button>
         <button className="button button-secondary" type="button" onClick={() => onNavigate("verification")}>
-          Review verification
+          Review Results
         </button>
         <button className="button button-secondary" type="button" onClick={() => onNavigate("overview")}>
           Back to main
@@ -913,13 +909,16 @@ function IntegritySealCard({ seal }: { seal: IntegritySeal }) {
       </div>
       <div className="seal-body">
         <h3 id="seal-title">Local integrity seal</h3>
-        <p>{seal.notice}</p>
+        <p>
+          This seal helps verify that the report has not been altered after the assessment was
+          completed. {seal.notice}
+        </p>
         <p className="seal-digest">
-          <span>SHA-256</span> {groupHex(seal.digestHex)}
+          <span>SHA-256 Digest</span> {groupHex(seal.digestHex)}
         </p>
         <p className="setup-note">
-          Scheme {seal.scheme}. Scan the QR for the digest. Issued by CYVORIQ remains publisher
-          wording. This seal is not cloud authentication.
+          The report is protected with a local integrity signature for verification. This is a local
+          integrity check and does not confirm cloud authentication. Scheme {seal.scheme}.
         </p>
         <div className="email-actions no-print">
           <button
@@ -987,10 +986,10 @@ function AdvanceReportBlock({
             Issued by the publisher of CYVRA Erase · computer-generated on this PC
           </p>
           <span className="card-label">REPORT D</span>
-          <h2 id="advance-report-title">In-depth hardware diagnostic evaluation</h2>
+          <h2 id="advance-report-title">Technical Diagnostic &amp; Condition Evidence Record</h2>
           <p className="local-assessment-notice">
-            Report D has not been prepared on this PC. Run Advance scan from the Verification screen.
-            CYVRA will not estimate a grade from diagnostics it did not perform.
+            Report D has not been prepared on this PC. Run the advanced diagnostic first. CYVRA will
+            not estimate a grade from diagnostics it did not perform.
           </p>
         </header>
         <div className="action-row">
@@ -1018,18 +1017,20 @@ function AdvanceReportBlock({
           Issued by the publisher of CYVRA Erase · computer-generated on this PC
         </p>
         <span className="card-label">REPORT D</span>
-        <h2 id="advance-report-title">In-depth hardware diagnostic evaluation</h2>
-        <p className="report-meta">
-          Document no. <strong>{documentId}</strong>
-          <span aria-hidden="true"> · </span>
-          Generated <strong>{generatedAt.toLocaleString()}</strong>
-        </p>
-        <p className="local-assessment-notice">
-          This is a computer-generated diagnostic evaluation of this Windows PC. It is not a
-          sanitization certificate, not NIST SP 800-88 Purge proof, and not a DPDP compliance
-          certificate. Any grade shown here is provisional and physical verification is required
-          before a device is finally graded. Cloud authentication is not enabled in this version.
-        </p>
+          <h2 id="advance-report-title">Technical Diagnostic &amp; Condition Evidence Record</h2>
+          <p className="report-meta">
+            Document no. <strong>{documentId}</strong>
+            <span aria-hidden="true"> · </span>
+            Generated <strong>{generatedAt.toLocaleString()}</strong>
+          </p>
+          <p className="local-assessment-notice">
+            This report contains assessment information collected from this PC during the completed
+            diagnostic session. It is a computer-generated diagnostic evaluation. It is not a
+            sanitization certificate, not NIST SP 800-88 Purge proof, and not a DPDP compliance
+            certificate. The final device grade is shown independently from the Assessed Health
+            Index. Physical verification is required before a device is finally graded. Cloud
+            authentication is not enabled in this version.
+          </p>
       </header>
 
       <div className="report-state-grid">
@@ -1094,10 +1095,10 @@ function AdvanceReportBlock({
       {advanceScan.integritySeal ? <IntegritySealCard seal={advanceScan.integritySeal} /> : null}
 
       <div className="email-row no-print">
-        <label>Keep a copy of Report D off this PC</label>
+        <label>Keep a Copy of Your Report</label>
         <p className="panel-lead">
-          Save the diagnostic evaluation as a PDF. Print and choose Microsoft Print to PDF if the
-          download does not appear.
+          Save a PDF copy of this assessment for your records or review. If the PDF download does
+          not appear, select Print and choose Microsoft Print to PDF.
         </p>
         <div className="email-actions">
           <button
@@ -1325,7 +1326,7 @@ function ReportScreen({
       <ScreenHeader
         eyebrow="LOCAL ASSESSMENT REPORT"
         title="Report"
-        copy="Three coloured sections: Report A from the standard assessment, Report D from Advance scan, then the wipe record which stays fail-closed. Save the report you need, then return home."
+        copy="Review the assessment records collected on this PC. Report A is the intake record. Report D is the diagnostic evidence record. Data purge stays off."
       />
 
       <div className="workstream-toolbar">
@@ -1341,17 +1342,18 @@ function ReportScreen({
               <p className="report-org">CYVORIQ Solutions Pvt. Ltd.</p>
               <p className="report-issuer">Issued by the publisher of CYVRA Erase · computer-generated on this PC</p>
               <span className="card-label">REPORT A</span>
-              <h2 id="report-state-title">Serialized pre-sanitization assessment</h2>
+              <h2 id="report-state-title">Intake &amp; Pre-Sanitization Assessment Record</h2>
               <p className="report-meta">
                 Document no. <strong>{reportId}</strong>
                 <span aria-hidden="true"> · </span>
                 Generated <strong>{generatedAt.toLocaleString()}</strong>
               </p>
               <p className="local-assessment-notice">
-                This is a computer-generated local assessment. It is not a sanitization certificate,
-                not NIST SP 800-88 Purge proof, and not a DPDP compliance certificate. File contents
-                were not opened. No drive was erased. Device condition rating is possible only after
-                physical verification. Cloud authentication is not enabled in this version.
+                DOCUMENT STATUS: PRE-SANITIZATION ASSESSMENT — NO DATA ERASURE PERFORMED. This is a
+                computer-generated local assessment. It is not a sanitization certificate, not NIST
+                SP 800-88 Purge proof, and not a DPDP compliance certificate. File contents were not
+                opened. No drive was erased. Device condition rating is possible only after physical
+                verification. Cloud authentication is not enabled in this version.
               </p>
             </header>
             <div className="report-state-grid">
@@ -1369,9 +1371,9 @@ function ReportScreen({
               </div>
             </div>
 
-            <ReportTable title="Assessment summary" rows={summaryRows} empty="No summary available." />
+            <ReportTable title="Executive Assessment Snapshot" rows={summaryRows} empty="No summary available." />
             <ReportTable
-              title="Hardware recorded in this scan"
+              title="5. Hardware Inventory Recorded During This Assessment"
               rows={verification.hardwareFields.filter((row) => {
                 const label = row.label.toLowerCase();
                 if (["computer name", "operating system", "manufacturer", "model", "bios / oem serial", "chassis serial", "motherboard serial", "smbios uuid"].includes(label)) {
@@ -1382,22 +1384,22 @@ function ReportScreen({
               empty="Hardware details were not available on this PC."
             />
             <ReportTable
-              title="Battery, cameras, microphones, and connectors"
+              title="6. Deferred, Unknown and Physical-Verification Items"
               rows={healthRows}
               empty="Not collected in this scan."
             />
             <ReportTable
-              title="Privacy exposure"
+              title="7. Metadata-Based Data-Exposure Indicators"
               rows={verification.locationGroups}
               empty="No document categories were recorded on the selected drives."
             />
           </div>
 
           <div className="email-row no-print">
-            <label htmlFor="report-email">Keep a copy off this PC</label>
+            <label htmlFor="report-email">Keep a Copy of Your Report</label>
             <p className="panel-lead">
-              Email did not open on some Windows PCs. Save as PDF first. Print and choose Microsoft Print
-              to PDF if the download does not appear.
+              Save a PDF copy of this assessment for your records or review. If the PDF download does
+              not appear, select Print and choose Microsoft Print to PDF.
             </p>
             <div className="email-actions">
               <button
@@ -1488,7 +1490,7 @@ function ReportScreen({
 
       <section className="workstream-panel workstream-panel-purge purge-consent no-print" aria-labelledby="purge-consent-title">
         <div className="workstream-panel-head">
-          <span className="workstream-kicker">03 · Data purge</span>
+          <span className="workstream-kicker">03 · DATA PURGE</span>
           <h2 id="purge-consent-title">Wipe report (not enabled)</h2>
         </div>
         <p>
@@ -1559,7 +1561,7 @@ function HelpScreen({
       <ScreenHeader
         eyebrow="HELP AND SETTINGS"
         title="Help and recovery"
-        copy="From first login to Report D download: three coloured workstreams, what should happen, and what it means if it does not."
+        copy="From first login to saving Report D: what should happen, and what it means if it does not."
       />
 
       {bridge.status === "error" ? (

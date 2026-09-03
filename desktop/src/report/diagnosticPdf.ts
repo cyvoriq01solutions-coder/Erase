@@ -23,7 +23,10 @@ function gradeRows(advanceScan: AdvanceScanRecord): NamedValue[] {
     ? `${advanceScan.gradeCondition} — ${SOFTWARE_OBSERVED_LABEL}`
     : advanceScan.gradeCondition;
   const rows: NamedValue[] = [
-    { label: "Provisional grade", value: advanceScan.gradeLabel },
+    {
+      label: "Final device grade",
+      value: advanceScan.gradeWithheld ? "WITHHELD" : advanceScan.gradeLabel,
+    },
     { label: "Condition", value: condition },
     {
       label: "Assessed Health Index",
@@ -44,7 +47,7 @@ function gradeRows(advanceScan: AdvanceScanRecord): NamedValue[] {
     },
   ];
   if (advanceScan.gradeWithheldReason) {
-    rows.push({ label: "Why no grade", value: advanceScan.gradeWithheldReason });
+    rows.push({ label: "Grade-withholding reason", value: advanceScan.gradeWithheldReason });
   }
   return rows;
 }
@@ -76,8 +79,21 @@ export function buildDiagnosticDocument(
 ): PdfItem[] {
   const documentId = makeDiagnosticId(verification, generatedAt);
   const items: PdfItem[] = [
-    { kind: "text", style: "kicker", text: "CYVORIQ SOLUTIONS PVT. LTD.  ·  CYVRA ERASE  ·  REPORT D" },
-    { kind: "text", style: "title", text: "In-depth hardware diagnostic evaluation" },
+    { kind: "text", style: "kicker", text: "CYVRA ERASE  |  REPORT D  |  TECHNICAL DIAGNOSTIC & CONDITION EVIDENCE" },
+    { kind: "text", style: "kicker", text: "CYVORIQ SOLUTIONS PVT. LTD." },
+    {
+      kind: "text",
+      style: "meta",
+      text: "Controlled diagnostic evidence record  |  Final grade status shown independently from assessed index",
+    },
+    { kind: "text", style: "title", text: "Technical Diagnostic & Condition Evidence Record" },
+    {
+      kind: "text",
+      style: "notice",
+      text: advanceScan.gradeWithheld
+        ? "DOCUMENT STATUS: DIAGNOSTIC EVIDENCE RECORD — FINAL DEVICE GRADE WITHHELD"
+        : "DOCUMENT STATUS: DIAGNOSTIC EVIDENCE RECORD — PROVISIONAL GRADE, PHYSICAL VERIFICATION REQUIRED",
+    },
     {
       kind: "text",
       style: "meta",
@@ -92,7 +108,7 @@ export function buildDiagnosticDocument(
     {
       kind: "text",
       style: "notice",
-      text: "This is a computer-generated diagnostic evaluation produced on the assessed Windows PC by CYVRA Erase, software of CYVORIQ Solutions Pvt. Ltd. It is not a Certificate of Sanitization or Destruction, not NIST SP 800-88 Purge proof, and not a DPDP compliance certificate. Any grade shown is provisional; a final device grade is possible only after physical verification by a technician. This document is not cloud-authenticated in this version.",
+      text: "This report documents diagnostic evidence collected from the assessed Windows PC and controlled technician/operator checks recorded during the diagnostic workflow. It is not a Certificate of Sanitization or Destruction, is not proof of NIST SP 800-88 purge completion, and does not independently certify compliance with the DPDP Act, ISO standards or any other legal/regulatory framework. A user must never mistake the Assessed Health Index for an issued final grade.",
     },
     {
       kind: "text",
@@ -101,31 +117,113 @@ export function buildDiagnosticDocument(
     },
   ];
 
+  addSection(
+    items,
+    "Executive Decision Snapshot",
+    [
+      { label: "Report identifier", value: documentId },
+      { label: "Assessed host", value: verification?.hostname ?? "Not recorded in this session" },
+      { label: "Assessment scope", value: "Advance scan" },
+      {
+        label: "Assessed Health Index",
+        value:
+          advanceScan.indexPercent === null
+            ? "Not assessable in this scan"
+            : `${advanceScan.indexPercent} / 100`,
+      },
+      { label: "Diagnostic coverage", value: `${advanceScan.coveragePercent}%` },
+      { label: "Final device grade", value: advanceScan.gradeWithheld ? "WITHHELD" : advanceScan.gradeLabel },
+      {
+        label: "Grade-withholding reason",
+        value: advanceScan.gradeWithheldReason ?? "Not withheld",
+      },
+      { label: "Data erased", value: "No" },
+      { label: "Bytes written to assessed drives", value: String(advanceScan.bytesWritten) },
+    ],
+    "No snapshot was produced.",
+  );
+
+  addSection(
+    items,
+    "1. Document Control & Evidence Status",
+    [
+      { label: "Report identifier", value: documentId },
+      { label: "Report type", value: "Report D — Technical Diagnostic & Condition Evidence Record" },
+      { label: "Generated on assessed PC", value: generatedAt.toLocaleString() },
+      { label: "Assessed host", value: verification?.hostname ?? "Not recorded in this session" },
+      { label: "Issuing software", value: "CYVRA Erase" },
+      { label: "Publisher", value: "CYVORIQ Solutions Pvt. Ltd." },
+      { label: "Scan scope", value: "Advance scan" },
+      { label: "Administrator approval", value: advanceScan.elevationLabel },
+      { label: "Cloud authentication", value: "Not enabled in this version" },
+      {
+        label: "Current issuance state",
+        value: "Computer-generated local diagnostic record; not an organization-authenticated certificate in this version.",
+      },
+    ],
+    "Document control was not available.",
+  );
+
+  items.push({ kind: "gap", size: 10 });
+  items.push({ kind: "text", style: "heading", text: "2. Evidence Status: What This Report Does and Does Not Prove" });
+  items.push({ kind: "rule" });
+  items.push({
+    kind: "text",
+    style: "body",
+    text: "A final resale, refurbishment or condition grade should not be issued from this evidence set while mandatory evidence remains unavailable or physical verification remains incomplete. USB topology and battery/charger state come from the Advance scan pass, not from a live USB or live charger overlay.",
+  });
+
   const identity = identityRows(verification);
   addSection(
     items,
-    "1. Device identity",
+    "3. Device Identity",
     identity,
     "No basic assessment has been run in this session, so device identity is not carried onto this report.",
   );
 
   addSection(
     items,
-    "2. Coverage statement",
-    advanceScan.coverageRows,
+    "4. Coverage & Grading Evidence",
+    [...advanceScan.coverageRows, ...gradeRows(advanceScan)],
     "No coverage statement was produced.",
   );
 
   addSection(
     items,
-    "3. Coverage by diagnostic area",
+    "5. Diagnostic Coverage by Area",
     coverageByArea(advanceScan),
     "No diagnostic areas were evaluated.",
   );
 
-  addSection(items, "4. Grading summary", gradeRows(advanceScan), "No grade was produced.");
+  addSection(
+    items,
+    "6. Key Findings & Recommended Actions",
+    [
+      ...(advanceScan.gradeWithheldReason
+        ? [
+            {
+              label: "Evidence gap",
+              value: advanceScan.gradeWithheldReason,
+            },
+          ]
+        : []),
+      ...advanceScan.notAssessable.map((entry, index) => ({
+        label: `Recorded gap ${index + 1}`,
+        value: entry,
+      })),
+      {
+        label: "Physical verification",
+        value: "Complete controlled technician checks before treating any grade as final.",
+      },
+      {
+        label: "Erasure",
+        value: "No data was erased. Temporary benchmark writes, if any, are not sanitization.",
+      },
+    ],
+    "No additional findings were recorded.",
+  );
 
-  let sectionNumber = 5;
+  let sectionNumber = 7;
   for (const group of advanceScan.telemetryGroups) {
     const rows = group.note
       ? [...group.rows, { label: "Note", value: group.note }]
@@ -136,56 +234,66 @@ export function buildDiagnosticDocument(
 
   addSection(
     items,
-    `${sectionNumber}. Not assessable in this scan`,
-    advanceScan.notAssessable.map((entry, index) => ({
-      label: `Gap ${index + 1}`,
-      value: entry,
-    })),
-    "Every diagnostic area was assessed.",
-  );
-  sectionNumber += 1;
-
-  addSection(
-    items,
-    `${sectionNumber}. Method and limitations`,
+    "15. Evidence Confidence & Method",
     advanceScan.methodRows,
     "No method statement was produced.",
   );
-  sectionNumber += 1;
 
   addSection(
     items,
-    `${sectionNumber}. Grading rubric`,
+    "16. Grade Decision Logic",
     advanceScan.rubricRows,
     "No rubric was recorded.",
   );
-  sectionNumber += 1;
 
   const seal = advanceScan.integritySeal;
-  if (seal) {
-    addSection(
-      items,
-      `${sectionNumber}. Local integrity seal`,
-      [
-        { label: "Scheme", value: seal.scheme },
-        { label: "SHA-256 digest", value: seal.digestHex },
-        { label: "QR payload", value: seal.qrPayload },
-        { label: "Ed25519 public key", value: seal.publicKeyHex },
-        { label: "Ed25519 signature", value: seal.signatureHex },
-        { label: "What this is", value: seal.notice },
-      ],
-      "No local integrity seal was attached.",
-    );
-    sectionNumber += 1;
-  }
+  addSection(
+    items,
+    "17. Local Integrity Evidence",
+    seal
+      ? [
+          { label: "Scheme", value: seal.scheme },
+          { label: "SHA-256 digest", value: seal.digestHex },
+          { label: "QR payload", value: seal.qrPayload },
+          { label: "Ed25519 public key", value: seal.publicKeyHex },
+          { label: "Ed25519 signature", value: seal.signatureHex },
+          { label: "What this is", value: seal.notice },
+          {
+            label: "Authentication limitation",
+            value: "Not cloud-authenticated; not Authenticode; not an organizational certificate.",
+          },
+        ]
+      : [],
+    "No local integrity seal was attached.",
+  );
 
   items.push({ kind: "gap", size: 10 });
-  items.push({ kind: "text", style: "heading", text: `${sectionNumber}. Issuing organisation` });
+  items.push({ kind: "text", style: "heading", text: "18. Audit-Ready Evidence Controls Recommended" });
   items.push({ kind: "rule" });
   items.push({
     kind: "text",
     style: "body",
-    text: "Issued by CYVORIQ Solutions Pvt. Ltd. as publisher of CYVRA Erase. This document is computer-generated on the assessed PC. It is not cloud-authenticated in this version. A local integrity seal, when present, proves the JSON was not altered after the scan. It is not Authenticode and does not certify sanitization, destruction, resale grade, or legal compliance.",
+    text: "Recommended for a later production issuance: evidence provenance, time integrity, authorization binding, technician attestation, immutability, version control, retention and supersession. These controls are not enabled in this version.",
+  });
+
+  items.push({ kind: "gap", size: 10 });
+  items.push({ kind: "text", style: "heading", text: "19. Final Recommended Next Action" });
+  items.push({ kind: "rule" });
+  items.push({
+    kind: "text",
+    style: "body",
+    text: advanceScan.gradeWithheld
+      ? "Resolve recorded evidence gaps, complete mandatory physical verification, then re-run grading against the completed evidence set. If the device proceeds to data disposal or reuse, create a separate Report S sanitization and verification record rather than modifying Report D to claim erasure."
+      : "Complete physical verification before treating the provisional grade as final. If the device proceeds to data disposal or reuse, create a separate Report S sanitization and verification record rather than modifying Report D to claim erasure.",
+  });
+
+  items.push({ kind: "gap", size: 8 });
+  items.push({ kind: "text", style: "heading", text: "20. Controlled Issuance Statement" });
+  items.push({ kind: "rule" });
+  items.push({
+    kind: "text",
+    style: "body",
+    text: "Issued by CYVORIQ Solutions Pvt. Ltd. as publisher of CYVRA Erase. This document is a computer-generated technical diagnostic and condition-evidence record. It is not cloud-authenticated in this version. A local integrity seal, when present, proves the JSON was not altered after the scan. It is not Authenticode and does not certify sanitization, destruction, resale grade, or legal compliance.",
   });
   items.push({
     kind: "text",
@@ -195,7 +303,12 @@ export function buildDiagnosticDocument(
   items.push({
     kind: "text",
     style: "body",
-    text: "Physical verification. Technician name: recorded at sign-off on the assessed PC. Date of inspection: recorded at sign-off on the assessed PC. Result: see Technician checks. USB topology and battery/charger state come from the Advance scan pass, not from a live USB or live charger overlay. This block is not a handwritten signature line.",
+    text: "Physical verification. Technician name: recorded at sign-off on the assessed PC. Date of inspection: recorded at sign-off on the assessed PC. Result: see Technician checks. This block is not a handwritten signature line.",
+  });
+  items.push({
+    kind: "text",
+    style: "body",
+    text: "END OF REPORT D. Next document in the CYVRA evidence family: REPORT S — Sanitization & Verification Record (not generated in this version).",
   });
 
   return items;

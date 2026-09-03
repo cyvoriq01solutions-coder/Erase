@@ -4,9 +4,9 @@ import logoUrl from "../assets/cyvoriq-logo.webp";
 
 const licenceText = `CYVRA Erase is licensed for one authorised Windows device after CYVRA approves the account and issues a licence. Signing in on the website is not a licence.
 
-This version assesses the PC only. It must not erase, overwrite, encrypt, move or destroy files. It must not collect passwords, recovery keys, email bodies or private file contents. It must not bypass Windows, BitLocker, BIOS, UEFI or corporate controls.
+This version performs assessment and diagnostics only. It does not erase, overwrite, encrypt, move or destroy files. CYVRA Erase does not collect passwords, recovery keys, email content or private file contents. It must not bypass Windows, BitLocker, BIOS, UEFI or corporate controls.
 
-Until Authenticode signing is complete, this installer is an unsigned assessment build. Customer download remains on https://www.cyvra.co.in/download after the signed package is stored. CYVRA emails the activation key from auth@cyvra.co.in when an administrator issues a licence. Store the key; CYVORIQ does not keep the full key after issuance.`;
+CYVRA emails the activation key from auth@cyvra.co.in when an administrator issues a licence. Store the key; CYVORIQ does not keep the full key after issuance. One licence binds to one authorised PC.`;
 
 type SetupStep = "welcome" | "licence" | "ready";
 
@@ -78,21 +78,18 @@ export function InstallerSetup({
 
           {step === "welcome" && (
             <>
-              <h1 id="setup-title">Install CYVRA Erase on this PC</h1>
+              <h1 id="setup-title">Install CYVRA Erase on This PC</h1>
               <p>
-                CYVRA Erase prepares a local hardware and document-location assessment. It does not
-                erase files and it does not open private contents. One licence binds to one authorised
-                Windows PC.
+                CYVRA Erase performs a secure, non-destructive assessment of this PC and selected data
+                locations.
               </p>
-              <ol className="setup-steps" aria-label="First-run steps">
-                <li>Confirm this is an assessment product, not a wipe utility.</li>
-                <li>Accept the licence and privacy terms.</li>
-                <li>Enter the activation key emailed from auth@cyvra.co.in.</li>
-                <li>Choose a workstream: standard assessment, Advance diagnostic, or the wipe record.</li>
+              <ol className="setup-steps" aria-label="What happens next">
+                <li>Review and accept the licence and privacy terms.</li>
+                <li>Activate this PC using your CYVRA activation key.</li>
+                <li>Choose the assessment you want to run.</li>
               </ol>
               <p className="setup-note">
-                Binding contacts api.cyvra.co.in from this application. Keep the activation key; it
-                cannot be reused on a second PC.
+                CYVRA Erase does not erase, overwrite or open your personal files in this version.
               </p>
               <div className="setup-actions">
                 <button className="button button-primary" type="button" onClick={() => setStep("licence")}>
@@ -104,7 +101,8 @@ export function InstallerSetup({
 
           {step === "licence" && (
             <>
-              <h1 id="setup-title">Licence and privacy</h1>
+              <h1 id="setup-title">Licence and Privacy</h1>
+              <p>Please review the terms before using CYVRA Erase.</p>
               <pre className="setup-licence">{licenceText}</pre>
               <label className="setup-accept">
                 <input
@@ -112,7 +110,8 @@ export function InstallerSetup({
                   checked={accepted}
                   onChange={(event) => setAccepted(event.target.checked)}
                 />
-                I have read and accept these terms. I understand this version does not erase files.
+                I have read and accept the Licence and Privacy Terms. I understand that this version
+                does not erase files.
               </label>
               <div className="setup-actions">
                 <button className="button button-secondary" type="button" onClick={() => setStep("welcome")}>
@@ -124,7 +123,7 @@ export function InstallerSetup({
                   disabled={!accepted}
                   onClick={() => setStep("ready")}
                 >
-                  Accept and continue
+                  Accept and Continue
                 </button>
               </div>
             </>
@@ -132,14 +131,14 @@ export function InstallerSetup({
 
           {step === "ready" && (
             <>
-              <h1 id="setup-title">Activate this Windows PC</h1>
+              <h1 id="setup-title">Activate This PC</h1>
               <p>
-                Paste the key from the email subject “Your CYVRA Erase activation key”. The first
-                successful activation binds the licence to this PC. The same key cannot be used on a
-                second PC.
+                Enter the activation key provided by CYVRA to activate this authorised PC. Your first
+                successful activation securely links this licence to this PC. The same activation key
+                cannot be used to activate another PC unless the licence is reset or transferred.
               </p>
               <label className="setup-key-field" htmlFor="activation-key">
-                Activation key
+                Activation Key
               </label>
               <input
                 id="activation-key"

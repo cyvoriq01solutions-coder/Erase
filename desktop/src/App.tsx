@@ -219,7 +219,7 @@ export default function App() {
             <img src={logoUrl} alt="CYVORIQ Solutions" width="128" height="78" />
             <span>
               <strong>CYVORIQ SOLUTIONS</strong>
-              <small>CYVRA Erase · checking this PC</small>
+              <small>CYVRA Erase · checking this authorised PC</small>
             </span>
           </header>
           <div className="setup-body">
