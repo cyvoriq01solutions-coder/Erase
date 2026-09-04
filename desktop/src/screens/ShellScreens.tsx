@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Notice } from "../components/Notice";
 import {
   buildAssessmentSections,
@@ -7,6 +7,7 @@ import {
   saveAssessmentPdf,
 } from "../report/assessmentPdf";
 import { buildDiagnosticSections, makeDiagnosticId, saveDiagnosticPdf } from "../report/diagnosticPdf";
+import { buildSanitizationSections, saveSanitizationPdf } from "../report/sanitizationPdf";
 import { groupHex, verifyIntegritySeal, type SealCheck } from "../report/verifySeal";
 import type {
   AdvanceInteractive,
@@ -20,6 +21,9 @@ import type {
   IntegritySeal,
   NamedValue,
   NavigationId,
+  PurgePhase,
+  PurgeProgress,
+  PurgeRecord,
   ScanTarget,
   VerificationPhase,
   VerificationProgress,
@@ -27,7 +31,7 @@ import type {
   WorkstreamId,
 } from "../types/shell";
 import { ADVANCE_SCAN_STAGES, SOFTWARE_OBSERVED_LABEL } from "../types/shell";
-import { activatePurgeLicense } from "../adapters/desktopBridge";
+import { activatePurgeLicense, runModeSPurge, subscribePurgeProgress } from "../adapters/desktopBridge";
 import { InteractiveChecks } from "./InteractiveChecks";
 
 interface ShellScreenProps {
@@ -174,30 +178,31 @@ function OverviewScreen({
 
         <article className="workstream-card workstream-card-purge">
           <span className="workstream-kicker">03 · DATA PURGE</span>
-          <h2>Data Purge — Not Available</h2>
+          <h2>Mode S — extra disks</h2>
           <p>
-            Bind a CYVRA Purge licence if one was issued. Wipe stays off in this version of CYVRA
-            Erase.
+            Bind a CYVRA Purge licence, choose extra disks, type this PC’s name, then type ERASE.
+            The Windows system disk cannot be sanitised while this application is running on it.
           </p>
           <ol>
-            <li>Complete the standard assessment first.</li>
-            <li>Save Report A.</li>
-            <li>Data purge stays off in this version.</li>
+            <li>Complete the standard assessment and save Report A.</li>
+            <li>Bind a Purge licence if one was issued.</li>
+            <li>Confirm extra disks only. USB stays off until you opt in.</li>
           </ol>
           <p className="workstream-status">
             {purgeLicenceBound
-              ? "Purge licence bound. No data will be erased in this installer."
-              : "No data will be erased, overwritten or destroyed."}
+              ? "Purge licence bound. Mode S still needs extra disks, this PC’s name, and ERASE."
+              : "No Purge licence is bound on this PC. The helper will not start."}
           </p>
           <button className="button button-danger" type="button" onClick={() => onChooseWorkstream("purge")}>
-            Open data purge (not enabled)
+            Open data purge
           </button>
         </article>
       </section>
 
       <Notice kind="warning" title="Assessment boundary">
-        Reports A and D are local assessments, not sanitization certificates. CYVRA Erase will not
-        erase files.
+        Reports A and D are local assessments, not sanitization certificates. Mode S on extra disks
+        requires a Purge licence, this PC’s name, and ERASE. The system disk is never Mode S while
+        this application is running on it.
       </Notice>
     </div>
   );
@@ -294,6 +299,77 @@ function AdvanceProgressRing({
         </p>
         <p className="advance-progress-stage">{stage}</p>
         <p className="advance-progress-detail">{detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function PurgeProgressRing({
+  percent,
+  phase,
+  stage,
+  detail,
+}: {
+  percent: number;
+  phase: PurgePhase;
+  stage: string;
+  detail: string;
+}) {
+  const size = 156;
+  const stroke = 11;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(100, percent));
+  const offset = circumference - (clamped / 100) * circumference;
+  const tone =
+    phase === "error"
+      ? "purge-ring-fail"
+      : phase === "complete"
+        ? "purge-ring-pass"
+        : phase === "running"
+          ? "purge-ring-live"
+          : "purge-ring-idle";
+  const shown = phase === "idle" ? 0 : clamped;
+
+  return (
+    <div className={`purge-progress ${tone}`} role="status" aria-live="polite" aria-label="Mode S progress">
+      <div className="purge-ring-wrap">
+        <svg className="purge-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+          <circle
+            className="purge-ring-track"
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            strokeWidth={stroke}
+          />
+          <circle
+            className="purge-ring-value"
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            strokeWidth={stroke}
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        </svg>
+        <div className="purge-ring-label">
+          <strong>{phase === "idle" ? "0" : shown}</strong>
+          <span>{phase === "idle" ? "ready" : "%"}</span>
+        </div>
+      </div>
+      <div className="purge-progress-copy">
+        <p className="purge-progress-kicker">
+          {phase === "running"
+            ? "Mode S running"
+            : phase === "complete"
+              ? "Finished"
+              : phase === "error"
+                ? "FAILED"
+                : "Waiting"}
+        </p>
+        <p className="purge-progress-stage">{stage}</p>
+        <p className="purge-progress-detail">{detail}</p>
       </div>
     </div>
   );
@@ -725,19 +801,19 @@ function VerificationScreen({
           <div className="panel-heading">
             <div>
               <span className="card-label">03 WIPE</span>
-              <h2 id="purge-teaser-title">Wipe is listed, not enabled</h2>
+              <h2 id="purge-teaser-title">Mode S — extra disks only</h2>
             </div>
-            <span className="status-pill status-caution">Not enabled</span>
+            <span className="status-pill status-caution">Purge licence required</span>
           </div>
           <p>
-            After a wipe you would receive a sanitization report and return here. On this build the
-            engine stays fail-closed. No disk is erased from this screen.
+            After independent verify PASS you can save Report S and return here. The Windows system
+            disk is refused. USB stays off until you opt in. Type this PC’s name, then ERASE.
           </p>
           <div className="action-row">
             <button className="button button-danger" type="button" onClick={() => onChooseWorkstream("purge")}>
-              Open wipe report
+              Open data purge
             </button>
-            <p>The wipe report records that sanitization did not run.</p>
+            <p>Report S is issued only after independent verify PASS.</p>
           </div>
         </section>
       </div>
@@ -1269,9 +1345,15 @@ function ReportScreen({
   onNavigate,
   purgeLicenceBound,
   onPurgeLicenceBound,
+  scanTargets,
 }: Pick<
   ShellScreenProps,
-  "verification" | "advanceScan" | "onNavigate" | "purgeLicenceBound" | "onPurgeLicenceBound"
+  | "verification"
+  | "advanceScan"
+  | "onNavigate"
+  | "purgeLicenceBound"
+  | "onPurgeLicenceBound"
+  | "scanTargets"
 >) {
   const [email, setEmail] = useState("");
   const [emailNote, setEmailNote] = useState<string | null>(null);
@@ -1283,6 +1365,15 @@ function ReportScreen({
   const [purgeKey, setPurgeKey] = useState("");
   const [purgeBinding, setPurgeBinding] = useState(false);
   const [purgeBindNote, setPurgeBindNote] = useState<string | null>(null);
+  const [purgeLetters, setPurgeLetters] = useState<string[]>([]);
+  const [usbOptIn, setUsbOptIn] = useState(false);
+  const [hostnameTyped, setHostnameTyped] = useState("");
+  const [eraseTyped, setEraseTyped] = useState("");
+  const [operatorName, setOperatorName] = useState("");
+  const [purgePhase, setPurgePhase] = useState<PurgePhase>("idle");
+  const [purgeProgress, setPurgeProgress] = useState<PurgeProgress | null>(null);
+  const [purgeRecord, setPurgeRecord] = useState<PurgeRecord | null>(null);
+  const [previewRecord, setPreviewRecord] = useState<PurgeRecord | null>(null);
   const generatedAt = useMemo(() => new Date(), [verification]);
   const reportExported = reportEmailed || pdfSaved;
   const assessmentSections = useMemo(
@@ -1290,6 +1381,44 @@ function ReportScreen({
     [verification, generatedAt],
   );
   const reportId = verification ? makeReportId(verification, generatedAt) : "";
+  const hostname = verification?.hostname ?? "";
+  const sanitizationSections =
+    purgeRecord && purgeRecord.reportAllowed
+      ? buildSanitizationSections(purgeRecord, verification, generatedAt)
+      : [];
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void subscribePurgeProgress((next) => {
+      setPurgeProgress(next);
+    }).then((stop) => {
+      unlisten = stop;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!purgeLicenceBound || purgeLetters.length === 0 || purgePhase === "running") {
+      return;
+    }
+    let active = true;
+    void runModeSPurge({
+      purgeLicenceBound,
+      hostname,
+      hostnameTyped: "",
+      eraseTyped: "",
+      letters: purgeLetters,
+      usbOptIn,
+      preview: true,
+    }).then((record) => {
+      if (active) setPreviewRecord(record);
+    });
+    return () => {
+      active = false;
+    };
+  }, [purgeLicenceBound, purgeLetters, usbOptIn, hostname, purgePhase]);
 
   function handleEmail() {
     if (!verification) return;
@@ -1367,10 +1496,68 @@ function ReportScreen({
       setPurgeNote("Tick the consent box before Data purge.");
       return;
     }
-    setPurgeNote(
-      purgeLicenceBound
-        ? "No data was erased. A CYVRA Purge licence is bound on this PC. Wipe execution is not enabled in this installer."
-        : "No data was erased. Data purge is not enabled in this installer. Your saved PDF and this consent do not start a wipe. A CYVRA Purge licence and a later signed build are required.",
+    if (!purgeLicenceBound) {
+      setPurgeNote(
+        "No data was erased. Bind a CYVRA Purge licence on this PC before Mode S. The helper was not started.",
+      );
+      return;
+    }
+    void handleRunModeS();
+  }
+
+  async function handleRunModeS() {
+    setPurgeNote(null);
+    setPurgeRecord(null);
+    setPurgePhase("running");
+    setPurgeProgress({
+      percent: 2,
+      stageIndex: 1,
+      stage: "Checking the Purge licence and consent tokens",
+      detail: "Mode S will not start without a bound Purge licence, the PC name, and ERASE.",
+    });
+    try {
+      const record = await runModeSPurge({
+        purgeLicenceBound,
+        hostname,
+        hostnameTyped,
+        eraseTyped,
+        letters: purgeLetters,
+        usbOptIn,
+        operatorName,
+        preview: false,
+      });
+      setPurgeRecord(record);
+      if (record.status === "VERIFIED" && record.reportAllowed) {
+        setPurgePhase("complete");
+        setPurgeNote(record.message);
+      } else {
+        setPurgePhase("error");
+        setPurgeNote(record.message);
+      }
+    } catch (caught) {
+      setPurgePhase("error");
+      setPurgeNote(
+        caught instanceof Error ? caught.message : "Mode S FAILED. No Report S is generated.",
+      );
+    }
+  }
+
+  function handleSaveReportS() {
+    if (!purgeRecord) return;
+    try {
+      const saved = saveSanitizationPdf(purgeRecord, verification);
+      setPurgeNote(`Saved ${saved.filename}. This is locally verified on this PC, not a laboratory certification.`);
+    } catch (caught) {
+      setPurgeNote(
+        caught instanceof Error ? caught.message : "Report S is issued only after independent verify PASS.",
+      );
+    }
+  }
+
+  function togglePurgeLetter(letter: string, blocked: boolean) {
+    if (blocked || purgePhase === "running") return;
+    setPurgeLetters((current) =>
+      current.includes(letter) ? current.filter((item) => item !== letter) : [...current, letter],
     );
   }
 
@@ -1399,7 +1586,7 @@ function ReportScreen({
       <ScreenHeader
         eyebrow="LOCAL ASSESSMENT REPORT"
         title="Report"
-        copy="Review the assessment records collected on this PC. Report A is the intake record. Report D is the diagnostic evidence record. Data purge stays off."
+        copy="Review the assessment records collected on this PC. Report A is the intake record. Report D is the diagnostic evidence record. Mode S on extra disks can issue Report S after independent verify PASS."
       />
 
       <div className="workstream-toolbar">
@@ -1459,7 +1646,7 @@ function ReportScreen({
             <p className="report-prose report-end">
               END OF REPORT A. Recommended evidence family: Report A — Intake &amp; Pre-Sanitization
               Assessment; Report D — Technical Diagnostic &amp; Condition Evidence; Report S —
-              Sanitization &amp; Verification Record (not generated in this version).
+              Sanitization &amp; Verification Record (issued only after Mode S independent verify PASS).
             </p>
           </div>
 
@@ -1559,20 +1746,20 @@ function ReportScreen({
       <section className="workstream-panel workstream-panel-purge purge-consent no-print" aria-labelledby="purge-consent-title">
         <div className="workstream-panel-head">
           <span className="workstream-kicker">03 · DATA PURGE</span>
-          <h2 id="purge-consent-title">Wipe report (not enabled)</h2>
+          <h2 id="purge-consent-title">Mode S — extra disks</h2>
         </div>
         <p>
-          After a wipe you would receive a sanitization report and return to the home screen. Data
-          purge permanently destroys data on the drives you select. Treat it as formatting those
-          drives. It cannot be undone. After a full-PC purge, Windows and CYVRA Erase will not run on
-          this computer, so save Report A as a PDF (or email it) first.
+          Mode S permanently destroys data on the extra disks you select. Treat it as formatting
+          those disks. It cannot be undone. The Windows system disk is refused while CYVRA Erase is
+          running on it. Save Report A first. USB stays off until you opt in. Firmware sanitize that
+          is unavailable fails closed rather than calling host overwrite Purge on flash.
         </p>
         <div className="purge-bind">
           <h3>CYVRA Purge licence</h3>
           <p>
             {purgeLicenceBound
-              ? "A CYVRA Purge licence is bound to this PC. Wipe stays off in this installer. Report S is not generated."
-              : "If an administrator issued a CYVRA Purge key (CYVRA-PRG-…), bind it here. Binding does not erase files."}
+              ? "A CYVRA Purge licence is bound to this PC. Mode S still needs extra disks, this PC’s name, and ERASE."
+              : "If an administrator issued a CYVRA Purge key (CYVRA-PRG-…), bind it here. Binding does not erase files. Without a bound key the helper is not started."}
           </p>
           {!purgeLicenceBound ? (
             <>
@@ -1605,6 +1792,119 @@ function ReportScreen({
         </div>
         {verification ? (
           <>
+            <div className="purge-picker">
+              <h3>Extra disks</h3>
+              <p>
+                Leave USB off unless the stick or USB hard disk is sacrificial lab media. Optical and
+                network locations are refused.
+              </p>
+              <label className="purge-consent-check" htmlFor="purge-usb-opt-in">
+                <input
+                  id="purge-usb-opt-in"
+                  type="checkbox"
+                  checked={usbOptIn}
+                  disabled={purgePhase === "running"}
+                  onChange={(event) => setUsbOptIn(event.target.checked)}
+                />
+                <span>Include USB media (opt in). USB stays off unless this box is ticked.</span>
+              </label>
+              <ul className="purge-disk-list">
+                {scanTargets.map((target) => {
+                  const system = /windows system drive/i.test(target.hint);
+                  const usb = /removable or usb/i.test(target.kind);
+                  const blocked = system || (usb && !usbOptIn);
+                  const selected = purgeLetters.includes(target.letter);
+                  return (
+                    <li key={target.letter}>
+                      <label className={blocked ? "purge-disk purge-disk-blocked" : "purge-disk"}>
+                        <input
+                          type="checkbox"
+                          checked={selected && !blocked}
+                          disabled={blocked || purgePhase === "running"}
+                          onChange={() => togglePurgeLetter(target.letter, blocked)}
+                        />
+                        <span>
+                          <strong>
+                            {target.letter}: {target.label}
+                          </strong>
+                          <em>
+                            {target.kind} · {target.sizeLabel}
+                            {system
+                              ? " · system disk — Mode S refused"
+                              : usb && !usbOptIn
+                                ? " · USB off until you opt in"
+                                : ""}
+                          </em>
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+              {previewRecord?.targets.length ? (
+                <table className="purge-method-table">
+                  <caption>Method preview (not issued)</caption>
+                  <thead>
+                    <tr>
+                      <th>Volume</th>
+                      <th>Media</th>
+                      <th>Method</th>
+                      <th>Standard</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewRecord.targets.map((target) => (
+                      <tr key={target.letter}>
+                        <td>{target.letter}</td>
+                        <td>{target.mediaLabel}</td>
+                        <td>{target.methodLabel}</td>
+                        <td>{target.allowed ? target.standard : target.refuseReason || "Refused"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
+            </div>
+            <div className="purge-confirm">
+              <label htmlFor="purge-hostname">
+                Type this PC’s name to confirm you have the right computer ({hostname || "unknown"})
+              </label>
+              <input
+                id="purge-hostname"
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={purgePhase === "running"}
+                value={hostnameTyped}
+                onChange={(event) => setHostnameTyped(event.target.value)}
+              />
+              <label htmlFor="purge-erase">Type ERASE in capital letters</label>
+              <input
+                id="purge-erase"
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={purgePhase === "running"}
+                value={eraseTyped}
+                onChange={(event) => setEraseTyped(event.target.value)}
+              />
+              <label htmlFor="purge-operator">Operator name (optional)</label>
+              <input
+                id="purge-operator"
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={purgePhase === "running"}
+                value={operatorName}
+                onChange={(event) => setOperatorName(event.target.value)}
+              />
+            </div>
+            <PurgeProgressRing
+              percent={purgeProgress?.percent ?? 0}
+              phase={purgePhase}
+              stage={purgeProgress?.stage ?? "Waiting for extra disks, this PC’s name, and ERASE"}
+              detail={purgeProgress?.detail ?? "The helper is not started until those tokens match."}
+            />
             <label className="purge-consent-check" htmlFor="purge-consent-box">
               <input
                 id="purge-consent-box"
@@ -1625,14 +1925,52 @@ function ReportScreen({
               <button
                 className="button button-danger"
                 type="button"
-                disabled={!consentChecked || !reportExported}
+                disabled={
+                  !consentChecked ||
+                  !reportExported ||
+                  !purgeLicenceBound ||
+                  purgePhase === "running" ||
+                  purgeLetters.length === 0
+                }
                 onClick={handlePurgeIntent}
               >
-                Data purge
+                {purgePhase === "running" ? "Mode S running…" : "Data purge"}
               </button>
-              <p>This installer will not erase files. The wipe report records that sanitization did not run.</p>
+              {purgeRecord?.reportAllowed && purgeRecord.status === "VERIFIED" ? (
+                <button className="button button-primary" type="button" onClick={handleSaveReportS}>
+                  Save Report S as PDF
+                </button>
+              ) : (
+                <p>
+                  Report S is issued only after independent verify PASS. Status is VERIFIED or FAILED,
+                  never CERTIFIED SECURE.
+                </p>
+              )}
             </div>
             {purgeNote ? <p className="setup-note">{purgeNote}</p> : null}
+            {purgeRecord && !purgeRecord.reportAllowed ? (
+              <p className="setup-note">No sanitization report is issued on FAIL, cancel, or helper missing.</p>
+            ) : null}
+            {sanitizationSections.length > 0 ? (
+              <div className="report-s-screen">
+                {sanitizationSections.map((section) =>
+                  section.kind === "table" ? (
+                    <ReportTable
+                      key={section.title}
+                      title={section.title}
+                      rows={section.rows}
+                      empty={section.empty}
+                    />
+                  ) : (
+                    <ReportProse key={section.title} title={section.title} paragraphs={section.paragraphs} />
+                  ),
+                )}
+                <p className="report-prose report-end">
+                  END OF REPORT S. This record is locally verified on this PC. It is not a laboratory
+                  certification.
+                </p>
+              </div>
+            ) : null}
             {!reportExported ? (
               <p className="setup-note">
                 Save Report A as PDF (or email it) before Data purge can be offered. The assessment must
@@ -1642,8 +1980,7 @@ function ReportScreen({
           </>
         ) : (
           <p className="setup-note">
-            Run the standard assessment and save Report A first. Wipe stays off in this version. No
-            data was erased.
+            Run the standard assessment and save Report A first. No data was erased.
           </p>
         )}
         <div className="action-row">
@@ -1678,7 +2015,8 @@ function HelpScreen({
         </Notice>
       ) : (
         <Notice kind="success" title="Application loaded safely">
-          Verification is local and non-destructive. CYVRA does not erase files in this version.
+          Standard assessment is local and non-destructive. Mode S on extra disks requires a Purge
+          licence, this PC’s name, and ERASE.
         </Notice>
       )}
 
@@ -1689,7 +2027,8 @@ function HelpScreen({
           <p>
             Expected: an administrator approves the account, then auth@cyvra.co.in sends “Your CYVRA
             Erase activation key”. A separate Purge key, if issued, is emailed as “Your CYVRA Purge
-            activation key” and is bound on Data purge. It does not erase files in this version. If no
+            activation key” and is bound on Data purge. Binding does not erase files. Mode S still
+            needs extra disks, this PC’s name, and ERASE. If no
             mail arrives, the account is not licensed yet — do not guess a key. If Activate later says
             invalid_key, the key is mistyped or already bound.
           </p>
@@ -1734,13 +2073,14 @@ function HelpScreen({
         </article>
         <article className="support-card">
           <span className="support-number">06</span>
-          <h2>Advance scan, wipe record, and verify</h2>
+          <h2>Advance scan, Mode S, and verify</h2>
           <p>
             Expected: from home, open 02 Advance diagnostic, run the scan, Save Report D as PDF,
             then Back to main. A local integrity seal (SHA-256 and Ed25519) proves the JSON was not
             altered after the scan. Verify this report re-checks it on this PC. It is not a wipe
-            certificate. Workstream 03 Wipe stays fail-closed. If the grade is withheld, coverage
-            was too low — inspect Not assessable.
+            certificate. Workstream 03 Mode S sanitises extra disks only after a Purge licence, this
+            PC’s name, and ERASE. Report S is issued only after independent verify PASS. If the grade
+            is withheld, coverage was too low — inspect Not assessable.
           </p>
         </article>
       </section>
@@ -1829,6 +2169,7 @@ export function ShellScreen({
           advanceScan={advanceScan}
           purgeLicenceBound={purgeLicenceBound}
           onPurgeLicenceBound={onPurgeLicenceBound}
+          scanTargets={scanTargets}
         />
       );
     case "help":

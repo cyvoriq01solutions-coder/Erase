@@ -317,7 +317,7 @@ export function buildDiagnosticDocument(
   items.push({
     kind: "text",
     style: "body",
-    text: "END OF REPORT D. Next document in the CYVRA evidence family: REPORT S — Sanitization & Verification Record (not generated in this version).",
+    text: "END OF REPORT D. Next document in the CYVRA evidence family: REPORT S — Sanitization & Verification Record (issued only after Mode S independent verify PASS).",
   });
 
   return items;

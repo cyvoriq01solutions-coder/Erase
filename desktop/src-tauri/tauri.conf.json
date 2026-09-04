@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "npm run build:web",
+    "beforeBuildCommand": "npm run build:web && npm run stage:purge-helper",
     "frontendDist": "../dist"
   },
   "app": {
@@ -55,7 +55,7 @@
     "createUpdaterArtifacts": false,
     "publisher": "CYVORIQ Solutions",
     "shortDescription": "CYVRA Erase assessment and verification for authorised Windows devices.",
-    "longDescription": "CYVRA Erase is a non-destructive assessment application for authorised Windows devices. This installer is unsigned until Authenticode signing and the authorised customer download are approved. This version does not erase files.",
+    "longDescription": "CYVRA Erase assesses authorised Windows devices and can sanitise extra disks with Mode S after a bound Purge licence, the PC name, and ERASE. The Windows system disk is never Mode S while this application is running on it. This installer is unsigned until Authenticode signing and the authorised customer download are approved.",
     "copyright": "Copyright CYVORIQ Solutions. All rights reserved.",
     "licenseFile": "LICENSE.installer.txt",
     "category": "Utility",
@@ -77,6 +77,9 @@
         "displayLanguageSelector": false,
         "startMenuFolder": "CYVORIQ"
       }
+    },
+    "resources": {
+      "binaries/cyvra-purge-helper.exe": "cyvra-purge-helper.exe"
     }
   }
 }

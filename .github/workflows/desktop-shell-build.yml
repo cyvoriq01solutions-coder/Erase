@@ -100,6 +100,12 @@ jobs:
       - name: Run Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
+      - name: Run agent Mode S tests
+        run: cargo test --manifest-path ../agent-windows/Cargo.toml purge
+
+      - name: Stage cyvra-purge-helper
+        run: npm run stage:purge-helper
+
       - name: Compile internal shell without installer
         run: npm run tauri -- build --debug --no-bundle
 
