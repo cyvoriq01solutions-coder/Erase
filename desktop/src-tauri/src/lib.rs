@@ -402,7 +402,10 @@ fn activate_license(activation_key: String) -> Result<ActivationOutcome, String>
     }
     #[cfg(windows)]
     {
-        activate_at("https://api.cyvra.co.in/api/v1/auth/activate", activation_key)
+        activate_at(
+            "https://api.cyvra.co.in/api/v1/auth/activate",
+            activation_key,
+        )
     }
 }
 
