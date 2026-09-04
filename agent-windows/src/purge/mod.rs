@@ -180,15 +180,21 @@ fn run_mode_s_windows(
                 continue;
             }
         };
+        let helper_note = helper_status_note(&helper);
         progress(
             70,
             6,
             "Waiting for the controller",
             &format!("Method on {}: {}.", target.letter, target.method.as_label()),
         );
+        if !helper.letter.is_empty() && helper.letter != target.letter {
+            any_fail = true;
+            outcomes.push(target_from_plan(target, false, false, &helper_note));
+            continue;
+        }
         if !helper.ok {
             any_fail = true;
-            outcomes.push(target_from_plan(target, false, false, &helper.message));
+            outcomes.push(target_from_plan(target, false, false, &helper_note));
             continue;
         }
         progress(
@@ -200,15 +206,30 @@ fn run_mode_s_windows(
         match execute::sample_volume(&target.letter, target.size_bytes, 16) {
             Ok(report) if report.passed => {
                 any_pass = true;
-                outcomes.push(target_from_plan(target, true, true, &report.note));
+                outcomes.push(target_from_plan(
+                    target,
+                    true,
+                    true,
+                    &format!("{} {}", report.note, helper_note),
+                ));
             }
             Ok(report) => {
                 any_fail = true;
-                outcomes.push(target_from_plan(target, true, false, &report.note));
+                outcomes.push(target_from_plan(
+                    target,
+                    true,
+                    false,
+                    &format!("{} {}", report.note, helper_note),
+                ));
             }
             Err(message) => {
                 any_fail = true;
-                outcomes.push(target_from_plan(target, true, false, &message));
+                outcomes.push(target_from_plan(
+                    target,
+                    true,
+                    false,
+                    &format!("{} {}", message, helper_note),
+                ));
             }
         }
     }
@@ -392,6 +413,14 @@ fn evidence_hash(job_id: &str, outcomes: &[PurgeTargetOutcome]) -> String {
 
 fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[cfg(windows)]
+fn helper_status_note(helper: &execute::HelperResult) -> String {
+    format!(
+        "{}. Job {}. Volume {}. Method {}. Bytes processed {}.",
+        helper.message, helper.job_id, helper.letter, helper.method, helper.bytes_processed
+    )
 }
 
 #[cfg(windows)]
