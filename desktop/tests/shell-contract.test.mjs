@@ -337,6 +337,28 @@ test("F5 shows all fourteen Report A sections on screen", () => {
   assert.match(assessment, /END OF REPORT A/);
 });
 
+test("F6 shows numbered Report D sections on screen", () => {
+  const screens = read("src/screens/ShellScreens.tsx");
+  const diagnostic = read("src/report/diagnosticPdf.ts");
+
+  assert.match(diagnostic, /buildDiagnosticSections/);
+  assert.match(screens, /buildDiagnosticSections/);
+  assert.match(screens, /END OF REPORT D/);
+  assert.match(diagnostic, /1\. Document Control/);
+  assert.match(diagnostic, /2\. Evidence Status/);
+  assert.match(diagnostic, /3\. Device Identity/);
+  assert.match(diagnostic, /4\. Coverage statement/);
+  assert.match(diagnostic, /5\. Coverage by diagnostic area/);
+  assert.match(diagnostic, /6\. Key Findings/);
+  assert.match(diagnostic, /15\. Method and limitations/);
+  assert.match(diagnostic, /16\. Grading rubric/);
+  assert.match(diagnostic, /17\. Local Integrity Evidence/);
+  assert.match(diagnostic, /18\. Audit-Ready/);
+  assert.match(diagnostic, /19\. Final Recommended Next Action/);
+  assert.match(diagnostic, /20\. Controlled Issuance Statement/);
+  assert.match(diagnostic, /END OF REPORT D/);
+});
+
 test("root workspace exposes bounded desktop checks", () => {
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
 
