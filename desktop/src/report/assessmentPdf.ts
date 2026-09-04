@@ -227,15 +227,238 @@ export function addSection(items: PdfItem[], heading: string, rows: NamedValue[]
   }
 }
 
+export type AssessmentSection =
+  | { kind: "table"; title: string; rows: NamedValue[]; empty: string }
+  | { kind: "prose"; title: string; paragraphs: string[] };
+
+function hardwareResultLabel(result: string): string {
+  if (result === "pass") {
+    return "Passed";
+  }
+  if (result === "fail") {
+    return "Needs review";
+  }
+  return "Not available on this PC";
+}
+
+export function buildAssessmentSections(
+  verification: VerificationRecord,
+  generatedAt: Date,
+): AssessmentSection[] {
+  const reportId = makeReportId(verification, generatedAt);
+  const generatedLabel = generatedAt.toLocaleString();
+  const hardwareResult = hardwareResultLabel(verification.hardwareResult);
+
+  return [
+    {
+      kind: "table",
+      title: "Executive Assessment Snapshot",
+      rows: [
+        { label: "Report identifier", value: reportId },
+        { label: "Assessed device / host", value: verification.hostname },
+        { label: "Manufacturer / model", value: `${verification.manufacturer} / ${verification.model}` },
+        { label: "Operating system", value: verification.osCaption },
+        { label: "Assessment mode", value: "Serialized local assessment" },
+        { label: "Reported drive scope", value: verification.scannedDrives },
+        { label: "File contents opened", value: verification.contentInspected ? "Yes" : "No" },
+        { label: "Data erased during this assessment", value: "No" },
+        { label: "Cloud authentication status", value: "Not enabled in this version" },
+        { label: "Hardware result", value: hardwareResult },
+      ],
+      empty: "No snapshot available.",
+    },
+    {
+      kind: "table",
+      title: "1. Document Control & Evidence Status",
+      rows: [
+        { label: "Report identifier", value: reportId },
+        { label: "Report type", value: "Report A — Intake & Pre-Sanitization Assessment Record" },
+        { label: "Generated on assessed device", value: `${generatedLabel} local device time` },
+        { label: "Assessed host", value: verification.hostname },
+        { label: "Issuing software", value: "CYVRA Erase" },
+        { label: "Publisher", value: "CYVORIQ Solutions Pvt. Ltd." },
+        { label: "Assessment execution mode", value: "Serialized local assessment" },
+        { label: "Cloud authentication", value: "Not enabled in this version" },
+        {
+          label: "Evidence state",
+          value:
+            "Locally generated computer record; production integrity and external verification controls should be added before representing the report as organization-authenticated evidence.",
+        },
+        { label: "Document classification", value: "Operator / controlled assessment record" },
+      ],
+      empty: "Document control was not available.",
+    },
+    {
+      kind: "prose",
+      title: "2. Purpose & Permitted Use",
+      paragraphs: [
+        "The purpose of Report A is to establish a documented baseline before any data sanitization, device refurbishment, resale, transfer, reuse, return, disposal or other downstream disposition activity. The report is intended to support internal asset handling, evidence review, technician workflows and customer audit trails.",
+        "This report should be read together with the organization's approved asset-disposition policy, authorization records and, where applicable, a subsequent sanitization or verification record. The report must not be used as standalone proof that personal data, confidential information or any other data has been removed.",
+      ],
+    },
+    {
+      kind: "table",
+      title: "3. Scope, Boundary & Collection Method",
+      rows: [
+        { label: "Reported drive scope", value: verification.scannedDrives },
+        {
+          label: "Collection approach",
+          value:
+            "Read-only Windows firmware, CIM and PnP inventory, together with document-location metadata (names and sizes).",
+        },
+        { label: "File content inspection", value: verification.contentInspected ? "Performed" : "Not performed" },
+        { label: "Data sanitization / purge", value: "Not performed" },
+        { label: "Physical inspection", value: "Not completed as part of this automated local assessment" },
+        {
+          label: "Boundary warning",
+          value:
+            "This assessment does not establish complete coverage of removable media, inaccessible storage, encrypted volumes, cloud repositories, network locations or data outside the explicitly reported scan scope unless separately recorded.",
+        },
+      ],
+      empty: "Scope was not recorded.",
+    },
+    {
+      kind: "table",
+      title: "4. Device Identity & Asset Evidence",
+      rows: [
+        { label: "Computer name", value: verification.hostname },
+        { label: "Manufacturer", value: verification.manufacturer },
+        { label: "Model", value: verification.model },
+        {
+          label: "BIOS / OEM serial",
+          value: displaySerial(lookupField(verification.hardwareFields, ["bios / oem serial"])),
+        },
+        {
+          label: "Chassis serial",
+          value: displaySerial(lookupField(verification.hardwareFields, ["chassis serial"])),
+        },
+        {
+          label: "Motherboard serial",
+          value: displaySerial(lookupField(verification.hardwareFields, ["motherboard serial"])),
+        },
+        {
+          label: "SMBIOS UUID",
+          value: displaySerial(lookupField(verification.hardwareFields, ["smbios uuid"])),
+        },
+        { label: "Operating system", value: verification.osCaption },
+        { label: "Hardware result", value: hardwareResult },
+      ],
+      empty: "Identity was not available.",
+    },
+    {
+      kind: "table",
+      title: "5. Hardware Inventory Recorded During This Assessment",
+      rows: hardwareScanRows(verification.hardwareFields),
+      empty: "Hardware details were not available on this PC.",
+    },
+    {
+      kind: "table",
+      title: "6. Deferred, Unknown & Physical-Verification Items",
+      rows: peripheralHealthRows(verification),
+      empty: NOT_COLLECTED,
+    },
+    {
+      kind: "table",
+      title: "7. Metadata-Based Data-Exposure Indicators",
+      rows: [...exposureSummaryRows(verification), ...exposureLocationRows(verification)],
+      empty: "No document categories were recorded on the selected drives.",
+    },
+    {
+      kind: "prose",
+      title: "8. Privacy, Data-Minimisation & Handling Notes",
+      paragraphs: [
+        "Report A should be treated as a potentially sensitive asset record because device identifiers, host names and storage-related evidence may be operationally sensitive. Access should therefore be controlled according to the issuing organization's information-security and privacy policies.",
+        "This assessment alone does not establish whether the device contains Digital Personal Data or other regulated information. Category indicators are metadata only; contents were not opened.",
+      ],
+    },
+    {
+      kind: "table",
+      title: "9. Authorization & Chain-of-Custody Record",
+      rows: [
+        { label: "Asset owner / custodian", value: "Not recorded in this version" },
+        { label: "Assessment authorization reference", value: "Not recorded in this version" },
+        { label: "Operator identity", value: "Not recorded in this version" },
+        { label: "Collection location", value: "Not recorded in this version" },
+        { label: "Custody received timestamp", value: "Not recorded in this version" },
+        { label: "Intended disposition", value: "Not recorded in this version" },
+      ],
+      empty: "Not recorded in this version.",
+    },
+    {
+      kind: "table",
+      title: "10. Assessment Findings & Recommended Next Actions",
+      rows: [
+        {
+          label: "Device identity evidence",
+          value:
+            "Host, manufacturer, model and serials reported where Windows supplied them. Reconcile against the asset register before downstream disposition.",
+        },
+        {
+          label: "Potential data-bearing locations",
+          value: `${verification.personalLocationCount} document locations and ${verification.pdemObjectCount} mapped objects. Contents were not opened. Determine whether a controlled sanitization or preservation workflow is required.`,
+        },
+        {
+          label: "No erasure performed",
+          value: "Explicitly reported as No. Do not represent this report as sanitization evidence.",
+        },
+        {
+          label: "Physical verification",
+          value:
+            "Automated inventory cannot confirm cosmetic condition or actual connector functionality. Complete a technician checklist if condition or resale grading is required.",
+        },
+        {
+          label: "Local-only issuance",
+          value:
+            "Cloud authentication is not enabled in this version. For audit-ready production, add canonical evidence hashing, signing and an independent verification workflow.",
+        },
+      ],
+      empty: "No findings were recorded.",
+    },
+    {
+      kind: "prose",
+      title: "11. Evidence Limitations",
+      paragraphs: [
+        "This assessment records only the evidence available through the stated collection method and scope. A missing value does not prove that a feature, device, port, battery, data category or risk is absent. Automated enumeration is not a substitute for physical inspection where physical confirmation is required.",
+        "The report does not prove data deletion, cryptographic erasure, overwrite completion, media sanitization, destruction, resale condition or legal/regulatory compliance. Those conclusions require separate controlled processes.",
+      ],
+    },
+    {
+      kind: "prose",
+      title: "12. Production Audit-Readiness Controls Recommended",
+      paragraphs: [
+        "Recommended for a later production issuance: immutable report identity, canonical evidence package, SHA-256 digest, organisation-controlled signature, trusted time, source provenance, authorization binding, retention and change control. These controls are not enabled in this version.",
+      ],
+    },
+    {
+      kind: "prose",
+      title: "13. Issuing Organisation & Controlled Statement",
+      paragraphs: [
+        "Issued by CYVORIQ Solutions Pvt. Ltd. as publisher of CYVRA Erase. This document is computer-generated on the assessed PC. It is not cloud-authenticated in this version. Controlled statement: this report establishes a pre-sanitization assessment baseline only. It does not certify sanitization, destruction, resale grade, regulatory compliance or legal compliance.",
+      ],
+    },
+    {
+      kind: "table",
+      title: "14. Verification & Sign-Off Status",
+      rows: [
+        { label: "Automated assessment", value: "Completed — report generated from recorded evidence" },
+        { label: "Physical verification", value: "Not completed in this automated assessment" },
+        { label: "Sanitization verification", value: "Not applicable to Report A" },
+        { label: "Organization authentication", value: "Not enabled in this version" },
+        { label: "Final disposition decision", value: "Not recorded" },
+        {
+          label: "Physical verification block",
+          value:
+            "Technician name: recorded at sign-off on the assessed PC. Date of inspection: recorded at sign-off on the assessed PC. Result: see the hardware and location tables above. This block is not a handwritten signature line.",
+        },
+      ],
+      empty: "Sign-off was not recorded.",
+    },
+  ];
+}
+
 export function buildAssessmentDocument(verification: VerificationRecord, generatedAt: Date): PdfItem[] {
   const reportId = makeReportId(verification, generatedAt);
   const generatedLabel = generatedAt.toLocaleString();
-  const hardwareResult =
-    verification.hardwareResult === "pass"
-      ? "Passed"
-      : verification.hardwareResult === "fail"
-        ? "Needs review"
-        : "Not available on this PC";
   const items: PdfItem[] = [
     { kind: "text", style: "kicker", text: "CYVRA ERASE  |  REPORT A  |  INTAKE & PRE-SANITIZATION ASSESSMENT" },
     { kind: "text", style: "kicker", text: "CYVORIQ SOLUTIONS PVT. LTD." },
@@ -259,237 +482,18 @@ export function buildAssessmentDocument(verification: VerificationRecord, genera
     },
   ];
 
-  addSection(
-    items,
-    "Executive Assessment Snapshot",
-    [
-      { label: "Report identifier", value: reportId },
-      { label: "Assessed device / host", value: verification.hostname },
-      { label: "Manufacturer / model", value: `${verification.manufacturer} / ${verification.model}` },
-      { label: "Operating system", value: verification.osCaption },
-      { label: "Assessment mode", value: "Serialized local assessment" },
-      { label: "Reported drive scope", value: verification.scannedDrives },
-      { label: "File contents opened", value: verification.contentInspected ? "Yes" : "No" },
-      { label: "Data erased during this assessment", value: "No" },
-      { label: "Cloud authentication status", value: "Not enabled in this version" },
-      { label: "Hardware result", value: hardwareResult },
-    ],
-    "No snapshot available.",
-  );
-
-  addSection(
-    items,
-    "1. Document Control & Evidence Status",
-    [
-      { label: "Report identifier", value: reportId },
-      { label: "Report type", value: "Report A — Intake & Pre-Sanitization Assessment Record" },
-      { label: "Generated on assessed device", value: `${generatedLabel} local device time` },
-      { label: "Assessed host", value: verification.hostname },
-      { label: "Issuing software", value: "CYVRA Erase" },
-      { label: "Publisher", value: "CYVORIQ Solutions Pvt. Ltd." },
-      { label: "Assessment execution mode", value: "Serialized local assessment" },
-      { label: "Cloud authentication", value: "Not enabled in this version" },
-      {
-        label: "Evidence state",
-        value:
-          "Locally generated computer record; production integrity and external verification controls should be added before representing the report as organization-authenticated evidence.",
-      },
-      { label: "Document classification", value: "Operator / controlled assessment record" },
-    ],
-    "Document control was not available.",
-  );
-
-  items.push({ kind: "gap", size: 10 });
-  items.push({ kind: "text", style: "heading", text: "2. Purpose & Permitted Use" });
-  items.push({ kind: "rule" });
-  items.push({
-    kind: "text",
-    style: "body",
-    text: "The purpose of Report A is to establish a documented baseline before any data sanitization, device refurbishment, resale, transfer, reuse, return, disposal or other downstream disposition activity. The report is intended to support internal asset handling, evidence review, technician workflows and customer audit trails.",
-  });
-  items.push({
-    kind: "text",
-    style: "body",
-    text: "This report should be read together with the organization's approved asset-disposition policy, authorization records and, where applicable, a subsequent sanitization or verification record. The report must not be used as standalone proof that personal data, confidential information or any other data has been removed.",
-  });
-
-  addSection(
-    items,
-    "3. Scope, Boundary & Collection Method",
-    [
-      { label: "Reported drive scope", value: verification.scannedDrives },
-      {
-        label: "Collection approach",
-        value:
-          "Read-only Windows firmware, CIM and PnP inventory, together with document-location metadata (names and sizes).",
-      },
-      { label: "File content inspection", value: verification.contentInspected ? "Performed" : "Not performed" },
-      { label: "Data sanitization / purge", value: "Not performed" },
-      { label: "Physical inspection", value: "Not completed as part of this automated local assessment" },
-      {
-        label: "Boundary warning",
-        value:
-          "This assessment does not establish complete coverage of removable media, inaccessible storage, encrypted volumes, cloud repositories, network locations or data outside the explicitly reported scan scope unless separately recorded.",
-      },
-    ],
-    "Scope was not recorded.",
-  );
-
-  addSection(
-    items,
-    "4. Device Identity & Asset Evidence",
-    [
-      { label: "Computer name", value: verification.hostname },
-      { label: "Manufacturer", value: verification.manufacturer },
-      { label: "Model", value: verification.model },
-      {
-        label: "BIOS / OEM serial",
-        value: displaySerial(lookupField(verification.hardwareFields, ["bios / oem serial"])),
-      },
-      {
-        label: "Chassis serial",
-        value: displaySerial(lookupField(verification.hardwareFields, ["chassis serial"])),
-      },
-      {
-        label: "Motherboard serial",
-        value: displaySerial(lookupField(verification.hardwareFields, ["motherboard serial"])),
-      },
-      {
-        label: "SMBIOS UUID",
-        value: displaySerial(lookupField(verification.hardwareFields, ["smbios uuid"])),
-      },
-      { label: "Operating system", value: verification.osCaption },
-      { label: "Hardware result", value: hardwareResult },
-    ],
-    "Identity was not available.",
-  );
-
-  addSection(
-    items,
-    "5. Hardware Inventory Recorded During This Assessment",
-    hardwareScanRows(verification.hardwareFields),
-    "Hardware details were not available on this PC.",
-  );
-
-  addSection(
-    items,
-    "6. Deferred, Unknown & Physical-Verification Items",
-    peripheralHealthRows(verification),
-    NOT_COLLECTED,
-  );
-
-  addSection(
-    items,
-    "7. Metadata-Based Data-Exposure Indicators",
-    [...exposureSummaryRows(verification), ...exposureLocationRows(verification)],
-    "No document categories were recorded on the selected drives.",
-  );
-
-  items.push({ kind: "gap", size: 10 });
-  items.push({ kind: "text", style: "heading", text: "8. Privacy, Data-Minimisation & Handling Notes" });
-  items.push({ kind: "rule" });
-  items.push({
-    kind: "text",
-    style: "body",
-    text: "Report A should be treated as a potentially sensitive asset record because device identifiers, host names and storage-related evidence may be operationally sensitive. Access should therefore be controlled according to the issuing organization's information-security and privacy policies.",
-  });
-  items.push({
-    kind: "text",
-    style: "body",
-    text: "This assessment alone does not establish whether the device contains Digital Personal Data or other regulated information. Category indicators are metadata only; contents were not opened.",
-  });
-
-  addSection(
-    items,
-    "9. Authorization & Chain-of-Custody Record",
-    [
-      { label: "Asset owner / custodian", value: "Not recorded in this version" },
-      { label: "Assessment authorization reference", value: "Not recorded in this version" },
-      { label: "Operator identity", value: "Not recorded in this version" },
-      { label: "Collection location", value: "Not recorded in this version" },
-      { label: "Custody received timestamp", value: "Not recorded in this version" },
-      { label: "Intended disposition", value: "Not recorded in this version" },
-    ],
-    "Not recorded in this version.",
-  );
-
-  addSection(
-    items,
-    "10. Assessment Findings & Recommended Next Actions",
-    [
-      {
-        label: "Device identity evidence",
-        value: "Host, manufacturer, model and serials reported where Windows supplied them. Reconcile against the asset register before downstream disposition.",
-      },
-      {
-        label: "Potential data-bearing locations",
-        value: `${verification.personalLocationCount} document locations and ${verification.pdemObjectCount} mapped objects. Contents were not opened. Determine whether a controlled sanitization or preservation workflow is required.`,
-      },
-      {
-        label: "No erasure performed",
-        value: "Explicitly reported as No. Do not represent this report as sanitization evidence.",
-      },
-      {
-        label: "Physical verification",
-        value: "Automated inventory cannot confirm cosmetic condition or actual connector functionality. Complete a technician checklist if condition or resale grading is required.",
-      },
-      {
-        label: "Local-only issuance",
-        value: "Cloud authentication is not enabled in this version. For audit-ready production, add canonical evidence hashing, signing and an independent verification workflow.",
-      },
-    ],
-    "No findings were recorded.",
-  );
-
-  items.push({ kind: "gap", size: 10 });
-  items.push({ kind: "text", style: "heading", text: "11. Evidence Limitations" });
-  items.push({ kind: "rule" });
-  items.push({
-    kind: "text",
-    style: "body",
-    text: "This assessment records only the evidence available through the stated collection method and scope. A missing value does not prove that a feature, device, port, battery, data category or risk is absent. Automated enumeration is not a substitute for physical inspection where physical confirmation is required.",
-  });
-  items.push({
-    kind: "text",
-    style: "body",
-    text: "The report does not prove data deletion, cryptographic erasure, overwrite completion, media sanitization, destruction, resale condition or legal/regulatory compliance. Those conclusions require separate controlled processes.",
-  });
-
-  items.push({ kind: "gap", size: 10 });
-  items.push({ kind: "text", style: "heading", text: "12. Production Audit-Readiness Controls Recommended" });
-  items.push({ kind: "rule" });
-  items.push({
-    kind: "text",
-    style: "body",
-    text: "Recommended for a later production issuance: immutable report identity, canonical evidence package, SHA-256 digest, organisation-controlled signature, trusted time, source provenance, authorization binding, retention and change control. These controls are not enabled in this version.",
-  });
-
-  items.push({ kind: "gap", size: 8 });
-  items.push({ kind: "text", style: "heading", text: "13. Issuing Organisation & Controlled Statement" });
-  items.push({ kind: "rule" });
-  items.push({
-    kind: "text",
-    style: "body",
-    text: "Issued by CYVORIQ Solutions Pvt. Ltd. as publisher of CYVRA Erase. This document is computer-generated on the assessed PC. It is not cloud-authenticated in this version. Controlled statement: this report establishes a pre-sanitization assessment baseline only. It does not certify sanitization, destruction, resale grade, regulatory compliance or legal compliance.",
-  });
-
-  addSection(
-    items,
-    "14. Verification & Sign-Off Status",
-    [
-      { label: "Automated assessment", value: "Completed — report generated from recorded evidence" },
-      { label: "Physical verification", value: "Not completed in this automated assessment" },
-      { label: "Sanitization verification", value: "Not applicable to Report A" },
-      { label: "Organization authentication", value: "Not enabled in this version" },
-      { label: "Final disposition decision", value: "Not recorded" },
-      {
-        label: "Physical verification block",
-        value:
-          "Technician name: recorded at sign-off on the assessed PC. Date of inspection: recorded at sign-off on the assessed PC. Result: see the hardware and location tables above. This block is not a handwritten signature line.",
-      },
-    ],
-    "Sign-off was not recorded.",
-  );
+  for (const section of buildAssessmentSections(verification, generatedAt)) {
+    if (section.kind === "table") {
+      addSection(items, section.title, section.rows, section.empty);
+      continue;
+    }
+    items.push({ kind: "gap", size: 10 });
+    items.push({ kind: "text", style: "heading", text: section.title });
+    items.push({ kind: "rule" });
+    for (const paragraph of section.paragraphs) {
+      items.push({ kind: "text", style: "body", text: paragraph });
+    }
+  }
 
   items.push({
     kind: "text",
