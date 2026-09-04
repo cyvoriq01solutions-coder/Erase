@@ -6,7 +6,7 @@ import {
   makeReportId,
   saveAssessmentPdf,
 } from "../report/assessmentPdf";
-import { makeDiagnosticId, saveDiagnosticPdf } from "../report/diagnosticPdf";
+import { buildDiagnosticSections, makeDiagnosticId, saveDiagnosticPdf } from "../report/diagnosticPdf";
 import { groupHex, verifyIntegritySeal, type SealCheck } from "../report/verifySeal";
 import type {
   AdvanceInteractive,
@@ -1048,6 +1048,10 @@ function AdvanceReportBlock({
   const [pdfNote, setPdfNote] = useState<string | null>(null);
   const generatedAt = useMemo(() => new Date(), [advanceScan]);
   const documentId = advanceScan ? makeDiagnosticId(verification, generatedAt) : "";
+  const diagnosticSections = useMemo(
+    () => (advanceScan ? buildDiagnosticSections(advanceScan, verification, generatedAt) : []),
+    [advanceScan, verification, generatedAt],
+  );
 
   function handleSaveDiagnostic() {
     if (!advanceScan) return;
@@ -1141,14 +1145,6 @@ function AdvanceReportBlock({
         </div>
       </div>
 
-      <ReportTable
-        title="Coverage statement"
-        rows={advanceScan.coverageRows}
-        empty="No coverage statement was produced."
-      />
-
-      <CoverageDomainTable domains={advanceScan.coverageDomains} />
-
       <section className="grade-card" aria-labelledby="grade-title">
         <div className={advanceScan.gradeWithheld ? "grade-mark grade-mark-withheld" : "grade-mark"}>
           <span className="card-label">
@@ -1185,6 +1181,8 @@ function AdvanceReportBlock({
         </div>
       </section>
 
+      <CoverageDomainTable domains={advanceScan.coverageDomains} />
+
       {advanceScan.integritySeal ? <IntegritySealCard seal={advanceScan.integritySeal} /> : null}
 
       <div className="email-row no-print">
@@ -1209,71 +1207,46 @@ function AdvanceReportBlock({
         {pdfNote ? <p className="setup-note">{pdfNote}</p> : null}
       </div>
 
-      {advanceScan.telemetryGroups.map((group) => (
-        <div key={group.title}>
-          <ReportTable title={group.title} rows={group.rows} empty="Not collected in this scan." />
-          {group.note ? <p className="telemetry-note">{group.note}</p> : null}
-        </div>
-      ))}
-
-      <section className="report-table-block" aria-labelledby="not-assessable-heading">
-        <h3 id="not-assessable-heading">Not assessable in this scan</h3>
-        {advanceScan.notAssessable.length === 0 ? (
-          <p className="report-empty-copy">Every diagnostic area was assessed.</p>
+      {diagnosticSections.map((section) =>
+        section.kind === "table" ? (
+          <ReportTable
+            key={section.title}
+            title={section.title}
+            rows={section.rows}
+            empty={section.empty}
+          />
         ) : (
-          <ul className="not-assessable-list">
-            {advanceScan.notAssessable.map((entry) => (
-              <li key={entry}>{entry}</li>
-            ))}
-          </ul>
-        )}
-      </section>
+          <ReportProse key={section.title} title={section.title} paragraphs={section.paragraphs} />
+        ),
+      )}
 
-      <ReportTable
-        title="Method and limitations"
-        rows={advanceScan.methodRows}
-        empty="No method statement was produced."
-      />
+      <p className="report-prose report-end">
+        END OF REPORT D. Next document in the CYVRA evidence family: REPORT S — Sanitization &amp;
+        Verification Record (not generated in this version).
+      </p>
 
-      <ReportTable
-        title="Grading rubric"
-        rows={advanceScan.rubricRows}
-        empty="No rubric was recorded."
-      />
-
-      <section className="report-table-block" aria-labelledby="advance-boundary-heading">
-        <h3 id="advance-boundary-heading">Method and boundary</h3>
-        <p className="report-empty-copy">{advanceScan.boundaryNote}</p>
-        <p className="report-empty-copy">{advanceScan.temporaryFilesNote}</p>
-        <p className="report-empty-copy">
-          Issued by CYVORIQ Solutions Pvt. Ltd. as publisher of CYVRA Erase. This document is
-          computer-generated on the assessed PC and is not cloud-authenticated in this version. A
-          local integrity seal, when present, proves the JSON was not altered after the scan. It is
-          not Authenticode and not a CYVORIQ certificate.
+      <div className="verification-block">
+        <h3>Physical verification</h3>
+        <p>
+          Complete this block after inspecting the PC. USB topology and battery/charger state come
+          from the Advance scan pass printed above. Live USB and live charger overlays are not used
+          in this version. This is not a handwritten signature line.
         </p>
-        <div className="verification-block">
-          <h3>Physical verification</h3>
-          <p>
-            Complete this block after inspecting the PC. USB topology and battery/charger state
-            come from the Advance scan pass printed above. Live USB and live charger overlays are
-            not used in this version. This is not a handwritten signature line.
-          </p>
-          <dl className="verification-fields">
-            <div>
-              <dt>Technician name</dt>
-              <dd>Recorded at sign-off</dd>
-            </div>
-            <div>
-              <dt>Date of inspection</dt>
-              <dd>Recorded at sign-off</dd>
-            </div>
-            <div>
-              <dt>Physical verification</dt>
-              <dd>See Technician checks</dd>
-            </div>
-          </dl>
-        </div>
-      </section>
+        <dl className="verification-fields">
+          <div>
+            <dt>Technician name</dt>
+            <dd>Recorded at sign-off</dd>
+          </div>
+          <div>
+            <dt>Date of inspection</dt>
+            <dd>Recorded at sign-off</dd>
+          </div>
+          <div>
+            <dt>Physical verification</dt>
+            <dd>See Technician checks</dd>
+          </div>
+        </dl>
+      </div>
     </section>
   );
 }
