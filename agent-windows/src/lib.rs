@@ -417,6 +417,19 @@ pub struct CustomerVerification {
     pub scanned_drives: String,
     pub hardware_fields: Vec<NamedValue>,
     pub location_groups: Vec<NamedValue>,
+    pub exposure_map: Vec<ExposureEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExposureEntry {
+    pub folder: String,
+    pub category: String,
+    pub files: u64,
+    pub bytes: u64,
+    pub size_label: String,
+    pub classification: String,
+    pub confidence: String,
+    pub content_inspected: bool,
 }
 
 pub fn run_customer_verification() -> CustomerVerification {
@@ -496,6 +509,7 @@ where
         scanned_drives: scanned_drive_label(&scan.volumes),
         hardware_fields,
         location_groups: location_groups(&scan),
+        exposure_map: exposure_map(&scan),
     }
 }
 
@@ -566,6 +580,94 @@ fn append_disk_serials(fields: &mut Vec<NamedValue>, storage: &crate::storage::S
     }
 }
 
+const MAX_EXPOSURE_ROWS: usize = 200;
+
+fn exposure_map(scan: &ScanResult) -> Vec<ExposureEntry> {
+    let mut rows: Vec<ExposureEntry> = scan
+        .personal_data
+        .locations
+        .iter()
+        .map(|location| ExposureEntry {
+            folder: location.path.clone(),
+            category: friendly_category(&location.category),
+            files: location.file_count,
+            bytes: location.total_bytes,
+            size_label: format_byte_count(location.total_bytes),
+            classification: friendly_classification(&location.classification),
+            confidence: location.confidence.clone(),
+            content_inspected: false,
+        })
+        .collect();
+
+    for location in &scan.application_data.locations {
+        rows.push(ExposureEntry {
+            folder: location.path.clone(),
+            category: format!(
+                "{} ({})",
+                location.application,
+                friendly_category(&location.category)
+            ),
+            files: location.file_count,
+            bytes: location.total_bytes,
+            size_label: format_byte_count(location.total_bytes),
+            classification: friendly_classification(&location.classification),
+            confidence: location.confidence.clone(),
+            content_inspected: false,
+        });
+    }
+
+    rows.sort_by(|left, right| {
+        left.folder
+            .to_ascii_lowercase()
+            .cmp(&right.folder.to_ascii_lowercase())
+            .then(left.category.cmp(&right.category))
+    });
+
+    if rows.len() > MAX_EXPOSURE_ROWS {
+        rows.truncate(MAX_EXPOSURE_ROWS);
+        rows.push(ExposureEntry {
+            folder: "Additional mapped folders were omitted from this display".to_string(),
+            category: "Summary".to_string(),
+            files: 0,
+            bytes: 0,
+            size_label: "—".to_string(),
+            classification: format!(
+                "This report lists the first {MAX_EXPOSURE_ROWS} mapped folders"
+            ),
+            confidence: "summary".to_string(),
+            content_inspected: false,
+        });
+    }
+
+    rows
+}
+
+fn format_byte_count(bytes: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = 1024 * 1024;
+    const GIB: u64 = 1024 * 1024 * 1024;
+    if bytes >= GIB {
+        format!("{:.1} GB", bytes as f64 / GIB as f64)
+    } else if bytes >= MIB {
+        format!("{:.1} MB", bytes as f64 / MIB as f64)
+    } else if bytes >= KIB {
+        format!("{:.1} KB", bytes as f64 / KIB as f64)
+    } else {
+        format!("{bytes} bytes")
+    }
+}
+
+fn friendly_classification(classification: &str) -> String {
+    match classification {
+        "confirmed_user_location" => "Known user folder".to_string(),
+        "likely_personal_data" => "Likely personal data".to_string(),
+        "software_resource" => "Software resource".to_string(),
+        "application_data" => "Application data".to_string(),
+        "unknown" | "system_data" => "Unclassified folder".to_string(),
+        other => other.replace('_', " "),
+    }
+}
+
 fn location_groups(scan: &ScanResult) -> Vec<NamedValue> {
     use std::collections::BTreeMap;
 
@@ -622,14 +724,14 @@ fn friendly_category(category: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{PlatformAdapter, profile_paths, run_scan_with};
+    use super::{PlatformAdapter, exposure_map, location_groups, profile_paths, run_scan_with};
     use crate::{
         application_data::ApplicationDataInventory,
         cpu::CpuProfile,
         device::DeviceIdentity,
         encryption::EncryptionProfile,
         os::OsProfile,
-        personal_data::PersonalDataInventory,
+        personal_data::{DataLocation, PersonalDataInventory},
         storage::StorageProfile,
         user_profiles::{UserProfile, UserProfileInventory},
         volume::VolumeProfile,
@@ -708,7 +810,28 @@ mod tests {
             PersonalDataInventory {
                 discovery_status: "completed".to_string(),
                 content_inspected: false,
-                locations: Vec::new(),
+                locations: vec![
+                    DataLocation {
+                        path: r"C:\Users\Fixture\Documents".to_string(),
+                        category: "pdf".to_string(),
+                        classification: "confirmed_user_location".to_string(),
+                        confidence: "high".to_string(),
+                        source: "known_user_folder".to_string(),
+                        file_count: 4,
+                        total_bytes: 2 * 1024 * 1024,
+                        scan_status: "completed".to_string(),
+                    },
+                    DataLocation {
+                        path: r"C:\Users\Fixture\Pictures".to_string(),
+                        category: "image".to_string(),
+                        classification: "confirmed_user_location".to_string(),
+                        confidence: "high".to_string(),
+                        source: "known_user_folder".to_string(),
+                        file_count: 12,
+                        total_bytes: 800,
+                        scan_status: "completed".to_string(),
+                    },
+                ],
                 inaccessible_entries: 0,
             }
         }
@@ -771,5 +894,33 @@ mod tests {
         assert!(report.contains(r#""agentVersion": "0.2.1""#));
         assert!(report.contains(r#""scanMode": "non_destructive""#));
         assert!(report.contains(r#""destructiveOperationsEnabled": false"#));
+    }
+
+    #[test]
+    fn exposure_map_lists_folders_and_types_without_opening_contents() {
+        let scan = run_scan_with(&FixtureAdapter);
+        let map = exposure_map(&scan);
+        let groups = location_groups(&scan);
+
+        assert_eq!(map.len(), 2);
+        assert_eq!(map[0].folder, r"C:\Users\Fixture\Documents");
+        assert_eq!(map[0].category, "PDF files");
+        assert_eq!(map[0].files, 4);
+        assert_eq!(map[0].size_label, "2.0 MB");
+        assert_eq!(map[0].classification, "Known user folder");
+        assert_eq!(map[1].folder, r"C:\Users\Fixture\Pictures");
+        assert_eq!(map[1].category, "Pictures");
+        assert!(map.iter().all(|row| !row.content_inspected));
+        assert!(map.iter().all(|row| !row.folder.contains('.')));
+        assert!(
+            groups
+                .iter()
+                .any(|row| row.label == "PDF files" && row.value == "4 files")
+        );
+        assert!(
+            groups
+                .iter()
+                .any(|row| row.label == "Pictures" && row.value == "12 files")
+        );
     }
 }

@@ -193,6 +193,23 @@ function styleSpec(style: PdfStyle): { font: "F1" | "F2"; size: number; leading:
   }
 }
 
+export function exposureSummaryRows(verification: VerificationRecord): NamedValue[] {
+  return [
+    { label: "Document locations", value: String(verification.personalLocationCount) },
+    { label: "Mapped objects", value: String(verification.pdemObjectCount) },
+    { label: "File contents opened", value: verification.contentInspected ? "Yes" : "No" },
+    { label: "Data erased", value: "No" },
+    ...verification.locationGroups,
+  ];
+}
+
+export function exposureLocationRows(verification: VerificationRecord): NamedValue[] {
+  return verification.exposureMap.map((row) => ({
+    label: `${row.category} · ${row.folder}`,
+    value: `${row.files === 1 ? "1 file" : `${row.files} files`} · ${row.sizeLabel} · ${row.classification} · contents not opened`,
+  }));
+}
+
 export function addSection(items: PdfItem[], heading: string, rows: NamedValue[], empty: string): void {
   items.push({ kind: "gap", size: 10 });
   items.push({ kind: "text", style: "heading", text: heading });
@@ -364,13 +381,7 @@ export function buildAssessmentDocument(verification: VerificationRecord, genera
   addSection(
     items,
     "7. Metadata-Based Data-Exposure Indicators",
-    [
-      { label: "Document locations", value: String(verification.personalLocationCount) },
-      { label: "Mapped objects", value: String(verification.pdemObjectCount) },
-      { label: "File contents opened", value: verification.contentInspected ? "Yes" : "No" },
-      { label: "Data erased", value: "No" },
-      ...verification.locationGroups,
-    ],
+    [...exposureSummaryRows(verification), ...exposureLocationRows(verification)],
     "No document categories were recorded on the selected drives.",
   );
 

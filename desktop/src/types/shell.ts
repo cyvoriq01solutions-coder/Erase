@@ -66,7 +66,19 @@ export interface VerificationRecord {
   scannedDrives: string;
   hardwareFields: NamedValue[];
   locationGroups: NamedValue[];
+  exposureMap: ExposureEntry[];
   message: string;
+}
+
+export interface ExposureEntry {
+  folder: string;
+  category: string;
+  files: number;
+  bytes: number;
+  sizeLabel: string;
+  classification: string;
+  confidence: string;
+  contentInspected: boolean;
 }
 
 export type BridgeState =

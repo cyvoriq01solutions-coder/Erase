@@ -1426,6 +1426,38 @@ a:focus-visible,
   background: var(--surface);
 }
 
+.exposure-map {
+  display: grid;
+  gap: 12px;
+}
+
+.exposure-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.exposure-table th[scope="col"] {
+  width: auto;
+  color: var(--navy);
+  font-weight: 700;
+  background: var(--surface-blue);
+}
+
+.exposure-table th[scope="row"] {
+  width: 34%;
+  color: var(--ink);
+  font-weight: 650;
+  word-break: break-word;
+}
+
+@media (max-width: 720px) {
+  .exposure-table th,
+  .exposure-table td {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+}
+
 .report-empty-copy {
   margin: 0;
   color: var(--muted);

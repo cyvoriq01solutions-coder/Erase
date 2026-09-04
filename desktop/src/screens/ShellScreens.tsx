@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { Notice } from "../components/Notice";
 import {
+  exposureLocationRows,
+  exposureSummaryRows,
   lookupField,
   makeReportId,
   peripheralHealthRows,
@@ -16,6 +18,7 @@ import type {
   AdvanceScanRecord,
   BridgeState,
   DomainCoverage,
+  ExposureEntry,
   IntegritySeal,
   NamedValue,
   NavigationId,
@@ -784,8 +787,11 @@ function ResultsScreen({
           <span className={`status-pill ${verification ? "status-positive" : "status-neutral"}`}>
             {verification ? "Mapped" : "Not assessed"}
           </span>
-          <h2>Document locations</h2>
-          <p>Known document types and application folders. File contents are not opened.</p>
+          <h2>Where files are, what they are</h2>
+          <p>
+            Folder paths and file-type counts only. File names and contents are not recorded. CYVRA
+            Erase does not open personal files.
+          </p>
           <ul className="detail-list">
             <li>
               Data-location coverage:{" "}
@@ -796,6 +802,8 @@ function ResultsScreen({
           </ul>
         </article>
       </section>
+
+      <ExposureMapPanel verification={verification} />
 
       <div className="action-row">
         <button
@@ -834,6 +842,80 @@ function ReportTable({ title, rows, empty }: { title: string; rows: NamedValue[]
             ))}
           </tbody>
         </table>
+      )}
+    </section>
+  );
+}
+
+function fileCountLabel(count: number): string {
+  return count === 1 ? "1 file" : `${count} files`;
+}
+
+function ExposureMapPanel({ verification }: { verification: VerificationRecord | null }) {
+  if (!verification) {
+    return (
+      <section className="content-panel exposure-map" aria-labelledby="exposure-map-title">
+        <div className="panel-heading">
+          <div>
+            <span className="card-label">PRIVACY EXPOSURE MAP</span>
+            <h2 id="exposure-map-title">Where files are, what they are</h2>
+          </div>
+          <span className="status-pill status-neutral">Not assessed</span>
+        </div>
+        <p className="report-empty-copy">
+          Run Standard Assessment first. CYVRA maps approved folders and file types without opening
+          personal files.
+        </p>
+      </section>
+    );
+  }
+
+  const rows: ExposureEntry[] = verification.exposureMap;
+  return (
+    <section className="content-panel exposure-map" aria-labelledby="exposure-map-title">
+      <div className="panel-heading">
+        <div>
+          <span className="card-label">PRIVACY EXPOSURE MAP</span>
+          <h2 id="exposure-map-title">Where files are, what they are</h2>
+        </div>
+        <span className="status-pill status-positive">Mapped</span>
+      </div>
+      <p>
+        Folder paths and file-type counts only. File names and contents are not recorded. No data was
+        erased.
+      </p>
+      {rows.length === 0 ? (
+        <p className="report-empty-copy">
+          No document categories were recorded on the selected drives.
+        </p>
+      ) : (
+        <div className="exposure-table-wrap">
+          <table className="report-table exposure-table">
+            <thead>
+              <tr>
+                <th scope="col">Location</th>
+                <th scope="col">Type</th>
+                <th scope="col">Files</th>
+                <th scope="col">Size</th>
+                <th scope="col">Classification</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={`${row.folder}-${row.category}`}>
+                  <th scope="row">{row.folder}</th>
+                  <td>{row.category}</td>
+                  <td>{fileCountLabel(row.files)}</td>
+                  <td>{row.sizeLabel}</td>
+                  <td>
+                    {row.classification}
+                    {row.contentInspected ? "" : " · contents not opened"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
@@ -1390,7 +1472,11 @@ function ReportScreen({
             />
             <ReportTable
               title="7. Metadata-Based Data-Exposure Indicators"
-              rows={verification.locationGroups}
+              rows={
+                verification
+                  ? [...exposureSummaryRows(verification), ...exposureLocationRows(verification)]
+                  : []
+              }
               empty="No document categories were recorded on the selected drives."
             />
           </div>
@@ -1601,9 +1687,10 @@ function HelpScreen({
           <h2>Standard assessment and Report A</h2>
           <p>
             Expected: from home, open 01 Standard assessment. The system drive is selected; USB
-            sticks stay off unless you want them in the report. Save Report A, then Back to main.
-            Battery health and port counts appear only when this scan collected them. If a serial
-            prints as not reported, Windows did not give one.
+            sticks stay off unless you want them in the report. Results shows a privacy exposure map
+            of folder paths and file types — not file names and not contents. Save Report A, then
+            Back to main. Battery health and port counts appear only when this scan collected them.
+            If a serial prints as not reported, Windows did not give one.
           </p>
         </article>
         <article className="support-card">

@@ -132,10 +132,24 @@ export async function runDeviceVerification(driveLetters: string[]): Promise<Ver
     scannedDrives: string;
     hardwareFields: { label: string; value: string }[];
     locationGroups: { label: string; value: string }[];
+    exposureMap: {
+      folder: string;
+      category: string;
+      files: number;
+      bytes: number;
+      sizeLabel: string;
+      classification: string;
+      confidence: string;
+      contentInspected: boolean;
+    }[];
   }>("run_device_verification", { driveLetters });
 
   if (!response.ok || response.destructiveOperationsEnabled || response.contentInspected) {
     throw new Error(response.message || "CYVRA stopped the assessment.");
+  }
+
+  if ((response.exposureMap ?? []).some((row) => row.contentInspected)) {
+    throw new Error("CYVRA stopped because the scan crossed the assessment boundary.");
   }
 
   return {
@@ -154,6 +168,7 @@ export async function runDeviceVerification(driveLetters: string[]): Promise<Ver
     scannedDrives: response.scannedDrives,
     hardwareFields: response.hardwareFields ?? [],
     locationGroups: response.locationGroups ?? [],
+    exposureMap: response.exposureMap ?? [],
     message: response.message,
   };
 }
