@@ -293,6 +293,25 @@ test("F2 removes live USB and charger overlays and keeps three workstreams", () 
   assert.doesNotMatch(customer, /Backblaze/i);
 });
 
+test("F4 surfaces the privacy exposure map without opening contents", () => {
+  const screens = read("src/screens/ShellScreens.tsx");
+  const assessment = read("src/report/assessmentPdf.ts");
+  const types = read("src/types/shell.ts");
+  const bridge = read("src/adapters/desktopBridge.ts");
+  const rust = read("src-tauri/src/lib.rs");
+  const core = readFileSync(join(repositoryRoot, "agent-windows/src/lib.rs"), "utf8");
+
+  assert.match(types, /exposureMap/);
+  assert.match(bridge, /exposureMap/);
+  assert.match(rust, /exposure_map/);
+  assert.match(core, /exposure_map/);
+  assert.match(screens, /Privacy exposure map/i);
+  assert.match(screens, /Where files are, what they are/);
+  assert.match(screens, /File names and contents are not recorded/);
+  assert.match(core, /content_inspected: false/);
+  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 7);
+});
+
 test("root workspace exposes bounded desktop checks", () => {
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
 

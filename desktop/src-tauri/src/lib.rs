@@ -49,6 +49,19 @@ struct VerificationProgress {
     detail: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExposureEntryDto {
+    folder: String,
+    category: String,
+    files: u64,
+    bytes: u64,
+    size_label: String,
+    classification: String,
+    confidence: String,
+    content_inspected: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VerificationOutcome {
@@ -71,6 +84,7 @@ struct VerificationOutcome {
     scanned_drives: String,
     hardware_fields: Vec<NamedValueDto>,
     location_groups: Vec<NamedValueDto>,
+    exposure_map: Vec<ExposureEntryDto>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -238,6 +252,20 @@ fn verification_outcome(verification: cyvra_core::CustomerVerification) -> Verif
         scanned_drives: verification.scanned_drives,
         hardware_fields: named_values(verification.hardware_fields),
         location_groups: named_values(verification.location_groups),
+        exposure_map: verification
+            .exposure_map
+            .into_iter()
+            .map(|row| ExposureEntryDto {
+                folder: row.folder,
+                category: row.category,
+                files: row.files,
+                bytes: row.bytes,
+                size_label: row.size_label,
+                classification: row.classification,
+                confidence: row.confidence,
+                content_inspected: row.content_inspected,
+            })
+            .collect(),
     }
 }
 
