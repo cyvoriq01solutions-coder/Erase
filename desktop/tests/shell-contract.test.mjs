@@ -399,6 +399,7 @@ test("P-SECONDARY runs Mode S on extra disks and issues Report S only after veri
   const pdf = read("src/report/sanitizationPdf.ts");
   const styles = read("src/styles.css");
   const tauriConf = read("src-tauri/tauri.conf.json");
+  const buildRs = read("src-tauri/build.rs");
   const core = readFileSync(join(repositoryRoot, "agent-windows/src/purge/mod.rs"), "utf8");
   const helper = readFileSync(join(repositoryRoot, "agent-windows/src/bin/cyvra-purge-helper.rs"), "utf8");
 
@@ -428,6 +429,8 @@ test("P-SECONDARY runs Mode S on extra disks and issues Report S only after veri
   assert.match(helper, /--plan/);
   assert.match(tauriConf, /cyvra-purge-helper/);
   assert.match(tauriConf, /stage:purge-helper/);
+  assert.match(buildRs, /cyvra-purge-helper\.exe/);
+  assert.match(buildRs, /if !helper.exists/);
   assert.doesNotMatch(screens, /Authenticated by CYVORIQ/);
 });
 
