@@ -179,6 +179,8 @@ export interface CustomerAccessSummary {
   rejectReason: string | null;
   licensePrefix: string | null;
   licenseStatus: string | null;
+  purgeLicensePrefix: string | null;
+  purgeLicenseStatus: string | null;
 }
 
 export function listCustomers(): Promise<{ customers: CustomerAccessSummary[] }> {
@@ -207,6 +209,15 @@ export function issueCustomerLicense(
 ): Promise<{ customer: CustomerAccessSummary; activationKey: string }> {
   return requestJson<{ customer: CustomerAccessSummary; activationKey: string }>(
     `/api/v1/admin/customers/${encodeURIComponent(userId)}/issue-license`,
+    { method: "POST" },
+  );
+}
+
+export function issueCustomerPurgeLicense(
+  userId: string,
+): Promise<{ customer: CustomerAccessSummary; activationKey: string }> {
+  return requestJson<{ customer: CustomerAccessSummary; activationKey: string }>(
+    `/api/v1/admin/customers/${encodeURIComponent(userId)}/issue-purge-license`,
     { method: "POST" },
   );
 }

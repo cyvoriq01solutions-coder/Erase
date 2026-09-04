@@ -27,6 +27,7 @@ import type {
   WorkstreamId,
 } from "../types/shell";
 import { ADVANCE_SCAN_STAGES, SOFTWARE_OBSERVED_LABEL } from "../types/shell";
+import { activatePurgeLicense } from "../adapters/desktopBridge";
 import { InteractiveChecks } from "./InteractiveChecks";
 
 interface ShellScreenProps {
@@ -52,6 +53,8 @@ interface ShellScreenProps {
   onRunAdvanceScan: () => void;
   workstream: WorkstreamId;
   onChooseWorkstream: (id: WorkstreamId) => void;
+  purgeLicenceBound: boolean;
+  onPurgeLicenceBound: () => void;
   onExit: () => void;
 }
 
@@ -102,6 +105,7 @@ function OverviewScreen({
   verificationPhase,
   advanceScan,
   advanceScanPhase,
+  purgeLicenceBound,
 }: Pick<
   ShellScreenProps,
   | "onChooseWorkstream"
@@ -109,6 +113,7 @@ function OverviewScreen({
   | "verificationPhase"
   | "advanceScan"
   | "advanceScanPhase"
+  | "purgeLicenceBound"
 >) {
   return (
     <div className="screen-stack">
@@ -170,15 +175,22 @@ function OverviewScreen({
         <article className="workstream-card workstream-card-purge">
           <span className="workstream-kicker">03 · DATA PURGE</span>
           <h2>Data Purge — Not Available</h2>
-          <p>Secure data purge is not enabled in this version of CYVRA Erase.</p>
+          <p>
+            Bind a CYVRA Purge licence if one was issued. Wipe stays off in this version of CYVRA
+            Erase.
+          </p>
           <ol>
             <li>Complete the standard assessment first.</li>
             <li>Save Report A.</li>
             <li>Data purge stays off in this version.</li>
           </ol>
-          <p className="workstream-status">No data will be erased, overwritten or destroyed.</p>
+          <p className="workstream-status">
+            {purgeLicenceBound
+              ? "Purge licence bound. No data will be erased in this installer."
+              : "No data will be erased, overwritten or destroyed."}
+          </p>
           <button className="button button-danger" type="button" onClick={() => onChooseWorkstream("purge")}>
-            Data Purge Not Available
+            Open data purge (not enabled)
           </button>
         </article>
       </section>
@@ -1255,7 +1267,12 @@ function ReportScreen({
   verification,
   advanceScan,
   onNavigate,
-}: Pick<ShellScreenProps, "verification" | "advanceScan" | "onNavigate">) {
+  purgeLicenceBound,
+  onPurgeLicenceBound,
+}: Pick<
+  ShellScreenProps,
+  "verification" | "advanceScan" | "onNavigate" | "purgeLicenceBound" | "onPurgeLicenceBound"
+>) {
   const [email, setEmail] = useState("");
   const [emailNote, setEmailNote] = useState<string | null>(null);
   const [consentChecked, setConsentChecked] = useState(false);
@@ -1263,6 +1280,9 @@ function ReportScreen({
   const [pdfSaved, setPdfSaved] = useState(false);
   const [savingPdf, setSavingPdf] = useState(false);
   const [purgeNote, setPurgeNote] = useState<string | null>(null);
+  const [purgeKey, setPurgeKey] = useState("");
+  const [purgeBinding, setPurgeBinding] = useState(false);
+  const [purgeBindNote, setPurgeBindNote] = useState<string | null>(null);
   const generatedAt = useMemo(() => new Date(), [verification]);
   const reportExported = reportEmailed || pdfSaved;
   const assessmentSections = useMemo(
@@ -1348,8 +1368,30 @@ function ReportScreen({
       return;
     }
     setPurgeNote(
-      "No data was erased. Data purge is not enabled in this installer. Your saved PDF and this consent do not start a wipe. A CYVRA Purge licence and a later signed build are required.",
+      purgeLicenceBound
+        ? "No data was erased. A CYVRA Purge licence is bound on this PC. Wipe execution is not enabled in this installer."
+        : "No data was erased. Data purge is not enabled in this installer. Your saved PDF and this consent do not start a wipe. A CYVRA Purge licence and a later signed build are required.",
     );
+  }
+
+  async function handleActivatePurge() {
+    setPurgeBindNote(null);
+    setPurgeBinding(true);
+    try {
+      const result = await activatePurgeLicense(purgeKey.trim());
+      if (!result.ok) {
+        setPurgeBindNote(result.message);
+        return;
+      }
+      onPurgeLicenceBound();
+      setPurgeBindNote(result.message);
+    } catch (caught) {
+      setPurgeBindNote(
+        caught instanceof Error ? caught.message : "Purge activation could not be completed.",
+      );
+    } finally {
+      setPurgeBinding(false);
+    }
   }
 
   return (
@@ -1525,6 +1567,42 @@ function ReportScreen({
           drives. It cannot be undone. After a full-PC purge, Windows and CYVRA Erase will not run on
           this computer, so save Report A as a PDF (or email it) first.
         </p>
+        <div className="purge-bind">
+          <h3>CYVRA Purge licence</h3>
+          <p>
+            {purgeLicenceBound
+              ? "A CYVRA Purge licence is bound to this PC. Wipe stays off in this installer. Report S is not generated."
+              : "If an administrator issued a CYVRA Purge key (CYVRA-PRG-…), bind it here. Binding does not erase files."}
+          </p>
+          {!purgeLicenceBound ? (
+            <>
+              <label className="setup-key-field" htmlFor="purge-activation-key">
+                Purge activation key
+              </label>
+              <input
+                id="purge-activation-key"
+                type="text"
+                disabled={purgeBinding}
+                value={purgeKey}
+                placeholder="CYVRA-PRG-XXXX-XXXX-XXXX-XXXX"
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(event) => setPurgeKey(event.target.value)}
+              />
+              <div className="action-row">
+                <button
+                  className="button button-primary"
+                  type="button"
+                  disabled={purgeBinding || purgeKey.trim().length < 24}
+                  onClick={() => void handleActivatePurge()}
+                >
+                  {purgeBinding ? "Binding Purge licence…" : "Activate Purge"}
+                </button>
+              </div>
+            </>
+          ) : null}
+          {purgeBindNote ? <p className="setup-note">{purgeBindNote}</p> : null}
+        </div>
         {verification ? (
           <>
             <label className="purge-consent-check" htmlFor="purge-consent-box">
@@ -1610,8 +1688,10 @@ function HelpScreen({
           <h2>Register and receive a key</h2>
           <p>
             Expected: an administrator approves the account, then auth@cyvra.co.in sends “Your CYVRA
-            Erase activation key”. If no mail arrives, the account is not licensed yet — do not guess
-            a key. If Activate later says invalid_key, the key is mistyped or already bound.
+            Erase activation key”. A separate Purge key, if issued, is emailed as “Your CYVRA Purge
+            activation key” and is bound on Data purge. It does not erase files in this version. If no
+            mail arrives, the account is not licensed yet — do not guess a key. If Activate later says
+            invalid_key, the key is mistyped or already bound.
           </p>
         </article>
         <article className="support-card">
@@ -1697,6 +1777,8 @@ export function ShellScreen({
   onRunAdvanceScan,
   workstream,
   onChooseWorkstream,
+  purgeLicenceBound,
+  onPurgeLicenceBound,
   onExit,
 }: ShellScreenProps) {
   switch (current) {
@@ -1708,6 +1790,7 @@ export function ShellScreen({
           verificationPhase={verificationPhase}
           advanceScan={advanceScan}
           advanceScanPhase={advanceScanPhase}
+          purgeLicenceBound={purgeLicenceBound}
         />
       );
     case "verification":
@@ -1744,6 +1827,8 @@ export function ShellScreen({
           onNavigate={onNavigate}
           verification={verification}
           advanceScan={advanceScan}
+          purgeLicenceBound={purgeLicenceBound}
+          onPurgeLicenceBound={onPurgeLicenceBound}
         />
       );
     case "help":

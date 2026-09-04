@@ -2,6 +2,7 @@ import { AuthDeliveryError, type AuthDeliveryEnv } from "../services/authDeliver
 import {
   deliverAccessRejectionEmail,
   deliverLicenseIssuedEmail,
+  deliverPurgeLicenseIssuedEmail,
 } from "../services/accessDecisionEmail";
 import {
   canEnableDownloadEntitlement,
@@ -9,6 +10,7 @@ import {
 import {
   approveCustomerAccess,
   issueCustomerLicense,
+  issueCustomerPurgeLicense,
   LicenseIssueError,
   listVerifiedCustomers,
   rejectCustomerAccess,
@@ -72,6 +74,8 @@ function serializeCustomer(row: Awaited<ReturnType<typeof listVerifiedCustomers>
     rejectReason: row.rejectReason,
     licensePrefix: row.licensePrefix,
     licenseStatus: row.licenseStatus,
+    purgeLicensePrefix: row.purgeLicensePrefix,
+    purgeLicenseStatus: row.purgeLicenseStatus,
   };
 }
 
@@ -242,6 +246,72 @@ export async function handleIssueCustomerLicense(
         error: "license_email_unavailable",
         message:
           "The licence was issued and the full key is shown once below. The customer email could not be sent. Copy the key now.",
+        customer: serializeCustomer(issued.customer),
+        activationKey: issued.activationKey,
+      },
+      { status: 503 },
+    );
+  }
+
+  return json({
+    customer: serializeCustomer(issued.customer),
+    activationKey: issued.activationKey,
+  });
+}
+
+export async function handleIssueCustomerPurgeLicense(
+  request: Request,
+  env: CustomerAccessApiEnv,
+  userId: string,
+): Promise<Response> {
+  const authority = await requireAccessApprover(request, env);
+  if (authority instanceof Response) {
+    return authority;
+  }
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) {
+    return json({ error: "invalid_user", message: "Invalid customer identity." }, { status: 400 });
+  }
+
+  let issued;
+  try {
+    issued = await issueCustomerPurgeLicense(
+      env.HYPERDRIVE,
+      authority.session.userId,
+      authority.session.organizationId,
+      userId,
+      env.AUTH_PEPPER,
+    );
+  } catch (error) {
+    if (error instanceof LicenseIssueError) {
+      return json({ error: error.code, message: error.message }, { status: 409 });
+    }
+    throw error;
+  }
+
+  if (issued === null) {
+    return json(
+      { error: "customer_missing", message: "That verified customer was not found." },
+      { status: 404 },
+    );
+  }
+
+  try {
+    await deliverPurgeLicenseIssuedEmail(env, {
+      email: issued.customer.email,
+      activationKey: issued.activationKey,
+      keyPrefix:
+        issued.customer.purgeLicensePrefix ??
+        issued.activationKey.split("-").slice(0, 3).join("-"),
+    });
+  } catch (error) {
+    if (!(error instanceof AuthDeliveryError)) {
+      throw error;
+    }
+    return json(
+      {
+        error: "license_email_unavailable",
+        message:
+          "The Purge licence was issued and the full key is shown once below. The customer email could not be sent. Copy the key now.",
         customer: serializeCustomer(issued.customer),
         activationKey: issued.activationKey,
       },

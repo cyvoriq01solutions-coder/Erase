@@ -12,6 +12,7 @@ struct ShellBootstrap {
     live_collection_enabled: bool,
     grading_issuance_enabled: bool,
     report_authentication_enabled: bool,
+    purge_licence_bound: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -218,6 +219,7 @@ fn safe_bootstrap() -> ShellBootstrap {
         live_collection_enabled: true,
         grading_issuance_enabled: false,
         report_authentication_enabled: false,
+        purge_licence_bound: false,
     }
 }
 
@@ -400,7 +402,26 @@ fn activate_license(activation_key: String) -> Result<ActivationOutcome, String>
     }
     #[cfg(windows)]
     {
-        activate_license_windows(activation_key)
+        activate_at(
+            "https://api.cyvra.co.in/api/v1/auth/activate",
+            activation_key,
+        )
+    }
+}
+
+#[tauri::command]
+fn activate_purge_license(activation_key: String) -> Result<ActivationOutcome, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = activation_key;
+        Err("Purge activation is only available on Windows.".to_string())
+    }
+    #[cfg(windows)]
+    {
+        activate_at(
+            "https://api.cyvra.co.in/api/v1/auth/activate-purge",
+            activation_key,
+        )
     }
 }
 
@@ -550,7 +571,7 @@ fn close_window(app: tauri::AppHandle) {
 }
 
 #[cfg(windows)]
-fn activate_license_windows(activation_key: String) -> Result<ActivationOutcome, String> {
+fn activate_at(url: &str, activation_key: String) -> Result<ActivationOutcome, String> {
     let machine_guid = windows_machine_guid()?;
     let hostname = std::env::var("COMPUTERNAME").ok();
     let body = serde_json::json!({
@@ -558,7 +579,7 @@ fn activate_license_windows(activation_key: String) -> Result<ActivationOutcome,
         "machineGuid": machine_guid,
         "hostname": hostname,
     });
-    let response = ureq::post("https://api.cyvra.co.in/api/v1/auth/activate")
+    let response = ureq::post(url)
         .set("Content-Type", "application/json")
         .send_json(body)
         .map_err(|_| "CYVRA could not reach the activation service.".to_string())?;
@@ -610,6 +631,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_shell_bootstrap,
             activate_license,
+            activate_purge_license,
             list_scan_targets,
             probe_live_intake,
             run_device_verification,
@@ -635,6 +657,7 @@ mod tests {
         assert!(bootstrap.live_collection_enabled);
         assert!(!bootstrap.grading_issuance_enabled);
         assert!(!bootstrap.report_authentication_enabled);
+        assert!(!bootstrap.purge_licence_bound);
     }
 
     #[test]

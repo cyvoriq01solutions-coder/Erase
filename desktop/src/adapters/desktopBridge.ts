@@ -30,6 +30,7 @@ const BROWSER_FOUNDATION_BOOTSTRAP: ShellBootstrap = Object.freeze({
   liveCollectionEnabled: false,
   gradingIssuanceEnabled: false,
   reportAuthenticationEnabled: false,
+  purgeLicenceBound: false,
 });
 
 const PREVIEW_SCAN_TARGETS: ScanTarget[] = [
@@ -58,6 +59,23 @@ export async function loadShellBootstrap(): Promise<ShellBootstrap> {
 
   const response = await invoke<unknown>("get_shell_bootstrap");
   return assertSafeShellBootstrap(response);
+}
+
+export async function activatePurgeLicense(activationKey: string): Promise<{
+  ok: boolean;
+  message: string;
+  keyPrefix?: string;
+}> {
+  if (!isTauri()) {
+    return {
+      ok: false,
+      message: "Online device binding is not available in this preview.",
+    };
+  }
+
+  return invoke<{ ok: boolean; message: string; keyPrefix?: string }>("activate_purge_license", {
+    activationKey,
+  });
 }
 
 export async function listScanTargets(): Promise<ScanTarget[]> {

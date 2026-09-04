@@ -92,6 +92,7 @@ export async function handleActivateLicense(
       activationKey,
       machineGuid,
       hostname,
+      expectedProduct: "CYVORIQ_ERASE",
     });
     return json({
       status: result.status,
@@ -104,7 +105,68 @@ export async function handleActivateLicense(
   } catch (error) {
     if (error instanceof DeviceBindError) {
       const status =
-        error.code === "device_mismatch"
+        error.code === "device_mismatch" || error.code === "wrong_product"
+          ? 409
+          : error.code === "unknown_key" || error.code === "invalid_key"
+            ? 400
+            : 403;
+      return json({ error: error.code, message: error.message }, { status });
+    }
+    throw error;
+  }
+}
+
+export async function handleActivatePurgeLicense(
+  request: Request,
+  env: ActivateApiEnv,
+): Promise<Response> {
+  let payload: Record<string, unknown>;
+  try {
+    payload = await readJsonObject(request);
+  } catch {
+    return json(
+      { error: "invalid_json", message: "Activation request was not valid JSON." },
+      { status: 400 },
+    );
+  }
+
+  let activationKey: string;
+  let machineGuid: string;
+  let hostname: string | null;
+  try {
+    activationKey = requiredString(payload, "activationKey");
+    machineGuid = requiredString(payload, "machineGuid");
+    hostname = optionalString(payload, "hostname");
+  } catch {
+    return json(
+      {
+        error: "invalid_json",
+        message: "activationKey and machineGuid are required.",
+      },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const result = await bindLicenseToDevice(env.HYPERDRIVE, env.AUTH_PEPPER, {
+      activationKey,
+      machineGuid,
+      hostname,
+      expectedProduct: "CYVORIQ_PURGE",
+    });
+    return json({
+      status: result.status,
+      keyPrefix: result.keyPrefix,
+      product: "purge",
+      message:
+        result.status === "already_bound"
+          ? "This PC is already bound to the CYVRA Purge licence."
+          : "This PC is now bound to the CYVRA Purge licence. Wipe stays off in this installer.",
+    });
+  } catch (error) {
+    if (error instanceof DeviceBindError) {
+      const status =
+        error.code === "device_mismatch" || error.code === "wrong_product"
           ? 409
           : error.code === "unknown_key" || error.code === "invalid_key"
             ? 400
