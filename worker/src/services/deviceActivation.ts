@@ -3,14 +3,19 @@ import type { Client } from "pg";
 import { hashActivationKey, hashDeviceFingerprint } from "./authCrypto";
 import { withDatabaseTransaction, type HyperdriveBinding } from "./database";
 
-const ACTIVATION_KEY_PATTERN =
+const ERASE_KEY_PATTERN =
   /^CYVRA-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}(?:-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}){3}$/;
+const PURGE_KEY_PATTERN =
+  /^CYVRA-PRG-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}(?:-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}){3}$/;
+
+export type LicenseProduct = "CYVORIQ_ERASE" | "CYVORIQ_PURGE";
 
 export class DeviceBindError extends Error {
   constructor(
     readonly code:
       | "invalid_key"
       | "unknown_key"
+      | "wrong_product"
       | "license_inactive"
       | "device_mismatch",
     message: string,
@@ -48,9 +53,23 @@ function normalizeMachineGuid(raw: string): string {
   return guid;
 }
 
-function normalizeActivationKey(raw: string): string {
+function normalizeActivationKey(raw: string, expectedProduct: LicenseProduct): string {
   const key = raw.trim().toUpperCase();
-  if (!ACTIVATION_KEY_PATTERN.test(key)) {
+  const looksPurge = key.startsWith("CYVRA-PRG-");
+  if (expectedProduct === "CYVORIQ_ERASE" && looksPurge) {
+    throw new DeviceBindError(
+      "wrong_product",
+      "That key is a CYVRA Purge licence. Open Data purge and use Activate Purge.",
+    );
+  }
+  if (expectedProduct === "CYVORIQ_PURGE" && !looksPurge) {
+    throw new DeviceBindError(
+      "wrong_product",
+      "That key is a CYVRA Erase assessment licence. Use Activate on first run.",
+    );
+  }
+  const pattern = expectedProduct === "CYVORIQ_PURGE" ? PURGE_KEY_PATTERN : ERASE_KEY_PATTERN;
+  if (!pattern.test(key)) {
     throw new DeviceBindError("invalid_key", "Activation key format is not valid.");
   }
   return key;
@@ -67,9 +86,14 @@ function hostnameFromMetadata(raw: unknown): string | null {
 export async function bindLicenseToDevice(
   hyperdrive: HyperdriveBinding,
   pepper: string,
-  input: { activationKey: string; machineGuid: string; hostname: string | null },
+  input: {
+    activationKey: string;
+    machineGuid: string;
+    hostname: string | null;
+    expectedProduct: LicenseProduct;
+  },
 ): Promise<DeviceBindResult> {
-  const activationKey = normalizeActivationKey(input.activationKey);
+  const activationKey = normalizeActivationKey(input.activationKey, input.expectedProduct);
   const machineGuid = normalizeMachineGuid(input.machineGuid);
   const hostname = normalizeHostname(input.hostname);
   const keyHash = await hashActivationKey(pepper, activationKey);
@@ -78,7 +102,7 @@ export async function bindLicenseToDevice(
   return withDatabaseTransaction(hyperdrive, async (client) => {
     const license = await client.query(
       `
-        SELECT id, organization_id, issued_to_user_id, key_prefix, status, max_devices
+        SELECT id, organization_id, issued_to_user_id, key_prefix, status, max_devices, product
         FROM licenses
         WHERE key_hash = $1
         FOR UPDATE
@@ -102,6 +126,16 @@ export async function bindLicenseToDevice(
     const keyPrefix = String(row.key_prefix);
     const status = String(row.status);
     const maxDevices = Number(row.max_devices);
+    const product = String(row.product);
+
+    if (product !== input.expectedProduct) {
+      throw new DeviceBindError(
+        "wrong_product",
+        input.expectedProduct === "CYVORIQ_PURGE"
+          ? "That key is not a CYVRA Purge licence."
+          : "That key is a CYVRA Purge licence. Open Data purge and use Activate Purge.",
+      );
+    }
 
     if (status !== "active") {
       throw new DeviceBindError(

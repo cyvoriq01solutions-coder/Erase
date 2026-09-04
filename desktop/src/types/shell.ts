@@ -25,6 +25,7 @@ export interface ShellBootstrap {
   liveCollectionEnabled: boolean;
   gradingIssuanceEnabled: boolean;
   reportAuthenticationEnabled: boolean;
+  purgeLicenceBound: boolean;
 }
 
 export type VerificationPhase = "idle" | "running" | "complete" | "error";
@@ -329,6 +330,7 @@ export function assertSafeShellBootstrap(value: unknown): ShellBootstrap {
     "liveCollectionEnabled",
     "gradingIssuanceEnabled",
     "reportAuthenticationEnabled",
+    "purgeLicenceBound",
   ] as const;
 
   for (const key of stringKeys) {
@@ -347,6 +349,7 @@ export function assertSafeShellBootstrap(value: unknown): ShellBootstrap {
     "destructiveOperationsEnabled",
     "gradingIssuanceEnabled",
     "reportAuthenticationEnabled",
+    "purgeLicenceBound",
   ] as const;
 
   if (lockedOff.some((key) => value[key] !== false)) {

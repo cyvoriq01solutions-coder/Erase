@@ -62,12 +62,13 @@ test("frontend bridge is narrow and has no network or persistence client", () =>
 
   assert.equal(occurrences(combined, /invoke<[^>]+>\("get_shell_bootstrap"\)/g), 1);
   assert.match(combined, /"activate_license"/);
+  assert.match(combined, /"activate_purge_license"/);
   assert.match(combined, /"run_device_verification"/);
   assert.match(combined, /"list_scan_targets"/);
   assert.match(combined, /"probe_live_intake"/);
   assert.match(combined, /"run_advance_scan"/);
   assert.match(combined, /"close_window"/);
-  assert.equal(occurrences(combined, /invoke<|invoke\(/g), 7);
+  assert.equal(occurrences(combined, /invoke<|invoke\(/g), 8);
 
   for (const forbidden of [
     /\bfetch\s*\(/,
@@ -85,8 +86,9 @@ test("Rust command boundary links the reusable core and fails closed", () => {
   const rust = read("src-tauri/src/lib.rs");
 
   assert.match(cargo, /cyvra-core\s*=\s*\{\s*package\s*=\s*"cyvoriq-erase-agent",\s*path\s*=\s*"\.\.\/\.\.\/agent-windows"\s*\}/);
-  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 7);
+  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 8);
   assert.match(rust, /activate_license/);
+  assert.match(rust, /activate_purge_license/);
   assert.match(rust, /run_device_verification/);
   assert.match(rust, /list_scan_targets/);
   assert.match(rust, /probe_live_intake/);
@@ -99,6 +101,7 @@ test("Rust command boundary links the reusable core and fails closed", () => {
     "destructive_operations_enabled",
     "grading_issuance_enabled",
     "report_authentication_enabled",
+    "purge_licence_bound",
   ]) {
     assert.match(rust, new RegExp(`${flag}: false`));
   }
@@ -312,7 +315,7 @@ test("F4 surfaces the privacy exposure map without opening contents", () => {
   assert.match(screens, /Where files are, what they are/);
   assert.match(screens, /File names and contents are not recorded/);
   assert.match(core, /content_inspected: false/);
-  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 7);
+  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 8);
 });
 
 test("F5 shows all fourteen Report A sections on screen", () => {
@@ -384,6 +387,25 @@ test("S-setup shows commercial Software License Terms", () => {
   assert.doesNotMatch(installer, /not a customer\s+release/i);
   assert.doesNotMatch(licence, /not a customer\s+release/i);
   assert.match(styles, /max-height:\s*320px/);
+});
+
+test("P-LICENCE binds a purge key and keeps wipe fail-closed", () => {
+  const screens = read("src/screens/ShellScreens.tsx");
+  const rust = read("src-tauri/src/lib.rs");
+  const bridge = read("src/adapters/desktopBridge.ts");
+  const types = read("src/types/shell.ts");
+
+  assert.match(screens, /Activate Purge/);
+  assert.match(screens, /CYVRA-PRG-/);
+  assert.match(screens, /Report S is not generated/);
+  assert.match(screens, /Wipe stays off/);
+  assert.match(bridge, /activate_purge_license/);
+  assert.match(rust, /auth\/activate-purge/);
+  assert.match(rust, /purge_licence_bound: false/);
+  assert.match(rust, /destructive_operations_enabled: false/);
+  assert.match(types, /purgeLicenceBound/);
+  assert.match(screens, /No data was erased/);
+  assert.doesNotMatch(screens, /Authenticated by CYVORIQ/);
 });
 
 test("root workspace exposes bounded desktop checks", () => {

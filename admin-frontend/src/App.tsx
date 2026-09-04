@@ -10,6 +10,7 @@ import {
   getAdminSession,
   inviteAdminUser,
   issueCustomerLicense,
+  issueCustomerPurgeLicense,
   listAdminUsers,
   listCustomers,
   logout,
@@ -451,6 +452,16 @@ function CustomersPage() {
                         : "—"}
                   </strong>
                 </div>
+                <div className="admin-user-state">
+                  <span>Purge</span>
+                  <strong>
+                    {customer.purgeLicensePrefix
+                      ? `${customer.purgeLicensePrefix}…`
+                      : customer.accessStatus === "approved"
+                        ? "Not issued"
+                        : "—"}
+                  </strong>
+                </div>
                 <div className="admin-user-actions">
                   {customer.accessStatus !== "approved" && (
                     <button
@@ -506,6 +517,39 @@ function CustomersPage() {
                       }}
                     >
                       Issue licence
+                    </button>
+                  )}
+                  {customer.accessStatus === "approved" && !customer.purgeLicensePrefix && (
+                    <button
+                      className="primary-button compact-button"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setBusy(true);
+                        setError("");
+                        setMessage("");
+                        void issueCustomerPurgeLicense(customer.id)
+                          .then((result) => {
+                            setIssuedKey({
+                              email: result.customer.email,
+                              activationKey: result.activationKey,
+                            });
+                            setMessage(
+                              `Purge licence issued for ${result.customer.email}. Copy the key now; it will not be shown again. Wipe stays off.`,
+                            );
+                            return refresh();
+                          })
+                          .catch((caught) => {
+                            setError(
+                              caught instanceof ApiError
+                                ? caught.message
+                                : "Purge licence issuance failed.",
+                            );
+                          })
+                          .finally(() => setBusy(false));
+                      }}
+                    >
+                      Issue purge key
                     </button>
                   )}
                   <button

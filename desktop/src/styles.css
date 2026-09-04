@@ -2387,6 +2387,26 @@ a:focus-visible,
   color: var(--error);
 }
 
+.purge-bind {
+  margin: 20px 0 24px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.purge-bind h3 {
+  margin: 0 0 8px;
+}
+
+.purge-bind .setup-key-field {
+  margin-top: 12px;
+}
+
+.purge-bind input {
+  width: 100%;
+}
+
 .workstream-status {
   color: var(--ink);
   font-weight: 650;

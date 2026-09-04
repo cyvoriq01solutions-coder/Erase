@@ -73,7 +73,7 @@ CREATE TABLE licenses (
   CONSTRAINT uq_licenses_id_organization
     UNIQUE (id, organization_id),
   CONSTRAINT chk_licenses_product
-    CHECK (product IN ('CYVORIQ_ERASE')),
+    CHECK (product IN ('CYVORIQ_ERASE', 'CYVORIQ_PURGE')),
   CONSTRAINT chk_licenses_status
     CHECK (status IN ('active', 'suspended', 'revoked', 'expired')),
   CONSTRAINT chk_licenses_max_devices
@@ -81,6 +81,10 @@ CREATE TABLE licenses (
   CONSTRAINT chk_licenses_expiry
     CHECK (expires_at IS NULL OR expires_at > issued_at)
 );
+
+CREATE UNIQUE INDEX uq_licenses_user_product_active
+  ON licenses (issued_to_user_id, product)
+  WHERE status = 'active' AND issued_to_user_id IS NOT NULL;
 
 CREATE TABLE device_activations (
   id UUID PRIMARY KEY,

@@ -123,21 +123,32 @@ export async function hashAdminRateLimitKey(
 const LICENSE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 export function generateActivationKey(): string {
+  return `CYVRA-${randomKeyGroups(4).join("-")}`;
+}
+
+export function generatePurgeActivationKey(): string {
+  return `CYVRA-PRG-${randomKeyGroups(4).join("-")}`;
+}
+
+function randomKeyGroups(count: number): string[] {
   const groups: string[] = [];
-  const bytes = new Uint8Array(16);
+  const bytes = new Uint8Array(count * 4);
   crypto.getRandomValues(bytes);
-  for (let group = 0; group < 4; group += 1) {
+  for (let group = 0; group < count; group += 1) {
     let chunk = "";
     for (let index = 0; index < 4; index += 1) {
       chunk += LICENSE_ALPHABET[bytes[group * 4 + index]! % LICENSE_ALPHABET.length];
     }
     groups.push(chunk);
   }
-  return `CYVRA-${groups.join("-")}`;
+  return groups;
 }
 
 export function activationKeyPrefix(key: string): string {
   const parts = key.split("-");
+  if (parts[1] === "PRG") {
+    return `${parts[0]}-${parts[1]}-${parts[2] ?? ""}`.replace(/-$/, "");
+  }
   return `${parts[0]}-${parts[1]}`;
 }
 

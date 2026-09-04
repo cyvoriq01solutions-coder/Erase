@@ -50,6 +50,7 @@ export default function App() {
     DEFAULT_ADVANCE_INTERACTIVE,
   );
   const [workstream, setWorkstream] = useState<WorkstreamId>("assessment");
+  const [purgeLicenceBound, setPurgeLicenceBound] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -280,6 +281,8 @@ export default function App() {
         }}
         workstream={workstream}
         onChooseWorkstream={chooseWorkstream}
+        purgeLicenceBound={purgeLicenceBound}
+        onPurgeLicenceBound={() => setPurgeLicenceBound(true)}
         onExit={() => {
           void closeApplication();
         }}

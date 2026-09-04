@@ -33,12 +33,14 @@ import {
 import {
   handleApproveCustomer,
   handleIssueCustomerLicense,
+  handleIssueCustomerPurgeLicense,
   handleListCustomers,
   handleRejectCustomer,
   type CustomerAccessApiEnv,
 } from "./routes/customerAccess";
 import {
   handleActivateLicense,
+  handleActivatePurgeLicense,
   type ActivateApiEnv,
 } from "./routes/activate";
 import {
@@ -111,6 +113,10 @@ async function route(request: Request, env: Env): Promise<Response> {
     return handleActivateLicense(request, env);
   }
 
+  if (request.method === "POST" && url.pathname === "/api/v1/auth/activate-purge") {
+    return handleActivatePurgeLicense(request, env);
+  }
+
   // Dedicated Admin authentication realm.
   if (
     request.method === "POST" &&
@@ -151,7 +157,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
 
   const customerAccessMatch = url.pathname.match(
-    /^\/api\/v1\/admin\/customers\/([0-9a-f-]{36})\/(approve|reject|issue-license)$/i,
+    /^\/api\/v1\/admin\/customers\/([0-9a-f-]{36})\/(approve|reject|issue-license|issue-purge-license)$/i,
   );
   if (request.method === "POST" && customerAccessMatch !== null) {
     const [, userId, action] = customerAccessMatch;
@@ -160,6 +166,9 @@ async function route(request: Request, env: Env): Promise<Response> {
     }
     if (action === "reject") {
       return handleRejectCustomer(request, env, userId);
+    }
+    if (action === "issue-purge-license") {
+      return handleIssueCustomerPurgeLicense(request, env, userId);
     }
     return handleIssueCustomerLicense(request, env, userId);
   }
