@@ -18,6 +18,7 @@ pub mod live_intake;
 pub mod os;
 pub mod pdem;
 pub mod personal_data;
+pub mod purge;
 pub mod report;
 pub mod report_signing;
 pub mod storage;
@@ -279,7 +280,7 @@ fn scanned_drive_label(volumes: &[volume::VolumeProfile]) -> String {
     }
 }
 
-fn system_drive_letter() -> String {
+pub(crate) fn system_drive_letter() -> String {
     std::env::var("SystemDrive")
         .ok()
         .or_else(|| std::env::var("SYSTEMDRIVE").ok())

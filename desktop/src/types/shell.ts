@@ -29,6 +29,7 @@ export interface ShellBootstrap {
 }
 
 export type VerificationPhase = "idle" | "running" | "complete" | "error";
+export type PurgePhase = "idle" | "running" | "complete" | "error";
 
 export interface NamedValue {
   label: string;
@@ -312,6 +313,41 @@ export interface IntegritySeal {
   qrSvg: string;
   canonicalJson: string;
   notice: string;
+}
+
+export interface PurgeProgress {
+  percent: number;
+  stageIndex: number;
+  stage: string;
+  detail: string;
+}
+
+export interface PurgeTargetRecord {
+  letter: string;
+  allowed: boolean;
+  mediaLabel: string;
+  methodLabel: string;
+  standard: string;
+  model: string;
+  serial: string;
+  bus: string;
+  sizeBytes: number;
+  refuseReason: string | null;
+  helperOk: boolean;
+  verifyPassed: boolean;
+  verifyNote: string;
+  samplePercent: number;
+}
+
+export interface PurgeRecord {
+  ok: boolean;
+  jobId: string;
+  status: string;
+  message: string;
+  reportAllowed: boolean;
+  dataErased: boolean;
+  evidenceHash: string;
+  targets: PurgeTargetRecord[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

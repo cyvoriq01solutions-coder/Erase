@@ -67,8 +67,9 @@ test("frontend bridge is narrow and has no network or persistence client", () =>
   assert.match(combined, /"list_scan_targets"/);
   assert.match(combined, /"probe_live_intake"/);
   assert.match(combined, /"run_advance_scan"/);
+  assert.match(combined, /"run_mode_s_purge"/);
   assert.match(combined, /"close_window"/);
-  assert.equal(occurrences(combined, /invoke<|invoke\(/g), 8);
+  assert.equal(occurrences(combined, /invoke<|invoke\(/g), 9);
 
   for (const forbidden of [
     /\bfetch\s*\(/,
@@ -86,13 +87,14 @@ test("Rust command boundary links the reusable core and fails closed", () => {
   const rust = read("src-tauri/src/lib.rs");
 
   assert.match(cargo, /cyvra-core\s*=\s*\{\s*package\s*=\s*"cyvoriq-erase-agent",\s*path\s*=\s*"\.\.\/\.\.\/agent-windows"\s*\}/);
-  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 8);
+  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 9);
   assert.match(rust, /activate_license/);
   assert.match(rust, /activate_purge_license/);
   assert.match(rust, /run_device_verification/);
   assert.match(rust, /list_scan_targets/);
   assert.match(rust, /probe_live_intake/);
   assert.match(rust, /run_advance_scan/);
+  assert.match(rust, /run_mode_s_purge/);
   assert.match(rust, /#\[allow\(clippy::too_many_arguments\)\]/);
   assert.match(rust, /close_window/);
   assert.match(rust, /TypeId::of::<cyvra_core::CollectorError>/);
@@ -315,7 +317,7 @@ test("F4 surfaces the privacy exposure map without opening contents", () => {
   assert.match(screens, /Where files are, what they are/);
   assert.match(screens, /File names and contents are not recorded/);
   assert.match(core, /content_inspected: false/);
-  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 8);
+  assert.equal(occurrences(rust, /#\[tauri::command\]/g), 9);
 });
 
 test("F5 shows all fourteen Report A sections on screen", () => {
@@ -389,22 +391,43 @@ test("S-setup shows commercial Software License Terms", () => {
   assert.match(styles, /max-height:\s*320px/);
 });
 
-test("P-LICENCE binds a purge key and keeps wipe fail-closed", () => {
+test("P-SECONDARY runs Mode S on extra disks and issues Report S only after verify PASS", () => {
   const screens = read("src/screens/ShellScreens.tsx");
   const rust = read("src-tauri/src/lib.rs");
   const bridge = read("src/adapters/desktopBridge.ts");
   const types = read("src/types/shell.ts");
+  const pdf = read("src/report/sanitizationPdf.ts");
+  const styles = read("src/styles.css");
+  const tauriConf = read("src-tauri/tauri.conf.json");
+  const core = readFileSync(join(repositoryRoot, "agent-windows/src/purge/mod.rs"), "utf8");
+  const helper = readFileSync(join(repositoryRoot, "agent-windows/src/bin/cyvra-purge-helper.rs"), "utf8");
 
   assert.match(screens, /Activate Purge/);
   assert.match(screens, /CYVRA-PRG-/);
-  assert.match(screens, /Report S is not generated/);
-  assert.match(screens, /Wipe stays off/);
+  assert.match(screens, /Type ERASE in capital letters/);
+  assert.match(screens, /Save Report S as PDF/);
+  assert.match(screens, /USB stays off until you opt in/);
+  assert.match(screens, /system disk — Mode S refused/);
+  assert.match(screens, /never CERTIFIED SECURE/);
+  assert.match(screens, /No data was erased/);
   assert.match(bridge, /activate_purge_license/);
+  assert.match(bridge, /run_mode_s_purge/);
   assert.match(rust, /auth\/activate-purge/);
+  assert.match(rust, /run_mode_s_purge/);
   assert.match(rust, /purge_licence_bound: false/);
   assert.match(rust, /destructive_operations_enabled: false/);
+  assert.doesNotMatch(rust, /std::process|std::fs|Command::new|remove_file|remove_dir/);
   assert.match(types, /purgeLicenceBound/);
-  assert.match(screens, /No data was erased/);
+  assert.match(pdf, /Report S — Sanitization/);
+  assert.match(pdf, /locally verified, not a laboratory certification/);
+  assert.doesNotMatch(pdf, /Authenticated by CYVORIQ/);
+  assert.doesNotMatch(pdf, /CERTIFIED SECURE/);
+  assert.match(styles, /--purge: #b45309/);
+  assert.match(styles, /--purge-pass: #0f766e/);
+  assert.match(core, /Type ERASE in capital letters/);
+  assert.match(helper, /--plan/);
+  assert.match(tauriConf, /cyvra-purge-helper/);
+  assert.match(tauriConf, /stage:purge-helper/);
   assert.doesNotMatch(screens, /Authenticated by CYVORIQ/);
 });
 

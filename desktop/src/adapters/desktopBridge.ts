@@ -15,6 +15,8 @@ import {
   type DeviceFormHint,
   type LiveIntakeProbe,
   type PortAttestationValue,
+  type PurgeProgress,
+  type PurgeRecord,
   type ScanTarget,
   type ShellBootstrap,
   type VerificationProgress,
@@ -76,6 +78,67 @@ export async function activatePurgeLicense(activationKey: string): Promise<{
   return invoke<{ ok: boolean; message: string; keyPrefix?: string }>("activate_purge_license", {
     activationKey,
   });
+}
+
+export async function runModeSPurge(input: {
+  purgeLicenceBound: boolean;
+  hostname: string;
+  hostnameTyped: string;
+  eraseTyped: string;
+  letters: string[];
+  usbOptIn: boolean;
+  operatorName?: string;
+  preview?: boolean;
+}): Promise<PurgeRecord> {
+  if (!isTauri()) {
+    return {
+      ok: false,
+      jobId: "",
+      status: "FAILED",
+      message: "Mode S runs only in the installed Windows application. Nothing was erased.",
+      reportAllowed: false,
+      dataErased: false,
+      evidenceHash: "none",
+      targets: [],
+    };
+  }
+
+  const response = await invoke<PurgeRecord>("run_mode_s_purge", {
+    args: {
+      purgeLicenceBound: input.purgeLicenceBound,
+      hostname: input.hostname,
+      hostnameTyped: input.hostnameTyped,
+      eraseTyped: input.eraseTyped,
+      letters: input.letters,
+      usbOptIn: input.usbOptIn,
+      operatorName: input.operatorName ?? "",
+      preview: input.preview ?? false,
+    },
+  });
+
+  return {
+    ok: Boolean(response.ok),
+    jobId: response.jobId ?? "",
+    status: response.status || "FAILED",
+    message: response.message || "Mode S did not complete.",
+    reportAllowed: Boolean(response.reportAllowed),
+    dataErased: Boolean(response.dataErased),
+    evidenceHash: response.evidenceHash || "none",
+    targets: Array.isArray(response.targets) ? response.targets : [],
+  };
+}
+
+export async function subscribePurgeProgress(
+  onProgress: (progress: PurgeProgress) => void,
+): Promise<() => void> {
+  if (!isTauri()) {
+    return () => undefined;
+  }
+
+  const unlisten = await listen<PurgeProgress>("purge-progress", (event) => {
+    onProgress(event.payload);
+  });
+  return unlisten;
 }
 
 export async function listScanTargets(): Promise<ScanTarget[]> {

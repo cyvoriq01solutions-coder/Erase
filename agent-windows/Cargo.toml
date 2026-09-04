@@ -13,6 +13,10 @@ path = "src/lib.rs"
 name = "cyvra-cli"
 path = "src/main.rs"
 
+[[bin]]
+name = "cyvra-purge-helper"
+path = "src/bin/cyvra-purge-helper.rs"
+
 [dependencies]
 ed25519-dalek = { version = "=2.2.0", default-features = false, features = ["std", "alloc", "rand_core", "fast"] }
 qrcode = { version = "=0.14.1", default-features = false, features = ["svg"] }

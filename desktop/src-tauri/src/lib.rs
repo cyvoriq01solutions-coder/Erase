@@ -570,6 +570,133 @@ fn close_window(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PurgeProgress {
+    percent: u8,
+    stage_index: u8,
+    stage: String,
+    detail: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModeSArgs {
+    purge_licence_bound: bool,
+    hostname: String,
+    hostname_typed: String,
+    erase_typed: String,
+    letters: Vec<String>,
+    usb_opt_in: bool,
+    operator_name: Option<String>,
+    preview: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PurgeTargetDto {
+    letter: String,
+    allowed: bool,
+    media_label: String,
+    method_label: String,
+    standard: String,
+    model: String,
+    serial: String,
+    bus: String,
+    size_bytes: u64,
+    refuse_reason: Option<String>,
+    helper_ok: bool,
+    verify_passed: bool,
+    verify_note: String,
+    sample_percent: u32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PurgeOutcomeDto {
+    ok: bool,
+    job_id: String,
+    status: String,
+    message: String,
+    report_allowed: bool,
+    data_erased: bool,
+    evidence_hash: String,
+    targets: Vec<PurgeTargetDto>,
+}
+
+fn purge_outcome_dto(outcome: cyvra_core::purge::PurgeOutcome) -> PurgeOutcomeDto {
+    PurgeOutcomeDto {
+        ok: outcome.ok,
+        job_id: outcome.job_id,
+        status: outcome.status,
+        message: outcome.message,
+        report_allowed: outcome.report_allowed,
+        data_erased: outcome.data_erased,
+        evidence_hash: outcome.evidence_hash,
+        targets: outcome
+            .targets
+            .into_iter()
+            .map(|item| PurgeTargetDto {
+                letter: item.letter,
+                allowed: item.allowed,
+                media_label: item.media_label,
+                method_label: item.method_label,
+                standard: item.standard,
+                model: item.model,
+                serial: item.serial,
+                bus: item.bus,
+                size_bytes: item.size_bytes,
+                refuse_reason: item.refuse_reason,
+                helper_ok: item.helper_ok,
+                verify_passed: item.verify_passed,
+                verify_note: item.verify_note,
+                sample_percent: item.sample_percent,
+            })
+            .collect(),
+    }
+}
+
+#[tauri::command]
+async fn run_mode_s_purge(
+    app: tauri::AppHandle,
+    args: ModeSArgs,
+) -> Result<PurgeOutcomeDto, String> {
+    if safe_bootstrap().destructive_operations_enabled {
+        return Err(
+            "Assessment destructive flag is locked off. Mode S uses the Purge helper, not the assessment engines."
+                .to_string(),
+        );
+    }
+    let request = cyvra_core::purge::PurgeRequest {
+        purge_licence_bound: args.purge_licence_bound,
+        hostname: args.hostname,
+        hostname_typed: args.hostname_typed,
+        erase_typed: args.erase_typed,
+        letters: args.letters,
+        usb_opt_in: args.usb_opt_in,
+        operator_name: args.operator_name.unwrap_or_default(),
+        preview_only: args.preview.unwrap_or(false),
+    };
+    let progress_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let outcome =
+            cyvra_core::purge::run_mode_s(request, |percent, stage_index, stage, detail| {
+                let _ = progress_app.emit(
+                    "purge-progress",
+                    PurgeProgress {
+                        percent,
+                        stage_index,
+                        stage: stage.to_string(),
+                        detail: detail.to_string(),
+                    },
+                );
+            });
+        purge_outcome_dto(outcome)
+    })
+    .await
+    .map_err(|_| "CYVRA could not finish Mode S.".to_string())
+}
+
 #[cfg(windows)]
 fn activate_at(url: &str, activation_key: String) -> Result<ActivationOutcome, String> {
     let machine_guid = windows_machine_guid()?;
@@ -636,6 +763,7 @@ pub fn run() {
             probe_live_intake,
             run_device_verification,
             run_advance_scan,
+            run_mode_s_purge,
             close_window
         ])
         .run(tauri::generate_context!())
