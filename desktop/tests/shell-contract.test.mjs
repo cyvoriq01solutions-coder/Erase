@@ -312,6 +312,31 @@ test("F4 surfaces the privacy exposure map without opening contents", () => {
   assert.equal(occurrences(rust, /#\[tauri::command\]/g), 7);
 });
 
+test("F5 shows all fourteen Report A sections on screen", () => {
+  const screens = read("src/screens/ShellScreens.tsx");
+  const assessment = read("src/report/assessmentPdf.ts");
+
+  assert.match(assessment, /buildAssessmentSections/);
+  assert.match(screens, /buildAssessmentSections/);
+  assert.match(screens, /END OF REPORT A/);
+  assert.match(assessment, /1\. Document Control/);
+  assert.match(assessment, /2\. Purpose/);
+  assert.match(assessment, /3\. Scope/);
+  assert.match(assessment, /4\. Device Identity/);
+  assert.match(assessment, /5\. Hardware Inventory/);
+  assert.match(assessment, /6\. Deferred/);
+  assert.match(assessment, /7\. Metadata-Based Data-Exposure/);
+  assert.match(assessment, /8\. Privacy/);
+  assert.match(assessment, /9\. Authorization/);
+  assert.match(assessment, /10\. Assessment Findings/);
+  assert.match(assessment, /11\. Evidence Limitations/);
+  assert.match(assessment, /12\. Production Audit-Readiness/);
+  assert.match(assessment, /13\. Issuing Organisation/);
+  assert.match(assessment, /14\. Verification/);
+  assert.match(assessment, /Not recorded in this version/);
+  assert.match(assessment, /END OF REPORT A/);
+});
+
 test("root workspace exposes bounded desktop checks", () => {
   const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
 

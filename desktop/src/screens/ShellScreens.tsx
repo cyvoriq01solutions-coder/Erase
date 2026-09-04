@@ -1,11 +1,9 @@
 import { useMemo, useState } from "react";
 import { Notice } from "../components/Notice";
 import {
-  exposureLocationRows,
-  exposureSummaryRows,
+  buildAssessmentSections,
   lookupField,
   makeReportId,
-  peripheralHealthRows,
   saveAssessmentPdf,
 } from "../report/assessmentPdf";
 import { makeDiagnosticId, saveDiagnosticPdf } from "../report/diagnosticPdf";
@@ -847,6 +845,19 @@ function ReportTable({ title, rows, empty }: { title: string; rows: NamedValue[]
   );
 }
 
+function ReportProse({ title, paragraphs }: { title: string; paragraphs: string[] }) {
+  return (
+    <section className="report-table-block" aria-labelledby={`${title}-heading`}>
+      <h3 id={`${title}-heading`}>{title}</h3>
+      {paragraphs.map((paragraph) => (
+        <p key={paragraph.slice(0, 48)} className="report-prose">
+          {paragraph}
+        </p>
+      ))}
+    </section>
+  );
+}
+
 function fileCountLabel(count: number): string {
   return count === 1 ? "1 file" : `${count} files`;
 }
@@ -1281,44 +1292,9 @@ function ReportScreen({
   const [purgeNote, setPurgeNote] = useState<string | null>(null);
   const generatedAt = useMemo(() => new Date(), [verification]);
   const reportExported = reportEmailed || pdfSaved;
-
-  const summaryRows = useMemo<NamedValue[]>(() => {
-    if (!verification) return [];
-    return [
-      { label: "Computer name", value: verification.hostname },
-      { label: "Manufacturer", value: verification.manufacturer },
-      { label: "Model", value: verification.model },
-      {
-        label: "BIOS / OEM serial",
-        value:
-          lookupField(verification.hardwareFields, ["bios / oem serial"]) ??
-          "Not reported by firmware",
-      },
-      {
-        label: "Chassis serial",
-        value:
-          lookupField(verification.hardwareFields, ["chassis serial"]) ??
-          "Not reported by firmware",
-      },
-      {
-        label: "Motherboard serial",
-        value:
-          lookupField(verification.hardwareFields, ["motherboard serial"]) ??
-          "Not reported by firmware",
-      },
-      { label: "Operating system", value: verification.osCaption },
-      { label: "Drives included", value: verification.scannedDrives },
-      { label: "Hardware result", value: hardwareResultLabel(verification.hardwareResult) },
-      { label: "Document locations", value: String(verification.personalLocationCount) },
-      { label: "Mapped objects", value: String(verification.pdemObjectCount) },
-      { label: "File contents opened", value: "No" },
-      { label: "Data erased", value: "No" },
-    ];
-  }, [verification]);
-
-  const healthRows = useMemo(
-    () => (verification ? peripheralHealthRows(verification) : []),
-    [verification],
+  const assessmentSections = useMemo(
+    () => (verification ? buildAssessmentSections(verification, generatedAt) : []),
+    [verification, generatedAt],
   );
   const reportId = verification ? makeReportId(verification, generatedAt) : "";
 
@@ -1453,32 +1429,23 @@ function ReportScreen({
               </div>
             </div>
 
-            <ReportTable title="Executive Assessment Snapshot" rows={summaryRows} empty="No summary available." />
-            <ReportTable
-              title="5. Hardware Inventory Recorded During This Assessment"
-              rows={verification.hardwareFields.filter((row) => {
-                const label = row.label.toLowerCase();
-                if (["computer name", "operating system", "manufacturer", "model", "bios / oem serial", "chassis serial", "motherboard serial", "smbios uuid"].includes(label)) {
-                  return false;
-                }
-                return !/serial/i.test(row.label) || !/^0+$/.test(row.value.replace(/[^A-Za-z0-9]/g, ""));
-              })}
-              empty="Hardware details were not available on this PC."
-            />
-            <ReportTable
-              title="6. Deferred, Unknown and Physical-Verification Items"
-              rows={healthRows}
-              empty="Not collected in this scan."
-            />
-            <ReportTable
-              title="7. Metadata-Based Data-Exposure Indicators"
-              rows={
-                verification
-                  ? [...exposureSummaryRows(verification), ...exposureLocationRows(verification)]
-                  : []
-              }
-              empty="No document categories were recorded on the selected drives."
-            />
+            {assessmentSections.map((section) =>
+              section.kind === "table" ? (
+                <ReportTable
+                  key={section.title}
+                  title={section.title}
+                  rows={section.rows}
+                  empty={section.empty}
+                />
+              ) : (
+                <ReportProse key={section.title} title={section.title} paragraphs={section.paragraphs} />
+              ),
+            )}
+            <p className="report-prose report-end">
+              END OF REPORT A. Recommended evidence family: Report A — Intake &amp; Pre-Sanitization
+              Assessment; Report D — Technical Diagnostic &amp; Condition Evidence; Report S —
+              Sanitization &amp; Verification Record (not generated in this version).
+            </p>
           </div>
 
           <div className="email-row no-print">

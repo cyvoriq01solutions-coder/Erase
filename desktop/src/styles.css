@@ -1464,6 +1464,18 @@ a:focus-visible,
   font-size: 13px;
 }
 
+.report-prose {
+  margin: 0 0 10px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.report-end {
+  margin-top: 18px;
+  color: var(--muted);
+}
+
 .email-row {
   margin-top: 24px;
 }
