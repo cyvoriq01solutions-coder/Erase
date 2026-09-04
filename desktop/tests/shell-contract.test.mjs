@@ -242,7 +242,10 @@ test("NSIS installer licence exists and is assessment-only", () => {
   const licence = read("src-tauri/LICENSE.installer.txt");
 
   assert.match(licence, /assessment/i);
-  assert.match(licence, /not a customer\s+release/i);
+  assert.match(licence, /SOFTWARE LICENSE TERMS/);
+  assert.match(licence, /unsigned engineering/i);
+  assert.match(licence, /auth@cyvra.co.in/);
+  assert.doesNotMatch(licence, /not a customer\s+release/i);
   assert.doesNotMatch(licence, /erase customer files/i);
   assert.doesNotMatch(licence, /\bNSIS\b/);
   assert.doesNotMatch(licence, /Backblaze/i);
@@ -357,6 +360,30 @@ test("F6 shows numbered Report D sections on screen", () => {
   assert.match(diagnostic, /19\. Final Recommended Next Action/);
   assert.match(diagnostic, /20\. Controlled Issuance Statement/);
   assert.match(diagnostic, /END OF REPORT D/);
+});
+
+test("S-setup shows commercial Software License Terms", () => {
+  const installer = read("src/components/InstallerSetup.tsx");
+  const licence = read("src-tauri/LICENSE.installer.txt");
+  const styles = read("src/styles.css");
+
+  assert.match(installer, /SOFTWARE LICENSE TERMS/);
+  assert.match(installer, /GRANT OF LICENCE/);
+  assert.match(installer, /LIMITATION OF LIABILITY/);
+  assert.match(installer, /I accept these Software License Terms/);
+  assert.match(installer, /Signing in on the website is not a licence|Website sign-in, OTP, or account approval is not a licence/);
+  assert.match(installer, /one authorised Windows device/);
+  assert.match(installer, /auth@cyvra.co.in/);
+  assert.match(installer, /pre-sanitization assessment/);
+  assert.match(installer, /This build is unsigned until Authenticode/);
+  assert.match(licence, /SOFTWARE LICENSE TERMS/);
+  assert.match(licence, /GRANT OF LICENCE/);
+  assert.match(licence, /LIMITATION OF LIABILITY/);
+  assert.match(licence, /auth@cyvra.co.in/);
+  assert.match(licence, /pre-sanitization assessment/);
+  assert.doesNotMatch(installer, /not a customer\s+release/i);
+  assert.doesNotMatch(licence, /not a customer\s+release/i);
+  assert.match(styles, /max-height:\s*320px/);
 });
 
 test("root workspace exposes bounded desktop checks", () => {

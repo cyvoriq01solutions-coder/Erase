@@ -1262,7 +1262,7 @@ a:focus-visible,
 }
 
 .setup-licence {
-  max-height: 220px;
+  max-height: 320px;
   overflow: auto;
   padding: 16px;
   white-space: pre-wrap;
