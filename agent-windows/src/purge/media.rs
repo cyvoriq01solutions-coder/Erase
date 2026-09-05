@@ -29,10 +29,21 @@ impl MediaClass {
     }
 
     pub fn mode_s_allowed(self) -> bool {
-        matches!(
-            self,
-            Self::MagneticHdd | Self::SataSsd | Self::Nvme | Self::UsbHdd | Self::UsbFlash
-        )
+        matches!(self, Self::MagneticHdd | Self::SataSsd | Self::Nvme)
+    }
+
+    pub fn as_key(self) -> &'static str {
+        match self {
+            Self::MagneticHdd => "magnetic_hdd",
+            Self::SataSsd => "sata_ssd",
+            Self::Nvme => "nvme",
+            Self::UsbHdd => "usb_hdd",
+            Self::UsbFlash => "usb_flash",
+            Self::Optical => "optical",
+            Self::Network => "network",
+            Self::SystemDisk => "system_disk",
+            Self::Unknown => "unknown",
+        }
     }
 }
 
@@ -98,21 +109,14 @@ pub fn classify(
     let looks_flash =
         model_l.contains("flash") || model_l.contains("usb disk") || media.contains("removable");
 
+    if looks_usb {
+        if looks_flash && !media.contains("hard") {
+            return MediaClass::UsbFlash;
+        }
+        return MediaClass::UsbHdd;
+    }
     if looks_nvme {
         return MediaClass::Nvme;
-    }
-    if looks_usb && looks_ssd && !looks_flash {
-        return MediaClass::SataSsd;
-    }
-    if looks_usb && looks_flash && !media.contains("hard") {
-        return MediaClass::UsbFlash;
-    }
-    if looks_usb {
-        return if looks_ssd {
-            MediaClass::SataSsd
-        } else {
-            MediaClass::UsbHdd
-        };
     }
     if looks_ssd {
         return MediaClass::SataSsd;
@@ -170,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn usb_hdd_is_clear_overwrite() {
+    fn usb_hdd_is_classified_but_never_mode_s() {
         let class = classify(
             false,
             "removable",
@@ -179,8 +183,17 @@ mod tests {
             "TOSHIBA",
         );
         assert_eq!(class, MediaClass::UsbHdd);
+        assert!(!class.mode_s_allowed());
         assert_eq!(method_for(class), MethodClass::OverwriteClear);
         assert!(!method_for(class).is_purge());
+    }
+
+    #[test]
+    fn usb_enclosure_is_not_an_internal_ssd() {
+        let class = classify(false, "internal", "USB", "SSD", "Samsung SSD");
+        assert_eq!(class, MediaClass::UsbHdd);
+        assert!(!class.mode_s_allowed());
+        assert_eq!(method_for(class), MethodClass::OverwriteClear);
     }
 
     #[test]

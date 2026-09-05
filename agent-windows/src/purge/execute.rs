@@ -17,8 +17,19 @@ pub struct HelperResult {
 }
 
 pub fn write_plan_file(path: &Path, job_id: &str, target: &PlannedTarget) -> Result<(), String> {
+    if helper_must_refuse(target.media_class.as_key(), &target.bus, "") {
+        return Err(
+            "Attached USB or removable media cannot be sanitised by this application.".to_string(),
+        );
+    }
+    if !target.allowed || target.method == MethodClass::Refused {
+        return Err(target
+            .refuse_reason
+            .clone()
+            .unwrap_or_else(|| "Mode S refused this volume.".to_string()));
+    }
     let body = format!(
-        "job_id={}\nletter={}\ndisk_index={}\nmethod={}\nsize_bytes={}\nserial={}\nmodel={}\n",
+        "job_id={}\nletter={}\ndisk_index={}\nmethod={}\nsize_bytes={}\nserial={}\nmodel={}\nmedia_class={}\nbus={}\n",
         job_id,
         target.letter,
         target.disk_index,
@@ -26,8 +37,27 @@ pub fn write_plan_file(path: &Path, job_id: &str, target: &PlannedTarget) -> Res
         target.size_bytes,
         target.serial.replace('\n', " "),
         target.model.replace('\n', " "),
+        target.media_class.as_key(),
+        target.bus.replace('\n', " "),
     );
     fs::write(path, body).map_err(|_| "CYVRA could not write the purge plan.".to_string())
+}
+
+pub fn helper_must_refuse(media_class: &str, bus: &str, drive_kind: &str) -> bool {
+    let media = media_class.to_ascii_lowercase();
+    let bus_l = bus.to_ascii_lowercase();
+    let kind = drive_kind.to_ascii_lowercase();
+    media.contains("usb")
+        || media == "usb_hdd"
+        || media == "usb_flash"
+        || bus_l.contains("usb")
+        || kind == "removable"
+        || kind == "optical"
+        || kind == "network"
+        || matches!(
+            media.as_str(),
+            "optical" | "network" | "system_disk" | "unknown"
+        )
 }
 
 pub fn read_result_file(path: &Path) -> Result<HelperResult, String> {
@@ -102,6 +132,8 @@ fn run_helper_plan_inner(plan_path: &Path, result_path: &Path) -> Result<(), Str
     let mut letter = String::new();
     let mut method = String::new();
     let mut size_bytes = 0_u64;
+    let mut media_class = String::new();
+    let mut bus = String::new();
     for line in body.lines() {
         if let Some((key, value)) = line.split_once('=') {
             match key {
@@ -109,12 +141,20 @@ fn run_helper_plan_inner(plan_path: &Path, result_path: &Path) -> Result<(), Str
                 "letter" => letter = value.to_string(),
                 "method" => method = value.to_string(),
                 "size_bytes" => size_bytes = value.parse().unwrap_or(0),
+                "media_class" => media_class = value.to_string(),
+                "bus" => bus = value.to_string(),
                 _ => {}
             }
         }
     }
     if letter.is_empty() || job_id.is_empty() {
         return Err("Purge plan is incomplete.".to_string());
+    }
+    let live_kind = live_drive_kind(&letter);
+    if helper_must_refuse(&media_class, &bus, &live_kind) {
+        return Err(
+            "Attached USB or removable media cannot be sanitised by this application.".to_string(),
+        );
     }
     if method == "ata_secure_erase" || method == "nvme_sanitize" {
         let message = "Firmware sanitize is not available on this controller. Mode S fails closed rather than calling host overwrite Purge on flash.";
@@ -191,6 +231,20 @@ fn overwrite_volume_windows(letter: &str, size_bytes: u64) -> Result<u64, String
     Ok(written)
 }
 
+fn live_drive_kind(letter: &str) -> String {
+    let key = letter.trim().trim_end_matches(':').to_ascii_uppercase();
+    crate::volume::collect()
+        .into_iter()
+        .find(|item| {
+            item.drive_letter
+                .trim()
+                .trim_end_matches(':')
+                .eq_ignore_ascii_case(&key)
+        })
+        .map(|item| item.drive_kind)
+        .unwrap_or_default()
+}
+
 pub fn sample_volume(
     letter: &str,
     size_bytes: u64,
@@ -213,7 +267,7 @@ fn sample_volume_windows(
     size_bytes: u64,
     samples: u32,
 ) -> Result<super::verify::VerifyReport, String> {
-    use super::verify::{MARKER, inspect_buffer, residue_ok, summarise};
+    use super::verify::{inspect_buffer, residue_ok, summarise, MARKER};
     use std::fs::OpenOptions;
     use std::io::{Read, Seek, SeekFrom};
 
@@ -252,7 +306,7 @@ fn sample_volume_windows(
 #[cfg(test)]
 mod tests {
     use super::read_result_file;
-    use crate::purge::verify::{MARKER, residue_ok};
+    use crate::purge::verify::{residue_ok, MARKER};
     use std::env;
     use std::fs::{self, File};
     use std::io::Write;
@@ -287,12 +341,27 @@ mod tests {
             file.write_all(&vec![0_u8; data.len()]).unwrap();
         }
         let read_back = fs::read(&path).unwrap();
-        assert!(
-            !read_back
-                .windows(MARKER.len())
-                .any(|window| window == MARKER)
-        );
+        assert!(!read_back
+            .windows(MARKER.len())
+            .any(|window| window == MARKER));
         assert!(residue_ok(&read_back));
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn helper_refuses_usb_even_if_plan_asks() {
+        assert!(super::helper_must_refuse("usb_hdd", "SATA", "internal"));
+        assert!(super::helper_must_refuse("magnetic_hdd", "USB", "internal"));
+        assert!(super::helper_must_refuse(
+            "magnetic_hdd",
+            "SATA",
+            "removable"
+        ));
+        assert!(!super::helper_must_refuse(
+            "magnetic_hdd",
+            "SATA",
+            "internal"
+        ));
+        assert!(!super::helper_must_refuse("nvme", "NVMe", "internal"));
     }
 }

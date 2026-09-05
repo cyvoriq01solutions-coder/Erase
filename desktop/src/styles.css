@@ -2588,6 +2588,33 @@ a:focus-visible,
   font-size: 13px;
 }
 
+.purge-failed-job {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--purge-fail);
+  border-radius: 10px;
+  background: #fff5f5;
+}
+
+.purge-failed-job h3 {
+  margin: 0 0 8px;
+}
+
+.purge-failed-job dl {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.purge-failed-job dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.purge-failed-job dd {
+  margin: 2px 0 0;
+}
+
 .purge-confirm label,
 .purge-confirm input {
   display: block;
