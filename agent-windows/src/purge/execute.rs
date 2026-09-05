@@ -267,7 +267,7 @@ fn sample_volume_windows(
     size_bytes: u64,
     samples: u32,
 ) -> Result<super::verify::VerifyReport, String> {
-    use super::verify::{inspect_buffer, residue_ok, summarise, MARKER};
+    use super::verify::{MARKER, inspect_buffer, residue_ok, summarise};
     use std::fs::OpenOptions;
     use std::io::{Read, Seek, SeekFrom};
 
@@ -306,7 +306,7 @@ fn sample_volume_windows(
 #[cfg(test)]
 mod tests {
     use super::read_result_file;
-    use crate::purge::verify::{residue_ok, MARKER};
+    use crate::purge::verify::{MARKER, residue_ok};
     use std::env;
     use std::fs::{self, File};
     use std::io::Write;
@@ -341,9 +341,11 @@ mod tests {
             file.write_all(&vec![0_u8; data.len()]).unwrap();
         }
         let read_back = fs::read(&path).unwrap();
-        assert!(!read_back
-            .windows(MARKER.len())
-            .any(|window| window == MARKER));
+        assert!(
+            !read_back
+                .windows(MARKER.len())
+                .any(|window| window == MARKER)
+        );
         assert!(residue_ok(&read_back));
         let _ = fs::remove_file(&path);
     }

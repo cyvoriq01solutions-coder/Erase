@@ -1,6 +1,6 @@
 //! Dual confirmation and Mode S target planning.
 
-use super::media::{classify, method_for, MediaClass, MethodClass};
+use super::media::{MediaClass, MethodClass, classify, method_for};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedTarget {
@@ -187,11 +187,13 @@ mod tests {
         );
         assert!(!planned[0].allowed);
         assert_eq!(planned[0].media_class, MediaClass::UsbHdd);
-        assert!(planned[0]
-            .refuse_reason
-            .as_deref()
-            .unwrap_or("")
-            .contains("cannot be sanitised by this application"));
+        assert!(
+            planned[0]
+                .refuse_reason
+                .as_deref()
+                .unwrap_or("")
+                .contains("cannot be sanitised by this application")
+        );
     }
 
     #[test]
@@ -203,11 +205,13 @@ mod tests {
             false,
         );
         assert!(!planned[0].allowed);
-        assert!(planned[0]
-            .refuse_reason
-            .as_deref()
-            .unwrap_or("")
-            .contains("USB or removable"));
+        assert!(
+            planned[0]
+                .refuse_reason
+                .as_deref()
+                .unwrap_or("")
+                .contains("USB or removable")
+        );
     }
 
     #[test]
