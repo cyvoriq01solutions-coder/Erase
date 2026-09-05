@@ -7,7 +7,7 @@ mod plan;
 mod verify;
 
 pub use media::{MediaClass, MethodClass};
-pub use plan::{erase_confirmed, hostname_matches, DiskHint, PlannedTarget, VolumeHint};
+pub use plan::{DiskHint, PlannedTarget, VolumeHint, erase_confirmed, hostname_matches};
 pub use verify::VerifyReport;
 
 use std::time::{SystemTime, UNIX_EPOCH};
