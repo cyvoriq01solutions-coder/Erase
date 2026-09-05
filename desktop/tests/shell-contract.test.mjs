@@ -407,8 +407,15 @@ test("P-SECONDARY runs Mode S on extra disks and issues Report S only after veri
   assert.match(screens, /CYVRA-PRG-/);
   assert.match(screens, /Type ERASE in capital letters/);
   assert.match(screens, /Save Report S as PDF/);
-  assert.match(screens, /USB stays off until you opt in/);
-  assert.match(screens, /system disk — Mode S refused/);
+  assert.doesNotMatch(screens, /USB stays off until you opt in/);
+  assert.doesNotMatch(screens, /purge-usb-opt-in/);
+  assert.match(screens, /cannot be sanitised by this application/);
+  assert.match(screens, /exactly one extra internal disk/);
+  assert.match(screens, /This field needs a CYVRA-PRG- key/);
+  assert.match(screens, /Save failed-job note/);
+  assert.match(screens, /system disk — cannot sanitise the OS disk from this app/);
+  assert.match(screens, /type="radio"/);
+  assert.match(screens, /Physical verification is optional/);
   assert.match(screens, /never CERTIFIED SECURE/);
   assert.match(screens, /No data was erased/);
   assert.match(bridge, /activate_purge_license/);
@@ -432,6 +439,24 @@ test("P-SECONDARY runs Mode S on extra disks and issues Report S only after veri
   assert.match(buildRs, /cyvra-purge-helper\.exe/);
   assert.match(buildRs, /if !helper.exists/);
   assert.doesNotMatch(screens, /Authenticated by CYVORIQ/);
+});
+
+test("P-USB-LOCK refuses USB and requires exactly one extra internal disk", () => {
+  const screens = read("src/screens/ShellScreens.tsx");
+  const core = readFileSync(join(repositoryRoot, "agent-windows/src/purge/mod.rs"), "utf8");
+  const plan = readFileSync(join(repositoryRoot, "agent-windows/src/purge/plan.rs"), "utf8");
+  const media = readFileSync(join(repositoryRoot, "agent-windows/src/purge/media.rs"), "utf8");
+  const helper = readFileSync(join(repositoryRoot, "agent-windows/src/purge/execute.rs"), "utf8");
+
+  assert.match(core, /Select exactly one extra internal disk/);
+  assert.match(core, /letters\.len\(\) != 1/);
+  assert.match(plan, /cannot be sanitised by this application/);
+  assert.match(media, /Self::MagneticHdd \| Self::SataSsd \| Self::Nvme/);
+  assert.doesNotMatch(media, /UsbHdd \| Self::UsbFlash/);
+  assert.match(helper, /helper_must_refuse/);
+  assert.match(screens, /name="purge-extra-disk"/);
+  assert.match(screens, /Failed job/);
+  assert.doesNotMatch(screens, /Include USB media/);
 });
 
 test("root workspace exposes bounded desktop checks", () => {

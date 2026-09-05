@@ -7,7 +7,7 @@ mod plan;
 mod verify;
 
 pub use media::{MediaClass, MethodClass};
-pub use plan::{DiskHint, PlannedTarget, VolumeHint, erase_confirmed, hostname_matches};
+pub use plan::{erase_confirmed, hostname_matches, DiskHint, PlannedTarget, VolumeHint};
 pub use verify::VerifyReport;
 
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -82,8 +82,10 @@ pub fn run_mode_s(
     if !request.purge_licence_bound {
         return failed("Purge licence is not bound on this PC. The helper was not started.");
     }
-    if request.letters.is_empty() {
-        return failed("Select extra disks for Mode S. The Windows system disk is never included.");
+    if request.letters.len() != 1 {
+        return failed(
+            "Select exactly one extra internal disk. Mode S will not start until that one disk is chosen.",
+        );
     }
     if !request.preview_only {
         if !hostname_matches(&request.hostname, &request.hostname_typed) {
@@ -101,9 +103,19 @@ pub fn run_mode_s(
         "Serial, bus and capacity are read again before any method is chosen.",
     );
     let (volumes, disks) = live_hints();
-    let planned = plan_targets(&request.letters, &volumes, &disks, request.usb_opt_in);
+    let _ = request.usb_opt_in;
+    let planned = plan_targets(&request.letters, &volumes, &disks, false);
     if planned.is_empty() {
         return failed("No selected volumes could be identified.");
+    }
+    if !request.preview_only {
+        let (again_volumes, again_disks) = live_hints();
+        let again = plan_targets(&request.letters, &again_volumes, &again_disks, false);
+        if identity_mismatch(&planned, &again) {
+            return failed(
+                "Disk identity changed before Mode S could start. Serial, model, capacity or letter no longer match. The job is FAILED.",
+            );
+        }
     }
 
     progress(
@@ -357,6 +369,18 @@ fn target_from_plan(
     }
 }
 
+fn identity_mismatch(first: &[PlannedTarget], second: &[PlannedTarget]) -> bool {
+    if first.len() != second.len() {
+        return true;
+    }
+    first.iter().zip(second).any(|(left, right)| {
+        left.letter != right.letter
+            || left.serial != right.serial
+            || left.model != right.model
+            || left.size_bytes.abs_diff(right.size_bytes) > 64 * 1024 * 1024
+    })
+}
+
 fn live_hints() -> (Vec<VolumeHint>, Vec<DiskHint>) {
     let system = crate::system_drive_letter();
     let volumes = volume::collect()
@@ -538,7 +562,28 @@ mod tests {
                 || outcome.message.contains("Windows")
                 || outcome.message.contains("identified")
                 || outcome.message.contains("refused")
-                || outcome.message.contains("Select extra")
+                || outcome.message.contains("Select exactly one")
         );
+    }
+
+    #[test]
+    fn two_letters_fail_closed_without_helper() {
+        let outcome = run_mode_s(
+            PurgeRequest {
+                purge_licence_bound: true,
+                hostname: "PC".to_string(),
+                hostname_typed: "PC".to_string(),
+                erase_typed: "ERASE".to_string(),
+                letters: vec!["D".to_string(), "E".to_string()],
+                usb_opt_in: true,
+                operator_name: String::new(),
+                preview_only: false,
+            },
+            |_, _, _, _| {},
+        );
+        assert!(!outcome.ok);
+        assert!(!outcome.report_allowed);
+        assert!(outcome.targets.is_empty());
+        assert!(outcome.message.contains("exactly one extra internal disk"));
     }
 }

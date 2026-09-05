@@ -1,6 +1,6 @@
 //! Dual confirmation and Mode S target planning.
 
-use super::media::{MediaClass, MethodClass, classify, method_for};
+use super::media::{classify, method_for, MediaClass, MethodClass};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannedTarget {
@@ -69,19 +69,24 @@ pub fn plan_targets(
             let class = classify(is_system, drive_kind, interface, media_type, model);
             let method = method_for(class);
             let usb_media = matches!(class, MediaClass::UsbHdd | MediaClass::UsbFlash);
-            let mut allowed = class.mode_s_allowed() && method != MethodClass::Refused;
-            let refuse_reason = if usb_media && !usb_opt_in {
-                allowed = false;
-                Some("USB media stays off until you opt in. Mode S will not guess a stick.".to_string())
-            } else if allowed {
-                None
-            } else if class == MediaClass::SystemDisk {
+            let _ = usb_opt_in;
+            let allowed = class.mode_s_allowed() && method != MethodClass::Refused && !usb_media;
+            let refuse_reason = if class == MediaClass::SystemDisk {
                 Some(
                     "The Windows system disk cannot be sanitised while this application is running on it (Mode S)."
                         .to_string(),
                 )
-            } else if class == MediaClass::Optical || class == MediaClass::Network {
-                Some(format!("{} is refused. Mode S will not guess.", class.as_label()))
+            } else if usb_media {
+                Some(
+                    "Attached USB or removable media cannot be sanitised by this application."
+                        .to_string(),
+                )
+            } else if class == MediaClass::Optical {
+                Some("Optical drives cannot be sanitised by this application.".to_string())
+            } else if class == MediaClass::Network {
+                Some("Network locations cannot be sanitised by this application.".to_string())
+            } else if allowed {
+                None
             } else {
                 Some("Unknown or unsupported media. Mode S fails closed.".to_string())
             };
@@ -173,19 +178,24 @@ mod tests {
     }
 
     #[test]
-    fn usb_hdd_is_allowed_clear() {
+    fn usb_hdd_is_always_refused() {
         let planned = plan_targets(
             &["E".to_string()],
             &[volume("E", "removable", false)],
             &[usb_disk()],
             true,
         );
-        assert!(planned[0].allowed);
-        assert_eq!(planned[0].method, MethodClass::OverwriteClear);
+        assert!(!planned[0].allowed);
+        assert_eq!(planned[0].media_class, MediaClass::UsbHdd);
+        assert!(planned[0]
+            .refuse_reason
+            .as_deref()
+            .unwrap_or("")
+            .contains("cannot be sanitised by this application"));
     }
 
     #[test]
-    fn usb_stays_off_without_opt_in() {
+    fn usb_opt_in_is_ignored() {
         let planned = plan_targets(
             &["E".to_string()],
             &[volume("E", "removable", false)],
@@ -193,12 +203,30 @@ mod tests {
             false,
         );
         assert!(!planned[0].allowed);
-        assert!(
-            planned[0]
-                .refuse_reason
-                .as_deref()
-                .unwrap_or("")
-                .contains("USB media stays off")
+        assert!(planned[0]
+            .refuse_reason
+            .as_deref()
+            .unwrap_or("")
+            .contains("USB or removable"));
+    }
+
+    #[test]
+    fn extra_internal_hdd_is_allowed_clear() {
+        let planned = plan_targets(
+            &["D".to_string()],
+            &[volume("D", "internal", false)],
+            &[DiskHint {
+                index: 1,
+                model: "ST1000DM".to_string(),
+                serial: "INT001".to_string(),
+                size_bytes: 8_000_000_000,
+                interface_type: "SATA".to_string(),
+                media_type: "HDD".to_string(),
+            }],
+            false,
         );
+        assert!(planned[0].allowed);
+        assert_eq!(planned[0].media_class, MediaClass::MagneticHdd);
+        assert_eq!(planned[0].method, MethodClass::OverwriteClear);
     }
 }

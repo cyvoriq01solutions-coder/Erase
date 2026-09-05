@@ -97,6 +97,48 @@ function stageStatus(
   return "Pending";
 }
 
+function formatPurgeCapacity(bytes: number): string {
+  if (!bytes) return "Size not reported";
+  if (bytes >= 1_073_741_824) return `${Math.round(bytes / 1_073_741_824)} GB`;
+  return `${Math.round(bytes / 1_048_576)} MB`;
+}
+
+function purgeRowState(target: ScanTarget): { blocked: boolean; reason: string } {
+  const system = /windows system drive/i.test(target.hint);
+  const usb = /removable or usb/i.test(target.kind);
+  const optical = /optical/i.test(target.kind);
+  const network = /network/i.test(target.kind);
+  const unknown = /other/i.test(target.kind);
+  if (system) {
+    return { blocked: true, reason: "system disk — cannot sanitise the OS disk from this app" };
+  }
+  if (usb) {
+    return { blocked: true, reason: "USB/removable — cannot be sanitised by this application" };
+  }
+  if (optical) {
+    return { blocked: true, reason: "optical — refused" };
+  }
+  if (network) {
+    return { blocked: true, reason: "network — refused" };
+  }
+  if (unknown) {
+    return { blocked: true, reason: "unknown media — refused" };
+  }
+  return { blocked: false, reason: "" };
+}
+
+function downloadFailedJobNote(filename: string, body: string): void {
+  const blob = new Blob([body], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function hardwareResultLabel(result: string): string {
   if (result === "pass") return "Passed";
   if (result === "fail") return "Needs review";
@@ -186,7 +228,7 @@ function OverviewScreen({
           <ol>
             <li>Complete the standard assessment and save Report A.</li>
             <li>Bind a Purge licence if one was issued.</li>
-            <li>Confirm extra disks only. USB stays off until you opt in.</li>
+            <li>Choose exactly one extra internal disk. USB cannot be sanitised by this application.</li>
           </ol>
           <p className="workstream-status">
             {purgeLicenceBound
@@ -807,7 +849,8 @@ function VerificationScreen({
           </div>
           <p>
             After independent verify PASS you can save Report S and return here. The Windows system
-            disk is refused. USB stays off until you opt in. Type this PC’s name, then ERASE.
+            disk is refused. USB and removable media cannot be sanitised by this application. Type this
+            PC’s name, then ERASE.
           </p>
           <div className="action-row">
             <button className="button button-danger" type="button" onClick={() => onChooseWorkstream("purge")}>
@@ -1366,7 +1409,6 @@ function ReportScreen({
   const [purgeBinding, setPurgeBinding] = useState(false);
   const [purgeBindNote, setPurgeBindNote] = useState<string | null>(null);
   const [purgeLetters, setPurgeLetters] = useState<string[]>([]);
-  const [usbOptIn, setUsbOptIn] = useState(false);
   const [hostnameTyped, setHostnameTyped] = useState("");
   const [eraseTyped, setEraseTyped] = useState("");
   const [operatorName, setOperatorName] = useState("");
@@ -1410,7 +1452,7 @@ function ReportScreen({
       hostnameTyped: "",
       eraseTyped: "",
       letters: purgeLetters,
-      usbOptIn,
+      usbOptIn: false,
       preview: true,
     }).then((record) => {
       if (active) setPreviewRecord(record);
@@ -1418,7 +1460,7 @@ function ReportScreen({
     return () => {
       active = false;
     };
-  }, [purgeLicenceBound, purgeLetters, usbOptIn, hostname, purgePhase]);
+  }, [purgeLicenceBound, purgeLetters, hostname, purgePhase]);
 
   function handleEmail() {
     if (!verification) return;
@@ -1522,7 +1564,7 @@ function ReportScreen({
         hostnameTyped,
         eraseTyped,
         letters: purgeLetters,
-        usbOptIn,
+        usbOptIn: false,
         operatorName,
         preview: false,
       });
@@ -1554,15 +1596,42 @@ function ReportScreen({
     }
   }
 
-  function togglePurgeLetter(letter: string, blocked: boolean) {
+  function selectPurgeLetter(letter: string, blocked: boolean) {
     if (blocked || purgePhase === "running") return;
-    setPurgeLetters((current) =>
-      current.includes(letter) ? current.filter((item) => item !== letter) : [...current, letter],
-    );
+    setPurgeLetters([letter]);
+  }
+
+  function handleSaveFailedJobNote() {
+    if (!purgeRecord || purgeRecord.reportAllowed || purgeRecord.status === "VERIFIED") {
+      return;
+    }
+    const target = purgeRecord.targets[0];
+    const filename = `CYVRA-Erase-failed-job-${purgeRecord.jobId || "none"}.txt`;
+    const body = [
+      "CYVRA Erase — failed Mode S job",
+      `Job: ${purgeRecord.jobId || "none"}`,
+      `Volume: ${target?.letter ?? "none"}`,
+      `Stage: ${purgeProgress?.stage ?? "Failed"}`,
+      "Status: FAILED",
+      `Reason: ${purgeRecord.message}`,
+      target?.verifyNote ? `Detail: ${target.verifyNote}` : "",
+      "No Report S. This job is not VERIFIED.",
+    ]
+      .filter(Boolean)
+      .join("\r\n");
+    downloadFailedJobNote(filename, body);
+    setPurgeNote(`Saved ${filename}. The job stays FAILED. No Report S.`);
   }
 
   async function handleActivatePurge() {
     setPurgeBindNote(null);
+    const typed = purgeKey.trim().toUpperCase();
+    if (!typed.startsWith("CYVRA-PRG-")) {
+      setPurgeBindNote(
+        "This field needs a CYVRA-PRG- key. Assessment keys (CYVRA-XXXX-…) cannot Activate Purge.",
+      );
+      return;
+    }
     setPurgeBinding(true);
     try {
       const result = await activatePurgeLicense(purgeKey.trim());
@@ -1749,10 +1818,12 @@ function ReportScreen({
           <h2 id="purge-consent-title">Mode S — extra disks</h2>
         </div>
         <p>
-          Mode S permanently destroys data on the extra disks you select. Treat it as formatting
-          those disks. It cannot be undone. The Windows system disk is refused while CYVRA Erase is
-          running on it. Save Report A first. USB stays off until you opt in. Firmware sanitize that
-          is unavailable fails closed rather than calling host overwrite Purge on flash.
+          Mode S permanently destroys data on exactly one extra internal disk per job. Treat it as
+          formatting that disk. It cannot be undone. The Windows system disk is refused while CYVRA
+          Erase is running on it. USB, removable media and USB enclosures cannot be sanitised by this
+          application. Save Report A first. Physical verification is optional and does not block
+          Mode S or Report A. Firmware sanitize that is unavailable fails closed rather than calling
+          host overwrite Purge on flash.
         </p>
         <div className="purge-bind">
           <h3>CYVRA Purge licence</h3>
@@ -1795,33 +1866,22 @@ function ReportScreen({
             <div className="purge-picker">
               <h3>Extra disks</h3>
               <p>
-                Leave USB off unless the stick or USB hard disk is sacrificial lab media. Optical and
-                network locations are refused.
+                Choose exactly one extra internal disk. Blocked devices stay visible. USB, optical
+                and network locations cannot be sanitised by this application.
               </p>
-              <label className="purge-consent-check" htmlFor="purge-usb-opt-in">
-                <input
-                  id="purge-usb-opt-in"
-                  type="checkbox"
-                  checked={usbOptIn}
-                  disabled={purgePhase === "running"}
-                  onChange={(event) => setUsbOptIn(event.target.checked)}
-                />
-                <span>Include USB media (opt in). USB stays off unless this box is ticked.</span>
-              </label>
               <ul className="purge-disk-list">
                 {scanTargets.map((target) => {
-                  const system = /windows system drive/i.test(target.hint);
-                  const usb = /removable or usb/i.test(target.kind);
-                  const blocked = system || (usb && !usbOptIn);
-                  const selected = purgeLetters.includes(target.letter);
+                  const row = purgeRowState(target);
+                  const selected = purgeLetters.includes(target.letter) && !row.blocked;
                   return (
                     <li key={target.letter}>
-                      <label className={blocked ? "purge-disk purge-disk-blocked" : "purge-disk"}>
+                      <label className={row.blocked ? "purge-disk purge-disk-blocked" : "purge-disk"}>
                         <input
-                          type="checkbox"
-                          checked={selected && !blocked}
-                          disabled={blocked || purgePhase === "running"}
-                          onChange={() => togglePurgeLetter(target.letter, blocked)}
+                          type="radio"
+                          name="purge-extra-disk"
+                          checked={selected}
+                          disabled={row.blocked || purgePhase === "running"}
+                          onChange={() => selectPurgeLetter(target.letter, row.blocked)}
                         />
                         <span>
                           <strong>
@@ -1829,11 +1889,7 @@ function ReportScreen({
                           </strong>
                           <em>
                             {target.kind} · {target.sizeLabel}
-                            {system
-                              ? " · system disk — Mode S refused"
-                              : usb && !usbOptIn
-                                ? " · USB off until you opt in"
-                                : ""}
+                            {row.reason ? ` · ${row.reason}` : ""}
                           </em>
                         </span>
                       </label>
@@ -1843,22 +1899,30 @@ function ReportScreen({
               </ul>
               {previewRecord?.targets.length ? (
                 <table className="purge-method-table">
-                  <caption>Method preview (not issued)</caption>
+                  <caption>Method preview for the chosen disk (not issued)</caption>
                   <thead>
                     <tr>
                       <th>Volume</th>
+                      <th>Model</th>
+                      <th>Serial</th>
+                      <th>Capacity</th>
                       <th>Media</th>
                       <th>Method</th>
-                      <th>Standard</th>
+                      <th>State</th>
                     </tr>
                   </thead>
                   <tbody>
                     {previewRecord.targets.map((target) => (
                       <tr key={target.letter}>
                         <td>{target.letter}</td>
+                        <td>{target.model || "unknown"}</td>
+                        <td>{target.serial || "unknown"}</td>
+                        <td>{formatPurgeCapacity(target.sizeBytes)}</td>
                         <td>{target.mediaLabel}</td>
-                        <td>{target.methodLabel}</td>
-                        <td>{target.allowed ? target.standard : target.refuseReason || "Refused"}</td>
+                        <td>{target.allowed ? target.methodLabel : "Refused"}</td>
+                        <td>
+                          {target.allowed ? "READY" : `BLOCKED — ${target.refuseReason || "Refused"}`}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1930,7 +1994,11 @@ function ReportScreen({
                   !reportExported ||
                   !purgeLicenceBound ||
                   purgePhase === "running" ||
-                  purgeLetters.length === 0
+                  purgeLetters.length !== 1 ||
+                  scanTargets.some(
+                    (target) =>
+                      target.letter === purgeLetters[0] && purgeRowState(target).blocked,
+                  )
                 }
                 onClick={handlePurgeIntent}
               >
@@ -1948,7 +2016,40 @@ function ReportScreen({
               )}
             </div>
             {purgeNote ? <p className="setup-note">{purgeNote}</p> : null}
-            {purgeRecord && !purgeRecord.reportAllowed ? (
+            {purgeRecord &&
+            !purgeRecord.reportAllowed &&
+            purgeRecord.status !== "VERIFIED" &&
+            (purgePhase === "error" || purgeRecord.status === "FAILED") ? (
+              <div className="purge-failed-job" role="status">
+                <h3>Failed job</h3>
+                <p>
+                  Status is FAILED. No Report S. This job is not VERIFIED.
+                </p>
+                <dl>
+                  <div>
+                    <dt>Job</dt>
+                    <dd>{purgeRecord.jobId || "none"}</dd>
+                  </div>
+                  <div>
+                    <dt>Volume</dt>
+                    <dd>{purgeRecord.targets[0]?.letter ?? "none"}</dd>
+                  </div>
+                  <div>
+                    <dt>Stage</dt>
+                    <dd>{purgeProgress?.stage ?? "Failed"}</dd>
+                  </div>
+                  <div>
+                    <dt>Reason</dt>
+                    <dd>{purgeRecord.message}</dd>
+                  </div>
+                </dl>
+                <div className="action-row">
+                  <button className="button button-secondary" type="button" onClick={handleSaveFailedJobNote}>
+                    Save failed-job note
+                  </button>
+                </div>
+              </div>
+            ) : purgeRecord && !purgeRecord.reportAllowed ? (
               <p className="setup-note">No sanitization report is issued on FAIL, cancel, or helper missing.</p>
             ) : null}
             {sanitizationSections.length > 0 ? (
@@ -2068,7 +2169,8 @@ function HelpScreen({
           <p>
             After colour wash and keyboard, open the camera if you need a live preview. Images are
             discarded. Nothing is written to a USB stick. Charging is telemetry from the Advance
-            scan pass, not a grading point.
+            scan pass, not a grading point. Physical verification is optional. Mode S and Report A
+            do not wait for a technician on site. Skipped checks stay not attempted.
           </p>
         </article>
         <article className="support-card">
@@ -2078,9 +2180,10 @@ function HelpScreen({
             Expected: from home, open 02 Advance diagnostic, run the scan, Save Report D as PDF,
             then Back to main. A local integrity seal (SHA-256 and Ed25519) proves the JSON was not
             altered after the scan. Verify this report re-checks it on this PC. It is not a wipe
-            certificate. Workstream 03 Mode S sanitises extra disks only after a Purge licence, this
-            PC’s name, and ERASE. Report S is issued only after independent verify PASS. If the grade
-            is withheld, coverage was too low — inspect Not assessable.
+            certificate. Workstream 03 Mode S sanitises exactly one extra internal disk after a Purge
+            licence, this PC’s name, and ERASE. USB cannot be sanitised by this application. Report S
+            is issued only after independent verify PASS. If the grade is withheld, coverage was too
+            low — inspect Not assessable.
           </p>
         </article>
       </section>
